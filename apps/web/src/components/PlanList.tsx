@@ -2,6 +2,7 @@ import type { Currency, PlanResult, StepGroup } from '@zuninja/core';
 import { CircleCheck } from 'lucide-react';
 import { CURRENCY_DOT, CURRENCY_SHORT, KIND_ICON, KIND_TINT } from '../lib/game';
 import { signed, signed1 } from '../lib/format';
+import { collapseRepeats } from '../lib/repeat';
 import { CardChip, CardThumb } from './CardChip';
 import { CopyButton } from './CopyButton';
 
@@ -91,11 +92,11 @@ export function PlanList({ plan }: { plan: PlanResult }) {
         <CopyButton text={plan.commands.join('\n')} label="Tout copier" className="ml-auto" />
       </div>
       <ol className="divide-y divide-white/[0.06]">
-        {plan.groups.map((group, index) => {
+        {collapseRepeats(plan.groups).map(({ group, repeat, first }, index) => {
           const Icon = KIND_ICON[group.kind];
           return (
             <li
-              key={index}
+              key={first}
               className="animate-fade-up flex gap-3 px-4 py-3.5"
               style={{ animationDelay: `${Math.min(index, 12) * 25}ms` }}
             >
@@ -103,7 +104,7 @@ export function PlanList({ plan }: { plan: PlanResult }) {
                 <span className={`grid size-9 place-items-center rounded ${KIND_TINT[group.kind]}`}>
                   <Icon className="size-[18px]" />
                 </span>
-                <span className="font-mono text-[10px] text-white/45">{index + 1}</span>
+                <span className="font-mono text-[10px] text-white/45">{first + 1}</span>
               </div>
               <div className="min-w-0 flex-1 space-y-2">
                 <div className="flex items-start gap-2">
@@ -117,6 +118,14 @@ export function PlanList({ plan }: { plan: PlanResult }) {
                   <code className="min-w-0 flex-1 overflow-x-auto py-1.5 font-mono text-[13px] whitespace-nowrap text-white/90 [scrollbar-width:thin]">
                     {group.command}
                   </code>
+                  {repeat > 1 && (
+                    <span
+                      className="shrink-0 rounded bg-zu-500 px-1.5 text-xs leading-5 font-bold text-white tabular-nums"
+                      title={`À taper ${repeat} fois d'affilée`}
+                    >
+                      ×{repeat}
+                    </span>
+                  )}
                   <CopyButton text={group.command} />
                 </div>
                 <Cards group={group} />
