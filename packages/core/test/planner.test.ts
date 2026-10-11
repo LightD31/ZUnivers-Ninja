@@ -120,7 +120,7 @@ describe('cas synthétiques', () => {
     });
     // 11 doublons × 5 = 55 poudres → création de la carte manquante (50).
     expect(plan.commands).toEqual([
-      `/recyclage ${Array(11).fill('1001').join(' + ')}`,
+      `/recyclage carte:${Array(11).fill('1001').join(' + ')}`,
       '/création 1002',
     ]);
     expect(plan.after.balances.loreDust).toBe(5);
@@ -134,7 +134,10 @@ describe('cas synthétiques', () => {
       player: makePlayer({ inventory: Object.fromEntries([owned(r3.id, 0, 6)]) }),
       now: TEST_NOW,
     });
-    expect(plan.commands).toEqual(['/constellation 3001 + 3001 + 3001', '/recyclage 3001 + 3001']);
+    expect(plan.commands).toEqual([
+      '/constellation 3001 + 3001 + 3001',
+      '/recyclage carte:3001 + 3001',
+    ]);
     expect(plan.groups[0]?.title).toBe('Constellations : 3 niveaux sur 1 carte');
   });
 
@@ -273,6 +276,7 @@ describe('cas synthétiques', () => {
   it("nomme l'option des invocations pour qu'un copier-coller dans Discord la remplisse", () => {
     expect(commandLine('invoke', 'chroma')).toBe('/im  évènement:chroma');
     expect(commandLine('invoke', '')).toBe('/im');
+    expect(commandLine('recycle', '1001 + 1002*')).toBe('/recyclage carte:1001 + 1002*');
     // Invocation basique : pas d'option.
     for (const c of createPlan({ catalog, player, now: NOW }).commands.filter((c) =>
       c.startsWith('/im'),
@@ -290,7 +294,7 @@ describe('cas synthétiques', () => {
       now: TEST_NOW,
       options: { keepExtra: 2 },
     });
-    expect(plan.commands).toEqual(['/recyclage 1001 + 1001']);
+    expect(plan.commands).toEqual(['/recyclage carte:1001 + 1001']);
     const ctx = buildContext(catalogA, playerA, TEST_NOW, resolveOptions({ keepExtra: 2 }));
     const final = replay(
       ctx,
