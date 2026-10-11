@@ -183,6 +183,7 @@ export interface LootDay {
 
 export interface Player {
   id: string;
+  discordId: string | null;
   name: string;
   displayName: string;
   avatar: string | null;

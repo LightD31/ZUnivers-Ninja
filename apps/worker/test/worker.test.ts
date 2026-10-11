@@ -1,0 +1,169 @@
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createPlan, ZuNotFoundError, type PlanResult } from '@zuninja/core';
+import { describe, expect, it, vi } from 'vitest';
+import { fixtureCatalog, fixturePlayer, NOW } from '../../../packages/core/test/helpers';
+import { loadConfig } from '../src/config';
+import { setLogLevel } from '../src/logger';
+import { buildDiscordMessage, sendDiscord } from '../src/notifiers/discord';
+import { runTick } from '../src/scheduler';
+import { createApp, parsePlannerQuery } from '../src/server';
+import type { PlanService } from '../src/service';
+import { StateStore } from '../src/store';
+
+setLogLevel('error');
+
+const plan: PlanResult = createPlan({
+  catalog: fixtureCatalog(),
+  player: fixturePlayer(),
+  now: NOW,
+});
+const tmp = () => mkdtempSync(join(tmpdir(), 'zuninja-'));
+
+function fakeService(impl: (name: string) => Promise<PlanResult>): PlanService {
+  return { plan: vi.fn(impl) } as unknown as PlanService;
+}
+
+describe('configuration', () => {
+  it('lit les joueurs, y compris via l’ancienne variable DISCORD_TAGS', () => {
+    expect(loadConfig({ ZU_USERS: 'alice, bob,alice' }).users).toEqual(['alice', 'bob']);
+    expect(loadConfig({ DISCORD_TAGS: 'carol' }).users).toEqual(['carol']);
+    expect(loadConfig({}).ruleSet).toBe('NORMAL');
+  });
+
+  it('refuse une configuration invalide', () => {
+    expect(() => loadConfig({ RULESET: 'EXTREME' })).toThrow(/Configuration invalide/);
+    expect(() => loadConfig({ WEBHOOK_URL: 'pas une url' })).toThrow(/Configuration invalide/);
+  });
+});
+
+describe('message Discord', () => {
+  it('met le plan dans un embed quand il tient', () => {
+    const small: PlanResult = { ...plan, commands: ['/journa', '/im'] };
+    const message = buildDiscordMessage(small, { webUrl: 'https://ninja.example/' });
+    const embed = (message.payload.embeds as Record<string, unknown>[])[0]!;
+    expect(message.attachment).toBeNull();
+    expect(embed.description).toBe('```\n/journa\n/im\n```');
+    expect(embed.url).toBe('https://ninja.example/?u=alexpresso');
+    expect(message.payload.allowed_mentions).toEqual({ parse: [], users: [] });
+  });
+
+  it('joint un fichier quand le plan est trop long', () => {
+    const long: PlanResult = {
+      ...plan,
+      commands: Array.from({ length: 400 }, (_, i) => `/création ${1000 + i}`),
+    };
+    const message = buildDiscordMessage(long);
+    expect(message.attachment?.name).toBe('conseils.txt');
+    expect(message.attachment?.content.split('\n')).toHaveLength(401);
+  });
+
+  it('mentionne le joueur seulement si demandé', () => {
+    const message = buildDiscordMessage(plan, { mention: true });
+    expect(message.payload.content).toBe(`Conseils pour <@${plan.player.discordId}>`);
+  });
+
+  it('respecte le délai demandé par Discord (429)', async () => {
+    const responses = [
+      new Response(JSON.stringify({ retry_after: 0.01 }), { status: 429 }),
+      new Response(null, { status: 204 }),
+    ];
+    const fetchImpl = vi.fn(async () => responses.shift()!) as unknown as typeof fetch;
+    await sendDiscord(
+      'https://discord.test/hook',
+      buildDiscordMessage({ ...plan, commands: ['/journa'] }),
+      fetchImpl,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('passage planifié', () => {
+  it('ne notifie que lorsque le plan change', async () => {
+    const store = new StateStore(join(tmp(), 'state.json'));
+    const notify = vi.fn(async () => {});
+    const service = fakeService(async () => plan);
+    const options = { users: ['alexpresso'], ruleSet: 'NORMAL' as const, dryRun: false };
+
+    await runTick(service, store, [{ name: 'test', notify }], options);
+    await runTick(service, store, [{ name: 'test', notify }], options);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(store.user('AlexPresso').hash).toBe(plan.hash);
+  });
+
+  it("enregistre l'erreur d'un joueur sans bloquer les autres", async () => {
+    const file = join(tmp(), 'state.json');
+    const store = new StateStore(file);
+    const service = fakeService(async (name) => {
+      if (name === 'inconnu') throw new ZuNotFoundError('/public/user/inconnu');
+      return plan;
+    });
+    const results = await runTick(service, store, [], {
+      users: ['inconnu', 'alexpresso'],
+      ruleSet: 'NORMAL',
+      dryRun: false,
+    });
+    expect(results.map((r) => Boolean(r.error))).toEqual([true, false]);
+    const saved = JSON.parse(readFileSync(file, 'utf8'));
+    expect(saved.users.inconnu.lastError).toMatch(/introuvable/);
+    expect(new StateStore(file).user('alexpresso').checkedAt).not.toBeNull();
+  });
+});
+
+describe('API HTTP', () => {
+  const options = {
+    ruleSet: 'NORMAL' as const,
+    users: [],
+    webDir: join(tmp(), 'absent'),
+    cron: '* * * * *',
+  };
+
+  it('répond au healthcheck', async () => {
+    const app = createApp(
+      fakeService(async () => plan),
+      null,
+      options,
+    );
+    const res = await app.request('/health');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ status: 'ok' });
+  });
+
+  it('renvoie le plan et transmet les options bornées', async () => {
+    const service = fakeService(async () => plan);
+    const app = createApp(service, null, options);
+    const res = await app.request('/api/plan/alexpresso?beamWidth=999&ruleset=hardcore');
+    expect(res.status).toBe(200);
+    expect((await res.json()).hash).toBe(plan.hash);
+    expect(service.plan).toHaveBeenCalledWith(
+      'alexpresso',
+      'HARDCORE',
+      { beamWidth: 64 },
+      { fresh: false },
+    );
+  });
+
+  it('renvoie 404 pour un joueur inconnu', async () => {
+    const app = createApp(
+      fakeService(async () => {
+        throw new ZuNotFoundError('/public/user/x');
+      }),
+      null,
+      options,
+    );
+    const res = await app.request('/api/plan/x');
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toMatch(/introuvable/);
+  });
+
+  it('borne les paramètres du planificateur', () => {
+    expect(
+      parsePlannerQuery({ beamWidth: '0', branching: 'abc', keepExtra: '3', wLoreDust: '0.02' }),
+    ).toEqual({
+      beamWidth: 1,
+      keepExtra: 3,
+      weights: { loreDust: 0.02 },
+    });
+  });
+});

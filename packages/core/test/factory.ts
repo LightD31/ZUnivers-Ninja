@@ -96,6 +96,7 @@ export function owned(
 export function makePlayer(overrides: Partial<Player> = {}): Player {
   return {
     id: 'player',
+    discordId: null,
     name: 'testeur',
     displayName: 'Testeur',
     avatar: null,

@@ -34,5 +34,8 @@ export {
   type PlanCard,
   type Snapshot,
   type ChallengeSummary,
+  type Insights,
+  type FusionInsight,
+  type MissingCard,
   type CreatePlanInput,
 } from './engine/plan';

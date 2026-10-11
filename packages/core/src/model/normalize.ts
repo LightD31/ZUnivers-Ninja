@@ -252,6 +252,7 @@ export function normalizePlayer(raw: RawPlayer, ruleSet = 'NORMAL'): Player {
   const evoItems = raw.evolution?.evolutionItems ?? [];
   return {
     id: u.user.id,
+    discordId: u.user.discordId ?? null,
     name: u.user.discordUserName,
     displayName: u.user.discordGlobalName ?? u.user.discordUserName,
     avatar: u.user.discordAvatar ?? null,

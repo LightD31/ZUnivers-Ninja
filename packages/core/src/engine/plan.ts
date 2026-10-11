@@ -18,7 +18,15 @@ import {
   type Shiny,
 } from '../model/types';
 import { applyAction, type Action, type ActionKind } from './actions';
-import { buildContext, resolveOptions, type Context, type PlannerOptionsInput } from './context';
+import {
+  buildContext,
+  craftCost,
+  enchantCost,
+  forgeCurrency,
+  resolveOptions,
+  type Context,
+  type PlannerOptionsInput,
+} from './context';
 import { nodeSteps, search, type Step } from './planner';
 import { getCard, initialState, stateValue, type State } from './state';
 
@@ -67,12 +75,35 @@ export interface ChallengeSummary {
   plannable: boolean;
 }
 
+export interface FusionInsight {
+  result: PlanCard;
+  inputs: { card: PlanCard; have: number; need: number }[];
+  /** Tous les composants sont disponibles (en gardant un exemplaire de chacun). */
+  ready: boolean;
+}
+
+export interface MissingCard {
+  card: PlanCard;
+  points: number;
+  /** Coût de création si la carte est forgeable maintenant. */
+  craftCost: number | null;
+  currency: Currency | null;
+}
+
+export interface Insights {
+  /** Fusions dont le résultat manque encore après le plan. */
+  fusions: FusionInsight[];
+  /** Cartes manquantes après le plan, les plus rentables en points d'abord. */
+  missing: MissingCard[];
+}
+
 export interface PlanResult {
   version: 1;
   generatedAt: string;
   ruleSet: string;
   player: {
     name: string;
+    discordId: string | null;
     displayName: string;
     avatar: string | null;
     corporation: string | null;
@@ -93,6 +124,7 @@ export interface PlanResult {
     ascensionsLeft: number;
     floor: number;
   } | null;
+  insights: Insights;
   stats: { explored: number; durationMs: number; beamWidth: number; branching: number };
   /** Empreinte des commandes, pour ne notifier que les changements. */
   hash: string;
@@ -332,6 +364,55 @@ function buildAdvice(ctx: Context, before: State, after: State): string[] {
   return advice;
 }
 
+const MISSING_LIMIT = 40;
+
+function buildInsights(ctx: Context, state: State): Insights {
+  const keep = 1 + ctx.options.keepExtra;
+  const fusions: FusionInsight[] = [];
+  for (const fusion of ctx.catalog.fusions) {
+    if (getCard(state, fusion.resultId, 0).copies > 0) continue;
+    const inputs = fusion.inputs.map((input) => ({
+      card: card(ctx, input.itemId, 0, input.quantity),
+      have: getCard(state, input.itemId, 0).copies,
+      need: input.quantity + keep,
+    }));
+    fusions.push({
+      result: card(ctx, fusion.resultId, 0),
+      inputs,
+      ready: inputs.every((i) => i.have >= i.need),
+    });
+  }
+  fusions.sort(
+    (a, b) =>
+      b.inputs.filter((i) => i.have >= i.need).length / b.inputs.length -
+        a.inputs.filter((i) => i.have >= i.need).length / a.inputs.length ||
+      a.result.identifier - b.result.identifier,
+  );
+
+  const missing: MissingCard[] = [];
+  for (const item of ctx.itemList) {
+    for (const shiny of [0, 1, 2] as Shiny[]) {
+      if (!item.shinyAvailable[shiny] || item.scores[shiny] <= 0) continue;
+      if (getCard(state, item.id, shiny).copies > 0) continue;
+      const cost =
+        shiny === 0 ? craftCost(ctx, item) : shiny === 1 ? enchantCost(ctx, item) : undefined;
+      missing.push({
+        card: card(ctx, item.id, shiny),
+        points: item.scores[shiny],
+        craftCost: cost ?? null,
+        currency: cost !== undefined ? forgeCurrency(item) : null,
+      });
+    }
+  }
+  missing.sort(
+    (a, b) =>
+      Number(b.craftCost !== null) - Number(a.craftCost !== null) ||
+      b.points - a.points ||
+      a.card.identifier - b.card.identifier,
+  );
+  return { fusions, missing: missing.slice(0, MISSING_LIMIT) };
+}
+
 /** Rejoue un plan depuis l'état initial pour vérifier qu'il est valide. */
 export function replay(ctx: Context, actions: Action[]): State {
   let state = initialState(ctx);
@@ -405,6 +486,7 @@ export function createPlan({
     ruleSet: catalog.ruleSet,
     player: {
       name: player.name,
+      discordId: player.discordId,
       displayName: player.displayName,
       avatar: player.avatar,
       corporation: player.corporation?.name ?? null,
@@ -421,6 +503,7 @@ export function createPlan({
     },
     challenges,
     advice: buildAdvice(ctx, before, finalState),
+    insights: buildInsights(ctx, finalState),
     season: season
       ? {
           name: season.towerName,
