@@ -68,6 +68,32 @@ function getPool(ctx: Context, packId: string | null, invocableOnly: boolean): P
   return pool;
 }
 
+/**
+ * Cartes non possédées d'un seau, mises en cache par contenu d'inventaire : sur un compte riche,
+ * des centaines d'invocations s'enchaînent sans changer l'inventaire, et ce parcours de tout le
+ * seau dominait le temps de calcul.
+ */
+const unownedCache = new WeakMap<object, Map<string, { unowned: number; score: number }>>();
+
+function unownedIn(state: State, key: string, bucket: PoolBucket, shiny: Shiny) {
+  const { layer, writes } = state.cards.snapshot();
+  let cache = unownedCache.get(layer);
+  if (!cache) unownedCache.set(layer, (cache = new Map()));
+  const cacheKey = `${writes}|${key}`;
+  let entry = cache.get(cacheKey);
+  if (!entry) {
+    entry = { unowned: 0, score: 0 };
+    for (const item of bucket.items) {
+      if (getCard(state, item.id, shiny).copies === 0) {
+        entry.unowned++;
+        entry.score += item.scores[shiny];
+      }
+    }
+    cache.set(cacheKey, entry);
+  }
+  return entry;
+}
+
 /** Espérance de valeur d'une carte tirée dans un seau, et probabilité qu'elle soit nouvelle. */
 function cardEV(
   state: State,
@@ -78,14 +104,7 @@ function cardEV(
 ): { value: number; pNew: number; key: string } {
   const key = bucketKey(poolKey, rarity, shiny);
   if (!bucket || bucket.items.length === 0) return { value: 0, pNew: 0, key };
-  let unowned = 0;
-  let unownedScore = 0;
-  for (const item of bucket.items) {
-    if (getCard(state, item.id, shiny).copies === 0) {
-      unowned++;
-      unownedScore += item.scores[shiny];
-    }
-  }
+  const { unowned, score: unownedScore } = unownedIn(state, key, bucket, shiny);
   const effective = Math.max(0, unowned - (state.expectedNew[key] ?? 0));
   const pNew = effective / bucket.items.length;
   const avgNewScore = unowned > 0 ? unownedScore / unowned : 0;
@@ -107,8 +126,16 @@ export interface BoosterOption {
   oneTime?: boolean;
 }
 
-/** Invocations disponibles en ce moment. */
+const boosterCache = new WeakMap<Context, BoosterOption[]>();
+
+/** Invocations disponibles en ce moment (ne dépend que du catalogue et de l'heure : en cache). */
 export function boosterOptions(ctx: Context): BoosterOption[] {
+  let options = boosterCache.get(ctx);
+  if (!options) boosterCache.set(ctx, (options = listBoosterOptions(ctx)));
+  return options;
+}
+
+function listBoosterOptions(ctx: Context): BoosterOption[] {
   if (!ctx.features.has(FEATURE.invoke)) return [];
   const options: BoosterOption[] = Object.values(BOOSTERS).map((spec) => ({
     key: spec.kind,

@@ -72,6 +72,22 @@ function tryApply(
 }
 
 /**
+ * Fusions dont une carte (résultat ou composant) a changé. Les autres étaient déjà impossibles
+ * avant : une fusion ne dépend que de ses cartes, et chaque état du faisceau sort de `closure`.
+ */
+function fusionsTouching(ctx: Context, touched: Set<string> | 'all') {
+  if (touched === 'all') return ctx.catalog.fusions;
+  const related = new Set<object>();
+  for (const id of touched) {
+    for (const f of ctx.fusionsByInput.get(id) ?? []) related.add(f);
+    const asResult = ctx.fusionsByResult.get(id);
+    if (asResult) related.add(asResult);
+  }
+  // Ordre du catalogue, pour un plan déterministe.
+  return related.size === 0 ? [] : ctx.catalog.fusions.filter((f) => related.has(f));
+}
+
+/**
  * Applique toutes les actions sans regret jusqu'à stabilité : récompenses quotidiennes, fusions
  * possibles sans toucher au dernier exemplaire, constellations avec les doublons, puis recyclage
  * du surplus réel.
@@ -90,7 +106,7 @@ export function closure(
   for (let round = 0; round < 20; round++) {
     const next = new Set<string>();
 
-    for (const fusion of ctx.catalog.fusions) {
+    for (const fusion of fusionsTouching(ctx, touched)) {
       for (const shiny of [0, 1, 2] as Shiny[]) {
         node =
           tryApply(ctx, node, { kind: 'fusion', itemId: fusion.resultId, shiny }, true, next) ??
@@ -174,27 +190,13 @@ function forgeLists(ctx: Context) {
 }
 
 /** Actions de dépense prometteuses depuis un état. */
-export function candidates(ctx: Context, state: State): Candidate[] {
-  const out: Candidate[] = [];
-  const w = ctx.options.weights;
-  // Bonus des cartes nouvelles et part de l'espérance retenue : mêmes termes que `stateValue`.
-  const bonus = ctx.options.newCardBonus;
-  const evFactor = ctx.options.evFactor;
-  const push = (actions: Action[], gain: number, cost: Partial<Balances>) => {
-    if (gain <= EPSILON || !affordable(state, cost)) return;
-    out.push({
-      actions,
-      gain,
-      cost: weighted(ctx, cost),
-      price: cost,
-      key: actions.map(actionKey).join('>'),
-    });
-  };
-  // Mêmes conditions que `applyAction` : une action désactivée dans ce mode de jeu (pas de
-  // constellations en Hardcore, par exemple) ne doit pas être proposée.
+/** Actions possibles dans ce mode de jeu et voulues par les options (comme `applyAction`). */
+function allowed(ctx: Context) {
+  // Une action désactivée dans ce mode de jeu (pas de constellations en Hardcore, par exemple)
+  // ne doit pas être proposée.
   const has = (feature: string) => ctx.features.has(feature);
   const { allow: wanted } = ctx.options;
-  const allow = {
+  return {
     craft: wanted.craft && has(FEATURE.craft),
     enchant: wanted.enchant && has(FEATURE.craft),
     fusion: wanted.fusion && has(FEATURE.fusion),
@@ -203,6 +205,45 @@ export function candidates(ctx: Context, state: State): Candidate[] {
     ascension: wanted.ascension && has(FEATURE.tower),
     evolution: wanted.evolution && has(FEATURE.evolution),
   };
+}
+
+function candidate(
+  ctx: Context,
+  actions: Action[],
+  gain: number,
+  cost: Partial<Balances>,
+): Candidate {
+  return {
+    actions,
+    gain,
+    cost: weighted(ctx, cost),
+    price: cost,
+    key: actions.map(actionKey).join('>'),
+  };
+}
+
+/** Candidats de forge par contenu d'inventaire (une invocation ne change aucune carte). */
+const forgeCandidateCache = new WeakMap<object, Map<number, Candidate[]>>();
+
+/**
+ * Création, enchantement et fusions à compléter, sans tenir compte du solde : ces candidats ne
+ * dépendent que des cartes. Sur un compte riche, des centaines d'invocations s'enchaînent sans
+ * toucher l'inventaire, et les recalculer à chaque étape dominait le temps de calcul.
+ */
+function forgeCandidates(ctx: Context, state: State): Candidate[] {
+  const { layer, writes } = state.cards.snapshot();
+  let cache = forgeCandidateCache.get(layer);
+  if (!cache) forgeCandidateCache.set(layer, (cache = new Map()));
+  const cached = cache.get(writes);
+  if (cached) return cached;
+
+  const out: Candidate[] = [];
+  const w = ctx.options.weights;
+  const bonus = ctx.options.newCardBonus;
+  const push = (actions: Action[], gain: number, cost: Partial<Balances>) => {
+    if (gain > EPSILON) out.push(candidate(ctx, actions, gain, cost));
+  };
+  const allow = allowed(ctx);
   const lists = forgeLists(ctx);
 
   if (allow.craft) {
@@ -319,6 +360,23 @@ export function candidates(ctx: Context, state: State): Candidate[] {
       push(actions, gain - weighted(ctx, cost), cost);
     }
   }
+
+  cache.set(writes, out);
+  return out;
+}
+
+export function candidates(ctx: Context, state: State): Candidate[] {
+  // Création, enchantement, fusions à compléter : ne dépendent que des cartes, mis en cache.
+  const out: Candidate[] = forgeCandidates(ctx, state).filter((c) => affordable(state, c.price));
+  const w = ctx.options.weights;
+  // Bonus des cartes nouvelles et part de l'espérance retenue : mêmes termes que `stateValue`.
+  const bonus = ctx.options.newCardBonus;
+  const evFactor = ctx.options.evFactor;
+  const push = (actions: Action[], gain: number, cost: Partial<Balances>) => {
+    if (gain <= EPSILON || !affordable(state, cost)) return;
+    out.push(candidate(ctx, actions, gain, cost));
+  };
+  const allow = allowed(ctx);
 
   if (allow.invoke) {
     for (const option of boosterOptions(ctx)) {

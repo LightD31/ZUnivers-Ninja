@@ -5,6 +5,8 @@
  */
 export class OverlayMap<K, V> {
   private readonly own = new Map<K, V>();
+  /** Nombre d'écritures dans cette couche, pour invalider ce qui a été calculé avant. */
+  private writes = 0;
   private readonly parent: OverlayMap<K, V> | null;
   private readonly depth: number;
 
@@ -23,15 +25,31 @@ export class OverlayMap<K, V> {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     let layer: OverlayMap<K, V> | null = this;
     while (layer) {
-      if (layer.own.has(key)) return layer.own.get(key);
+      // Une seule recherche par couche : les valeurs stockées ne sont jamais `undefined`.
+      const value = layer.own.get(key);
+      if (value !== undefined) return value;
       layer = layer.parent;
     }
     return undefined;
   }
 
+  /**
+   * Identité du contenu : la couche la plus proche qui a des modifications, et son nombre
+   * d'écritures. Deux maps qui renvoient la même `snapshot()` ont les mêmes entrées, ce qui permet
+   * de mettre en cache des calculs coûteux le long des couches vides (une invocation ne touche
+   * aucune carte).
+   */
+  snapshot(): { layer: object; writes: number } {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    let layer: OverlayMap<K, V> = this;
+    while (layer.own.size === 0 && layer.parent) layer = layer.parent;
+    return { layer, writes: layer.writes };
+  }
+
   /** À n'appeler que sur une couche fraîchement créée par `fork()`. */
   set(key: K, value: V): void {
     this.own.set(key, value);
+    this.writes++;
   }
 
   fork(): OverlayMap<K, V> {
