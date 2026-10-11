@@ -26,6 +26,7 @@ function merge(a: StepGroup, b: StepGroup): StepGroup {
     random: a.random || b.random,
     auto: a.auto && b.auto,
     balanceDelta,
+    achievements: [...a.achievements, ...b.achievements],
     size: a.size + b.size,
   };
 }

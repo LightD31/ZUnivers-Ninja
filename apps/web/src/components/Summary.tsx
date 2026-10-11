@@ -51,6 +51,7 @@ function Progress({
 
 export function Summary({ plan }: { plan: PlanResult }) {
   const currencies = Object.keys(plan.before.balances) as Currency[];
+  const unlocked = plan.achievements.filter((a) => a.after >= a.max);
   return (
     <div className="space-y-4">
       <Section title="Monnaies">
@@ -158,10 +159,16 @@ export function Summary({ plan }: { plan: PlanResult }) {
 
       {plan.achievements.length > 0 && (
         <Section title="Succès" icon={<Trophy className="size-3.5" />}>
-          {plan.gain.achievements > 0 && (
+          {unlocked.length > 0 && (
             <p className="mb-3 text-sm">
-              Le plan rapporte{' '}
-              <span className="font-semibold text-zu-400">{signed(plan.gain.achievements)}</span>{' '}
+              Le plan débloque{' '}
+              {unlocked.map((a, i) => (
+                <span key={i}>
+                  {i > 0 && (i === unlocked.length - 1 ? ' et ' : ', ')}
+                  <span className="font-semibold text-gold">{a.name}</span>
+                </span>
+              ))}{' '}
+              : <span className="font-semibold text-zu-400">{signed(plan.gain.achievements)}</span>{' '}
               points de succès.
             </p>
           )}
@@ -169,16 +176,19 @@ export function Summary({ plan }: { plan: PlanResult }) {
             {plan.achievements.map((a, i) => (
               <li key={i} className="space-y-1.5">
                 <div className="flex items-baseline gap-2">
-                  <span className={a.after >= a.max ? 'text-white/45 line-through' : ''}>
-                    {a.description}
+                  <span className={a.after >= a.max ? 'font-medium text-gold' : 'font-medium'}>
+                    {a.after >= a.max && <Trophy className="mr-1 inline size-3.5 align-[-2px]" />}
+                    {a.name}
                   </span>
                   <span className="ml-auto shrink-0 font-mono text-xs tabular-nums">
                     {a.after}/{a.max}
                   </span>
                 </div>
+                <p className="text-xs text-white/60">{a.description}</p>
                 <Progress before={a.before} after={a.after} total={a.max} bar="bg-gold" />
                 <p className="text-xs text-white/60">
-                  +{fmt(a.score)} points{a.reward > 0 ? ` · +${fmt(a.reward)} poudre` : ''}
+                  {a.after >= a.max ? 'Débloqué par le plan · ' : ''}+{fmt(a.score)} points
+                  {a.reward > 0 ? ` · +${fmt(a.reward)} poudre` : ''}
                 </p>
               </li>
             ))}

@@ -249,6 +249,12 @@ describe('planification', () => {
     expect(plan.achievements).toEqual([
       expect.objectContaining({ before: 1, after: 3, max: 3, score: 20 }),
     ]);
+    // Le succès est signalé sur la commande qui l'obtient (la seconde création).
+    expect(plan.steps.map((s) => s.achievements)).toEqual([
+      [],
+      ['Obtenir toutes les cartes ★ classiques'],
+    ]);
+    expect(plan.groups[0]?.achievements).toEqual(['Obtenir toutes les cartes ★ classiques']);
   });
 
   it('ne dépense rien sans succès à la clé', () => {
