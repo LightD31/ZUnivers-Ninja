@@ -82,6 +82,55 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
   - `wBalance`, `wLoreDust`, `wLoreFragment` et `wUpgradeDust` ;
   - `fresh=1` pour ignorer le cache.
 - `GET /health` sert de healthcheck pour Docker et Kubernetes.
+- `GET /api/plan/:pseudo/discord` renvoie une version compacte pour les bots Discord :
+  - le message prêt à poster (`content` et `embeds`) ;
+  - le plan en pièce jointe (`attachment`) quand il est trop long ;
+  - `hash`, `empty` et `player.discordId`.
+
+  Ajoute `?mention=1` pour mentionner le joueur.
+
+Les deux routes renvoient un `ETag` (empreinte des commandes). Une requête avec `If-None-Match`
+reçoit `304 Not Modified` tant que le plan n'a pas changé : un bot peut donc interroger souvent
+sans rien recalculer de son côté.
+
+### Brancher un bot Discord (ex : michel-discord-bot)
+
+Le bot interroge Ninja et poste lui-même dans son salon. Dans ce cas, laisse `ZU_USERS` et
+`WEBHOOK_URL` vides côté Ninja, pour éviter les doublons.
+
+1. Mets les deux conteneurs sur le même réseau Docker. Le bot joint alors Ninja via
+   `http://zunivers-ninja:8080`. Si ce sont deux projets compose distincts, crée un réseau
+   externe :
+   ```yaml
+   # docker-compose.yml de Ninja et du bot
+   networks:
+     default:
+       name: zunivers
+       external: true # créé une fois avec : docker network create zunivers
+   ```
+2. Dans le bot, sur une tâche périodique et pour chaque pseudo suivi, renvoie le dernier `ETag`
+   connu, puis poste le message s'il a changé :
+   ```python
+   headers = {"If-None-Match": last_etag} if last_etag else {}
+   async with session.get(f"{NINJA_URL}/api/plan/{pseudo}/discord", headers=headers) as r:
+       if r.status == 304:
+           return  # plan inchangé
+       r.raise_for_status()
+       data, etag = await r.json(), r.headers["ETag"]
+   if not data["empty"]:
+       files = None
+       if data["attachment"]:
+           a = data["attachment"]
+           files = [File(io.BytesIO(a["content"].encode()), file_name=a["name"])]
+       await channel.send(
+           content=data["content"],
+           embeds=[Embed.from_dict(e) for e in data["embeds"]],
+           files=files,
+       )
+   save_etag(pseudo, etag)  # à persister pour survivre aux redémarrages
+   ```
+   Une commande `/ninja pseudo:` peut appeler la même route sans `If-None-Match` pour afficher
+   le plan à la demande.
 
 ## Comment fonctionne le planificateur
 

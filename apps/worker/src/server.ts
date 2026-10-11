@@ -5,10 +5,12 @@ import {
   ZuApiError,
   ZuNotFoundError,
   ZuSchemaError,
+  type PlanResult,
   type PlannerOptionsInput,
   type RuleSet,
 } from '@zuninja/core';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
+import { buildDiscordMessage } from './notifiers/discord';
 import { logger } from './logger';
 import { VERSION, type PlanService } from './service';
 import type { StateStore } from './store';
@@ -72,16 +74,16 @@ export function createApp(service: PlanService, store: StateStore | null, option
     }),
   );
 
-  app.get('/api/plan/:user', async (c) => {
-    const user = c.req.param('user').trim();
+  /** Calcule le plan demandé, ou renvoie la réponse d'erreur adaptée. */
+  async function planFor(c: Context): Promise<PlanResult | Response> {
+    const user = (c.req.param('user') ?? '').trim();
     if (!user || user.length > 64) return c.json({ error: 'Pseudo invalide.' }, 400);
     const ruleSetParam = (c.req.query('ruleset') ?? options.ruleSet).toUpperCase();
     const ruleSet: RuleSet = ruleSetParam === 'HARDCORE' ? 'HARDCORE' : 'NORMAL';
     try {
-      const plan = await service.plan(user, ruleSet, parsePlannerQuery(c.req.query()), {
+      return await service.plan(user, ruleSet, parsePlannerQuery(c.req.query()), {
         fresh: c.req.query('fresh') === '1',
       });
-      return c.json(plan);
     } catch (error) {
       if (error instanceof ZuNotFoundError) {
         return c.json({ error: `Joueur « ${user} » introuvable sur ZUnivers (${ruleSet}).` }, 404);
@@ -105,6 +107,62 @@ export function createApp(service: PlanService, store: StateStore | null, option
       logger.error(`Erreur inattendue pour ${user}`, error);
       return c.json({ error: 'Erreur interne.' }, 500);
     }
+  }
+
+  /**
+   * ETag = empreinte des commandes : un client qui renvoie `If-None-Match` reçoit un 304
+   * tant que le plan n'a pas changé (pratique pour un bot qui interroge régulièrement).
+   */
+  function notModified(c: Context, plan: PlanResult): Response | null {
+    const etag = `W/"${plan.hash}"`;
+    c.header('ETag', etag);
+    c.header('Cache-Control', 'no-cache');
+    const ifNoneMatch = c.req.header('if-none-match');
+    if (
+      ifNoneMatch &&
+      ifNoneMatch.split(',').some((t) => t.trim() === etag || t.trim() === `"${plan.hash}"`)
+    ) {
+      return c.body(null, 304);
+    }
+    return null;
+  }
+
+  app.get('/api/plan/:user', async (c) => {
+    const plan = await planFor(c);
+    if (plan instanceof Response) return plan;
+    return notModified(c, plan) ?? c.json(plan);
+  });
+
+  /**
+   * Version compacte pour les bots Discord : message prêt à poster (contenu + embed) et plan en
+   * pièce jointe quand il est trop long. `?mention=1` mentionne le joueur.
+   */
+  app.get('/api/plan/:user/discord', async (c) => {
+    const plan = await planFor(c);
+    if (plan instanceof Response) return plan;
+    const cached = notModified(c, plan);
+    if (cached) return cached;
+    const message = buildDiscordMessage(plan, {
+      webUrl: options.webUrl,
+      mention: c.req.query('mention') === '1',
+    });
+    return c.json({
+      hash: plan.hash,
+      generatedAt: plan.generatedAt,
+      empty: plan.commands.length === 0,
+      player: {
+        name: plan.player.name,
+        displayName: plan.player.displayName,
+        discordId: plan.player.discordId,
+        avatar: plan.player.avatar,
+      },
+      commandCount: plan.commands.length,
+      commands: plan.commands,
+      gain: { points: plan.gain.points, expected: plan.gain.expected },
+      content: message.payload.content,
+      embeds: message.payload.embeds,
+      attachment: message.attachment,
+    });
   });
 
   app.all('/api/*', (c) => c.json({ error: 'Route inconnue.' }, 404));
