@@ -1,5 +1,6 @@
 import {
   CURRENCY_LABEL,
+  DEFAULT_STRATEGY,
   SHINY_LABEL,
   type Currency,
   type PlanResult,
@@ -72,9 +73,10 @@ export function buildDiscordMessage(
     ...(challenges.length ? [{ name: 'Défis', value: challenges.join('\n'), inline: false }] : []),
   ].map((f) => ({ ...f, value: clip(f.value, FIELD_LIMIT) }));
 
-  const link = options.webUrl
-    ? `${options.webUrl.replace(/\/+$/, '')}/?u=${encodeURIComponent(plan.player.name)}`
-    : undefined;
+  // Le lien ouvre le plan avec la même stratégie (paramètre omis pour la stratégie par défaut).
+  const linkParams = new URLSearchParams({ u: plan.player.name });
+  if (plan.strategy.id !== DEFAULT_STRATEGY) linkParams.set('strategy', plan.strategy.id);
+  const link = options.webUrl ? `${options.webUrl.replace(/\/+$/, '')}/?${linkParams}` : undefined;
   const description = fitsInEmbed
     ? block
     : `Le plan compte ${plan.commands.length} commandes : il est joint en fichier.${link ? `\n[Voir le détail](${link})` : ''}`;

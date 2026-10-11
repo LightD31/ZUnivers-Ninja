@@ -63,6 +63,14 @@ export function parsePlannerQuery(query: Record<string, string | undefined>): Pl
 
 export function createApp(service: PlanService, store: StateStore | null, options: ServerOptions) {
   const app = new Hono();
+  const strategyList = () => ({
+    strategy: options.strategy ?? DEFAULT_STRATEGY,
+    strategies: STRATEGY_IDS.map((id) => ({
+      id,
+      label: STRATEGIES[id].label,
+      description: STRATEGIES[id].description,
+    })),
+  });
 
   app.get('/health', (c) =>
     c.json({
@@ -80,14 +88,12 @@ export function createApp(service: PlanService, store: StateStore | null, option
       users: options.users,
       cron: options.cron,
       webUrl: options.webUrl ?? null,
-      strategy: options.strategy ?? DEFAULT_STRATEGY,
-      strategies: STRATEGY_IDS.map((id) => ({
-        id,
-        label: STRATEGIES[id].label,
-        description: STRATEGIES[id].description,
-      })),
+      ...strategyList(),
     }),
   );
+
+  /** Stratégies disponibles, pour qu'un bot propose les mêmes choix que l'interface. */
+  app.get('/api/strategies', (c) => c.json(strategyList()));
 
   /** Calcule le plan demandé, ou renvoie la réponse d'erreur adaptée. */
   async function planFor(c: Context): Promise<PlanResult | Response> {

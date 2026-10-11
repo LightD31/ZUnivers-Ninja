@@ -69,6 +69,13 @@ describe('message Discord', () => {
     expect(message.payload.allowed_mentions).toEqual({ parse: [], users: [] });
   });
 
+  it('garde la stratégie dans le lien vers l’interface', () => {
+    const prudent: PlanResult = { ...plan, strategy: { id: 'prudent', label: 'Prudent' } };
+    const message = buildDiscordMessage(prudent, { webUrl: 'https://ninja.example' });
+    const embed = (message.payload.embeds as Record<string, unknown>[])[0]!;
+    expect(embed.url).toBe('https://ninja.example/?u=alexpresso&strategy=prudent');
+  });
+
   it('joint un fichier quand le plan est trop long', () => {
     const long: PlanResult = {
       ...plan,
@@ -199,16 +206,26 @@ describe('API HTTP', () => {
     expect(service.plan).toHaveBeenCalledTimes(1);
   });
 
-  it('liste les stratégies disponibles', async () => {
-    const app = createApp(
-      fakeService(async () => plan),
-      null,
-      { ...options, strategy: 'prudent' },
-    );
-    const body = await (await app.request('/api/config')).json();
-    expect(body.strategy).toBe('prudent');
-    expect(body.strategies.map((s: { id: string }) => s.id)).toContain('collectionneur');
-  });
+  it.each(['/api/config', '/api/strategies'])(
+    '%s liste les stratégies disponibles',
+    async (path) => {
+      const app = createApp(
+        fakeService(async () => plan),
+        null,
+        { ...options, strategy: 'prudent' },
+      );
+      const res = await app.request(path);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.strategy).toBe('prudent');
+      expect(body.strategies).toHaveLength(6);
+      expect(body.strategies[0]).toEqual({
+        id: 'equilibre',
+        label: 'Équilibré',
+        description: expect.any(String),
+      });
+    },
+  );
 
   it('répond 503 quand le serveur est saturé', async () => {
     const app = createApp(
