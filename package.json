@@ -1,6 +1,6 @@
 {
   "name": "zunivers-ninja",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "Conseiller ZUnivers : calcule le meilleur enchaînement d'actions pour faire progresser ta collection.",
   "type": "module",

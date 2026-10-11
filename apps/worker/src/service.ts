@@ -12,7 +12,7 @@ import type { Config } from './config';
 import { logger } from './logger';
 import { PlanAbortedError, PlannerBusyError, PlannerPool } from './pool';
 
-export const VERSION = '2.0.0';
+export const VERSION = '2.1.0';
 const USER_AGENT = `ZUnivers-Ninja/${VERSION} (+https://github.com/LightD31/ZUnivers-Ninja)`;
 const PLAN_CACHE_MS = 60_000;
 /** Marge laissée au-delà de la limite de recherche avant d'arrêter un thread. */
