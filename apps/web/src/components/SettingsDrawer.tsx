@@ -22,7 +22,7 @@ function Slider(props: {
     <label className="block space-y-1.5">
       <span className="flex items-baseline justify-between text-sm font-medium">
         {props.label}
-        <span className="font-mono text-xs text-zinc-500">{props.value}</span>
+        <span className="font-mono text-xs text-white/60">{props.value}</span>
       </span>
       <input
         type="range"
@@ -30,9 +30,9 @@ function Slider(props: {
         max={props.max}
         value={props.value}
         onChange={(e) => props.onChange(Number(e.target.value))}
-        className="w-full accent-accent-500"
+        className="w-full accent-zu-500"
       />
-      <span className="block text-xs text-zinc-500 dark:text-zinc-400">{props.hint}</span>
+      <span className="block text-xs text-white/60">{props.hint}</span>
     </label>
   );
 }
@@ -58,12 +58,12 @@ export function SettingsDrawer({ open, settings, onChange, onClose }: Props) {
       <button
         type="button"
         aria-label="Fermer"
-        className="absolute inset-0 bg-zinc-900/40 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
         onClick={onClose}
       />
-      <aside className="animate-fade-up relative flex h-full w-full max-w-sm flex-col overflow-y-auto border-l border-zinc-200 bg-white p-5 dark:border-ink-700 dark:bg-ink-900">
+      <aside className="animate-fade-up relative flex h-full w-full max-w-sm flex-col overflow-y-auto bg-ink-800 p-5 shadow-[-8px_0_24px_rgb(0_0_0/0.45)]">
         <div className="mb-5 flex items-center">
-          <h2 className="text-lg font-semibold">Réglages</h2>
+          <h2 className="text-lg font-bold tracking-wide uppercase">Réglages</h2>
           <button
             type="button"
             className="btn-ghost ml-auto px-2"
@@ -100,20 +100,20 @@ export function SettingsDrawer({ open, settings, onChange, onClose }: Props) {
           />
           <fieldset className="space-y-3">
             <legend className="text-sm font-medium">Valeur des monnaies</legend>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            <p className="text-xs text-white/60">
               Points de collection attribués à chaque unité conservée. Une valeur haute pousse à
               économiser, une valeur basse à dépenser.
             </p>
             {(Object.keys(settings.weights) as Currency[]).map((c) => (
               <label key={c} className="flex items-center gap-3 text-sm">
-                <span className="flex-1 text-zinc-600 dark:text-zinc-300">{CURRENCY_LABEL[c]}</span>
+                <span className="flex-1 text-white/75">{CURRENCY_LABEL[c]}</span>
                 <input
                   type="number"
                   step="0.001"
                   min={0}
                   value={settings.weights[c]}
                   onChange={(e) => setWeight(c, Math.max(0, Number(e.target.value) || 0))}
-                  className="w-24 rounded-lg border border-zinc-200 bg-transparent px-2 py-1 text-right font-mono text-xs outline-none focus:border-accent-500 dark:border-ink-700"
+                  className="field w-24 bg-ink-700 px-2 py-1 text-right font-mono text-xs"
                 />
               </label>
             ))}

@@ -36,7 +36,7 @@ function Progress({
   bar: string;
 }) {
   return (
-    <div className="relative h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-ink-800">
+    <div className="relative h-1.5 overflow-hidden rounded-full bg-white/[0.12]">
       <div
         className={`absolute inset-y-0 left-0 rounded-full opacity-35 ${bar}`}
         style={{ width: `${pct(after, total)}%` }}
@@ -61,11 +61,11 @@ export function Summary({ plan }: { plan: PlanResult }) {
             return (
               <li key={c} className="flex items-center gap-2">
                 <span className={`size-2 rounded-full ${CURRENCY_DOT[c]}`} />
-                <span className="text-zinc-600 dark:text-zinc-300">{CURRENCY_LABEL[c]}</span>
-                <span className="ml-auto font-mono text-xs text-zinc-400 tabular-nums">
+                <span className="text-white/75">{CURRENCY_LABEL[c]}</span>
+                <span className="ml-auto font-mono text-xs text-white/45 tabular-nums">
                   {fmt(before)}
                 </span>
-                <span className="text-zinc-300 dark:text-ink-600">→</span>
+                <span className="text-white/30">→</span>
                 <span className="w-16 text-right font-mono font-semibold tabular-nums">
                   {fmt(after)}
                 </span>
@@ -80,17 +80,17 @@ export function Summary({ plan }: { plan: PlanResult }) {
           {([0, 1, 2] as Shiny[]).map((s) => (
             <div key={s} className="space-y-1.5">
               <div className="flex items-baseline gap-2">
-                <span className="text-zinc-600 dark:text-zinc-300">{SHINY_NAME[s]}</span>
+                <span className="text-white/75">{SHINY_NAME[s]}</span>
                 {plan.after.unique[s] !== plan.before.unique[s] && (
                   <span
-                    className={`text-xs font-semibold ${plan.after.unique[s] > plan.before.unique[s] ? 'text-emerald-500' : 'text-accent-500'}`}
+                    className={`text-xs font-semibold ${plan.after.unique[s] > plan.before.unique[s] ? 'text-zu-400' : 'text-danger'}`}
                   >
                     {signed(plan.after.unique[s] - plan.before.unique[s])}
                   </span>
                 )}
                 <span className="ml-auto font-mono text-xs tabular-nums">
                   {fmt(plan.after.unique[s])}{' '}
-                  <span className="text-zinc-400">/ {fmt(plan.after.total[s])}</span>
+                  <span className="text-white/45">/ {fmt(plan.after.total[s])}</span>
                 </span>
               </div>
               <Progress
@@ -103,30 +103,30 @@ export function Summary({ plan }: { plan: PlanResult }) {
           ))}
           <div className="space-y-1.5">
             <div className="flex items-baseline gap-2">
-              <span className="text-zinc-600 dark:text-zinc-300">Constellations</span>
+              <span className="text-white/75">Constellations</span>
               {plan.after.constellationLevels > plan.before.constellationLevels && (
-                <span className="text-xs font-semibold text-emerald-500">
+                <span className="text-xs font-semibold text-zu-400">
                   {signed(plan.after.constellationLevels - plan.before.constellationLevels)}
                 </span>
               )}
               <span className="ml-auto font-mono text-xs tabular-nums">
                 {fmt(plan.after.constellationLevels)}{' '}
-                <span className="text-zinc-400">/ {fmt(plan.after.constellationMax)}</span>
+                <span className="text-white/45">/ {fmt(plan.after.constellationMax)}</span>
               </span>
             </div>
             <Progress
               before={plan.before.constellationLevels}
               after={plan.after.constellationLevels}
               total={plan.after.constellationMax}
-              bar="bg-violet-500"
+              bar="bg-chroma"
             />
           </div>
-          <p className="flex items-baseline justify-between border-t border-zinc-100 pt-3 dark:border-ink-800">
-            <span className="text-zinc-600 dark:text-zinc-300">Points de collection</span>
+          <p className="flex items-baseline justify-between border-t border-white/[0.08] pt-3">
+            <span className="text-white/75">Points de collection</span>
             <span className="font-mono font-semibold tabular-nums">
               {fmt(plan.after.points)}
               {plan.gain.points !== 0 && (
-                <span className="ml-1.5 text-xs text-emerald-500">{signed(plan.gain.points)}</span>
+                <span className="ml-1.5 text-xs text-zu-400">{signed(plan.gain.points)}</span>
               )}
             </span>
           </p>
@@ -139,15 +139,15 @@ export function Summary({ plan }: { plan: PlanResult }) {
             {plan.challenges.map((c, i) => (
               <li key={i} className="space-y-1.5">
                 <div className="flex items-baseline gap-2">
-                  <span className={c.after >= c.max ? 'text-zinc-400 line-through' : ''}>
+                  <span className={c.after >= c.max ? 'text-white/45 line-through' : ''}>
                     {c.description}
                   </span>
                   <span className="ml-auto shrink-0 font-mono text-xs tabular-nums">
                     {c.after}/{c.max}
                   </span>
                 </div>
-                <Progress before={c.before} after={c.after} total={c.max} bar="bg-emerald-500" />
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                <Progress before={c.before} after={c.after} total={c.max} bar="bg-zu-500" />
+                <p className="text-xs text-white/60">
                   +{c.reward} poudre{!c.plannable && c.after < c.max ? ' · à faire toi-même' : ''}
                 </p>
               </li>
@@ -159,13 +159,13 @@ export function Summary({ plan }: { plan: PlanResult }) {
       {plan.season && (
         <Section title="Vortex" icon={<Mountain className="size-3.5" />}>
           <p className="font-medium">{plan.season.name}</p>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-1 text-sm text-white/60">
             Étage {plan.season.floor} · {plan.season.ascensionsLeft} essai
             {plan.season.ascensionsLeft > 1 ? 's' : ''} restant
             {plan.season.ascensionsLeft > 1 ? 's' : ''} après le plan · jusqu'au{' '}
             {formatDate(plan.season.end)}
           </p>
-          <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+          <p className="mt-2 text-xs text-white/60">
             Forge ouverte aux cartes du groupe « {plan.season.group} ».
           </p>
         </Section>
@@ -173,10 +173,10 @@ export function Summary({ plan }: { plan: PlanResult }) {
 
       {plan.advice.length > 0 && (
         <Section title="Conseils" icon={<Lightbulb className="size-3.5" />}>
-          <ul className="space-y-2 text-sm text-zinc-600 dark:text-zinc-300">
+          <ul className="space-y-2 text-sm text-white/75">
             {plan.advice.map((a, i) => (
               <li key={i} className="flex gap-2">
-                <span className="mt-2 size-1 shrink-0 rounded-full bg-accent-500" />
+                <span className="mt-2 size-1 shrink-0 rounded-full bg-zu-500" />
                 {a}
               </li>
             ))}

@@ -7,16 +7,15 @@
       name="description"
       content="ZUnivers Ninja calcule le meilleur enchaînement d'actions ZUnivers pour faire progresser ta collection."
     />
-    <meta name="theme-color" content="#0e0e12" />
+    <meta name="theme-color" content="#121212" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <title>ZUnivers Ninja</title>
-    <script>
-      try {
-        const t = localStorage.getItem('zuninja:theme');
-        if (t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches))
-          document.documentElement.classList.add('dark');
-      } catch {}
-    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&display=swap"
+    />
   </head>
   <body>
     <div id="root"></div>

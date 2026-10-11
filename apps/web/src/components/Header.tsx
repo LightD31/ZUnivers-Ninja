@@ -1,79 +1,85 @@
 import type { RuleSet } from '@zuninja/core';
-import { Moon, SlidersHorizontal, Sun } from 'lucide-react';
+import { SlidersHorizontal } from 'lucide-react';
+import { useId } from 'react';
 
 interface Props {
   ruleSet: RuleSet;
   onRuleSet: (r: RuleSet) => void;
-  dark: boolean;
-  onToggleTheme: () => void;
   onOpenSettings: () => void;
   onHome: () => void;
 }
 
 export function Logo({ className = 'size-8' }: { className?: string }) {
+  // Identifiant sûr dans un url(#…) SVG, unique par instance.
+  const id = `logo${useId().replace(/[^\w-]/g, '')}`;
   return (
     <svg viewBox="0 0 64 64" className={className} aria-hidden>
-      <rect width="64" height="64" rx="14" className="fill-ink-900 dark:fill-ink-800" />
-      <path d="M32 8 38 26 56 32 38 38 32 56 26 38 8 32 26 26Z" className="fill-accent-500" />
-      <circle cx="32" cy="32" r="5" className="fill-ink-900 dark:fill-ink-800" />
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#eed371" />
+          <stop offset="0.35" stopColor="#f8b3ff" />
+          <stop offset="0.7" stopColor="#aaa5fa" />
+          <stop offset="1" stopColor="#aed8e6" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M32 4 39 25 60 32 39 39 32 60 25 39 4 32 25 25Z"
+        fill={`url(#${id})`}
+        className="drop-shadow-[0_0_6px_rgb(248_179_255/0.45)]"
+      />
+      <circle cx="32" cy="32" r="5.5" className="fill-ink-950" />
     </svg>
   );
 }
 
-export function Header({ ruleSet, onRuleSet, dark, onToggleTheme, onOpenSettings, onHome }: Props) {
+const NAV_ITEM =
+  'relative inline-flex h-9 items-center px-2.5 text-[11.5px] tracking-[0.06em] uppercase transition sm:px-4';
+
+export function Header({ ruleSet, onRuleSet, onOpenSettings, onHome }: Props) {
   return (
-    <header className="sticky top-0 z-30 border-b border-zinc-200/80 bg-zinc-50/80 backdrop-blur-md dark:border-ink-800 dark:bg-ink-950/80">
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
+    <header className="sticky top-0 z-30 bg-linear-to-b from-ink-950 via-ink-950/85 to-transparent px-3 pt-3 pb-2 sm:px-9 sm:pt-6">
+      <div className="zu-appbar mx-auto grid h-16 max-w-[1400px] grid-cols-[1fr_auto_1fr] items-center rounded-md px-2 shadow-[0_8px_24px_rgb(0_0_0/0.45)] sm:px-6">
+        <div role="radiogroup" aria-label="Mode de jeu" className="flex items-center">
+          {(['NORMAL', 'HARDCORE'] as const).map((r) => (
+            <button
+              key={r}
+              type="button"
+              role="radio"
+              aria-checked={ruleSet === r}
+              onClick={() => onRuleSet(r)}
+              className={`${NAV_ITEM} ${
+                ruleSet === r
+                  ? 'text-white after:absolute after:inset-x-2.5 after:bottom-0.5 after:h-0.5 after:rounded-full after:bg-chroma sm:after:inset-x-4'
+                  : 'text-white/65 hover:text-white'
+              }`}
+            >
+              {r === 'NORMAL' ? 'Normal' : 'Hardcore'}
+            </button>
+          ))}
+        </div>
+
         <button
           type="button"
           onClick={onHome}
-          className="flex items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-accent-500"
+          className="flex items-center gap-2.5 rounded focus-visible:outline-2 focus-visible:outline-zu-500"
+          aria-label="ZUnivers Ninja, accueil"
         >
-          <Logo />
-          <span className="hidden text-[15px] font-bold tracking-tight whitespace-nowrap min-[420px]:inline">
-            ZUnivers <span className="text-accent-500">Ninja</span>
+          <Logo className="size-10" />
+          <span className="hidden text-sm font-bold tracking-[0.08em] whitespace-nowrap uppercase md:inline">
+            ZUnivers <span className="text-chroma">Ninja</span>
           </span>
         </button>
-        <div className="ml-auto flex items-center gap-1">
-          <div
-            role="radiogroup"
-            aria-label="Mode de jeu"
-            className="mr-1 flex rounded-xl border border-zinc-200 p-0.5 text-xs font-semibold dark:border-ink-700"
-          >
-            {(['NORMAL', 'HARDCORE'] as const).map((r) => (
-              <button
-                key={r}
-                type="button"
-                role="radio"
-                aria-checked={ruleSet === r}
-                onClick={() => onRuleSet(r)}
-                className={`rounded-[10px] px-2.5 py-1 transition ${
-                  ruleSet === r
-                    ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-                    : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100'
-                }`}
-              >
-                {r === 'NORMAL' ? 'Normal' : 'Hardcore'}
-              </button>
-            ))}
-          </div>
+
+        <div className="flex justify-end">
           <button
             type="button"
-            className="btn-ghost px-2"
+            className={`${NAV_ITEM} gap-2 rounded text-white/85 hover:bg-white/[0.08] hover:text-white`}
             onClick={onOpenSettings}
             aria-label="Réglages du planificateur"
             title="Réglages"
           >
             <SlidersHorizontal className="size-[18px]" />
-          </button>
-          <button
-            type="button"
-            className="btn-ghost px-2"
-            onClick={onToggleTheme}
-            aria-label="Changer de thème"
-            title="Thème"
-          >
-            {dark ? <Sun className="size-[18px]" /> : <Moon className="size-[18px]" />}
+            <span className="hidden sm:inline">Réglages</span>
           </button>
         </div>
       </div>

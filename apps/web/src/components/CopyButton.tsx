@@ -38,7 +38,7 @@ export function CopyButton({
         setTimeout(() => setCopied(false), 1500);
       }}
     >
-      {copied ? <Check className="size-4 text-emerald-500" /> : <Copy className="size-4" />}
+      {copied ? <Check className="size-4 text-zu-400" /> : <Copy className="size-4" />}
       {label && <span>{copied ? 'Copié !' : label}</span>}
     </button>
   );

@@ -38,19 +38,6 @@ function writeUrl(user: string, ruleSet: RuleSet) {
   history.replaceState(null, '', `${location.pathname}${query ? `?${query}` : ''}`);
 }
 
-function useTheme() {
-  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark);
-    try {
-      localStorage.setItem('zuninja:theme', dark ? 'dark' : 'light');
-    } catch {
-      // stockage indisponible
-    }
-  }, [dark]);
-  return [dark, () => setDark((d) => !d)] as const;
-}
-
 export function App() {
   const initial = useRef(readUrl());
   const [settings, setSettings] = useState<Settings>(() => {
@@ -63,7 +50,6 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [recent, setRecent] = useState<string[]>(() => load(RECENT_KEY, []));
   const [tracked, setTracked] = useState<string[]>([]);
-  const [dark, toggleTheme] = useTheme();
   const request = useRef(0);
 
   const run = useCallback(async (name: string, s: Settings, fresh = false) => {
@@ -140,13 +126,11 @@ export function App() {
       <Header
         ruleSet={settings.ruleSet}
         onRuleSet={(ruleSet) => setSettings((s) => ({ ...s, ruleSet }))}
-        dark={dark}
-        onToggleTheme={toggleTheme}
         onOpenSettings={() => setSettingsOpen(true)}
         onHome={goHome}
       />
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
+      <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-9">
         {!user ? (
           <Landing onSearch={search} suggestions={suggestions} />
         ) : (
@@ -171,31 +155,31 @@ export function App() {
                   loading={false}
                   onRefresh={() => void run(user, settings, true)}
                 />
-                <div
-                  className="flex gap-1 border-b border-zinc-200 dark:border-ink-800"
-                  role="tablist"
-                >
-                  {(
-                    [
-                      ['plan', 'Plan'],
-                      ['collection', 'Collection'],
-                    ] as const
-                  ).map(([key, label]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      role="tab"
-                      aria-selected={tab === key}
-                      onClick={() => setTab(key)}
-                      className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition ${
-                        tab === key
-                          ? 'border-accent-500 text-zinc-900 dark:text-zinc-100'
-                          : 'border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                <div>
+                  <div className="flex items-end gap-1.5 px-2" role="tablist">
+                    {(
+                      [
+                        ['plan', 'Plan'],
+                        ['collection', 'Collection'],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        role="tab"
+                        aria-selected={tab === key}
+                        onClick={() => setTab(key)}
+                        className={`rounded-t px-5 text-sm tracking-[0.06em] uppercase transition ${
+                          tab === key
+                            ? 'h-12 bg-ink-700 font-semibold text-white'
+                            : 'h-10 bg-ink-800/85 text-white/65 hover:text-white'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="zu-divider" />
                 </div>
                 <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
                   <div className="min-w-0">
@@ -250,39 +234,60 @@ function Landing({
     },
   ];
   return (
-    <div className="mx-auto flex max-w-3xl flex-col items-center pt-10 text-center sm:pt-16">
-      <Logo className="size-16" />
-      <h1 className="mt-6 text-4xl font-extrabold tracking-tight sm:text-5xl">
-        Ton prochain coup <span className="text-accent-500">ZUnivers</span>,
-        <br className="hidden sm:block" /> calculé pour toi.
-      </h1>
-      <p className="mt-4 max-w-xl text-zinc-600 dark:text-zinc-400">
-        Entre ton pseudo Discord : ZUnivers Ninja analyse ta collection et te donne la meilleure
-        suite de commandes pour progresser aujourd'hui.
-      </p>
-      <div className="mt-8 w-full max-w-xl">
-        <SearchForm loading={false} onSearch={onSearch} size="lg" />
-      </div>
-      {suggestions.length > 0 && (
-        <div className="mt-4 flex flex-wrap justify-center gap-2">
-          {suggestions.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className="chip hover:border-accent-500/50"
-              onClick={() => onSearch(s)}
-            >
-              {s}
-            </button>
-          ))}
+    <div className="pt-6 sm:pt-12">
+      <section className="max-w-3xl">
+        <h1 className="text-4xl leading-tight font-medium sm:text-6xl">
+          Ton prochain coup <span className="text-chroma font-bold">ZUnivers</span>, calculé pour
+          toi.
+        </h1>
+        <p className="mt-5 max-w-xl text-lg text-white/80">
+          Entre ton pseudo Discord : ZUnivers Ninja analyse ta collection et te donne la meilleure
+          suite de commandes pour progresser aujourd'hui.
+        </p>
+        <div className="mt-8 max-w-xl">
+          <SearchForm loading={false} onSearch={onSearch} size="lg" />
         </div>
-      )}
-      <div className="mt-14 grid w-full gap-3 text-left sm:grid-cols-2">
+        {suggestions.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {suggestions.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className="chip transition hover:bg-zu-500/20 hover:text-white"
+                onClick={() => onSearch(s)}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="mt-14 ml-auto max-w-md text-right">
+        <h2 className="text-3xl font-medium">Découvre le jeu !</h2>
+        <p className="mt-3 text-white/80">
+          Nouveau sur ZUnivers ? Le guide officiel explique comment bien débuter.
+        </p>
+        <a
+          className="btn-primary mt-4"
+          href="https://zunivers.zerator.com/guide"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Lire le guide
+        </a>
+      </section>
+
+      <div className="zu-divider mt-14" />
+      <h2 className="zu-heading mt-12">Comment ça marche</h2>
+      <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {features.map(({ icon: Icon, title, text }) => (
-          <div key={title} className="card p-4">
-            <Icon className="size-5 text-accent-500" />
-            <p className="mt-3 font-semibold">{title}</p>
-            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{text}</p>
+          <div key={title} className="card p-5">
+            <span className="grid size-10 place-items-center rounded bg-zu-500/15">
+              <Icon className="size-5 text-zu-400" />
+            </span>
+            <p className="mt-4 font-semibold tracking-wide uppercase">{title}</p>
+            <p className="mt-1.5 text-sm text-white/65">{text}</p>
           </div>
         ))}
       </div>
@@ -313,28 +318,28 @@ function PlayerBanner({
       <div className="flex flex-wrap items-center gap-4">
         <Avatar src={plan.player.avatar} name={plan.player.displayName} />
         <div className="min-w-0 flex-1">
-          <h1 className="flex items-center gap-2 truncate text-xl font-bold">
+          <h1 className="flex items-center gap-2 truncate text-2xl font-extrabold">
             {plan.player.displayName}
             {plan.player.subscribed && (
-              <Crown className="size-4 text-amber-500" aria-label="Abonné premium" />
+              <Crown className="size-5 text-gold" aria-label="Abonné premium" />
             )}
           </h1>
-          <p className="truncate text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="truncate text-sm text-white/60">
             @{plan.player.name}
             {plan.player.corporation && <> · {plan.player.corporation}</>}
             {plan.ruleSet === 'HARDCORE' && (
-              <span className="ml-1.5 rounded bg-accent-500/10 px-1.5 py-0.5 text-xs font-semibold text-accent-500">
+              <span className="ml-2 rounded bg-danger px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-white uppercase">
                 Hardcore
               </span>
             )}
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-zinc-500">
+        <div className="flex items-center gap-2 text-xs text-white/60">
           <Clock className="size-3.5" />
           {formatTime(plan.generatedAt)}
           <button
             type="button"
-            className="btn-ghost px-2"
+            className="btn-ghost px-2.5"
             onClick={onRefresh}
             disabled={loading}
             title="Recalculer avec des données fraîches"
@@ -346,10 +351,10 @@ function PlayerBanner({
       </div>
       <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {tiles.map((t) => (
-          <div key={t.label} className="rounded-xl bg-zinc-50 px-3 py-2.5 dark:bg-ink-850">
-            <dt className="text-xs text-zinc-500 dark:text-zinc-400">{t.label}</dt>
+          <div key={t.label} className="surface px-3 py-2.5">
+            <dt className="label text-[11px]">{t.label}</dt>
             <dd
-              className={`mt-0.5 font-mono text-lg font-semibold tabular-nums ${t.accent ? 'text-emerald-600 dark:text-emerald-400' : ''}`}
+              className={`mt-0.5 font-mono text-lg font-semibold tabular-nums ${t.accent ? 'text-zu-400' : ''}`}
             >
               {t.value}
             </dd>
@@ -368,12 +373,12 @@ function Avatar({ src, name }: { src: string | null; name: string }) {
         src={src}
         alt=""
         onError={() => setFailed(true)}
-        className="size-14 rounded-2xl object-cover ring-1 ring-zinc-200 dark:ring-ink-700"
+        className="size-16 rounded-full object-cover ring-2 ring-zu-500"
       />
     );
   }
   return (
-    <div className="grid size-14 place-items-center rounded-2xl bg-accent-500/10 text-xl font-bold text-accent-500">
+    <div className="grid size-16 place-items-center rounded-full bg-zu-500 text-2xl font-bold text-white">
       {name.slice(0, 1).toUpperCase()}
     </div>
   );
@@ -387,15 +392,15 @@ function LoadingState() {
       aria-label="Calcul du plan"
     >
       <div className="card space-y-4 p-4">
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-white/60">
           Analyse de la collection et recherche du meilleur plan…
         </p>
         {Array.from({ length: 5 }, (_, i) => (
           <div key={i} className="flex animate-pulse gap-3">
-            <div className="size-9 rounded-xl bg-zinc-100 dark:bg-ink-800" />
+            <div className="size-9 rounded bg-white/[0.07]" />
             <div className="flex-1 space-y-2">
-              <div className="h-3 w-1/3 rounded bg-zinc-100 dark:bg-ink-800" />
-              <div className="h-7 rounded-lg bg-zinc-100 dark:bg-ink-800" />
+              <div className="h-3 w-1/3 rounded bg-white/[0.07]" />
+              <div className="h-7 rounded bg-white/[0.07]" />
             </div>
           </div>
         ))}
@@ -408,7 +413,7 @@ function LoadingState() {
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="card flex flex-col items-center gap-3 px-6 py-12 text-center" role="alert">
-      <CircleAlert className="size-9 text-accent-500" />
+      <CircleAlert className="size-9 text-danger" />
       <p className="max-w-md font-medium">{message}</p>
       <button type="button" className="btn-ghost" onClick={onRetry}>
         <RefreshCw className="size-4" />
@@ -420,32 +425,34 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 
 function Footer({ plan }: { plan: PlanResult | null }) {
   return (
-    <footer className="border-t border-zinc-200 py-6 text-xs text-zinc-500 dark:border-ink-800 dark:text-zinc-500">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4">
-        <span>Projet communautaire, non affilié à ZUnivers.</span>
+    <footer className="mt-12 flex flex-col items-center gap-4 px-4 pt-10 pb-8 text-center text-sm">
+      <Logo className="size-12" />
+      <p>
         <a
-          className="hover:text-accent-500"
+          className="underline underline-offset-2 hover:text-zu-400"
           href="https://github.com/LightD31/ZUnivers-Ninja"
           target="_blank"
           rel="noreferrer"
         >
           Code source
-        </a>
+        </a>{' '}
+        —{' '}
         <a
-          className="hover:text-accent-500"
+          className="underline underline-offset-2 hover:text-zu-400"
           href="https://zunivers.zerator.com/guide"
           target="_blank"
           rel="noreferrer"
         >
           Guide ZUnivers
         </a>
-        {plan && (
-          <span className="ml-auto font-mono">
-            {fmt(plan.stats.explored)} états explorés en {fmt(plan.stats.durationMs)} ms · faisceau{' '}
-            {plan.stats.beamWidth}
-          </span>
-        )}
-      </div>
+      </p>
+      <p className="font-medium">Projet communautaire, non affilié à ZUnivers.</p>
+      {plan && (
+        <p className="font-mono text-xs text-white/35">
+          {fmt(plan.stats.explored)} états explorés en {fmt(plan.stats.durationMs)} ms · faisceau{' '}
+          {plan.stats.beamWidth}
+        </p>
+      )}
     </footer>
   );
 }
