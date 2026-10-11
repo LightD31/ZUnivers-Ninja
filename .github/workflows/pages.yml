@@ -1,0 +1,36 @@
+# Facultatif : publie la version autonome de l'interface (calcul dans le navigateur)
+# sur GitHub Pages. À lancer manuellement depuis l'onglet Actions.
+name: GitHub Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @zuninja/web build:standalone
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/dist-standalone
+      - id: deployment
+        uses: actions/deploy-pages@v4

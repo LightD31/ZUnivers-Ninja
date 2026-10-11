@@ -1,0 +1,23 @@
+# Environnement de développement avec rechargement à chaud :
+#   docker compose -f docker-compose.dev.yml up
+# Interface : http://localhost:5173 (Vite) · API : http://localhost:8080
+services:
+  dev:
+    image: node:22-alpine
+    working_dir: /src
+    command: sh -c "corepack enable && pnpm install && pnpm dev"
+    environment:
+      HOST: 0.0.0.0
+      VITE_HOST: 0.0.0.0
+      STATE_FILE: /src/data/state.json
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - '5173:5173'
+      - '8080:8080'
+    volumes:
+      - .:/src
+      - node_modules:/src/node_modules
+volumes:
+  node_modules:

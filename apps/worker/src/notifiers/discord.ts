@@ -101,7 +101,7 @@ export function buildDiscordMessage(
           ...(plan.player.avatar ? { thumbnail: { url: plan.player.avatar } } : {}),
           footer: {
             text: plan.season
-              ? `Vortex : ${plan.season.name} · forge « ${plan.season.group} » jusqu'au ${plan.season.end}`
+              ? `Vortex : ${plan.season.name} · forge « ${plan.season.group} » jusqu'au ${plan.season.end.split('-').reverse().join('/')}`
               : 'ZUnivers Ninja',
           },
           timestamp: plan.generatedAt,

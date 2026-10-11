@@ -376,6 +376,8 @@ function fnv1a(text: string): string {
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR');
+/** AAAA-MM-JJ → JJ/MM/AAAA */
+const frDate = (date: string) => date.slice(0, 10).split('-').reverse().join('/');
 
 function buildAdvice(ctx: Context, before: State, after: State): string[] {
   const advice: string[] = [];
@@ -401,7 +403,7 @@ function buildAdvice(ctx: Context, before: State, after: State): string[] {
     Math.floor(after.towerFloor) < ctx.catalog.season.floors.length
   ) {
     advice.push(
-      `${after.ascensionsLeft} ascension(s) disponible(s) non conseillée(s) (poudre insuffisante ou peu rentable). Elles restent cumulables jusqu'au ${ctx.catalog.season.end}.`,
+      `${after.ascensionsLeft} ascension(s) disponible(s) non conseillée(s) (poudre insuffisante ou peu rentable). Elles restent cumulables jusqu'au ${frDate(ctx.catalog.season.end)}.`,
     );
   }
 
@@ -425,7 +427,7 @@ function buildAdvice(ctx: Context, before: State, after: State): string[] {
   );
   if (unspent.length > 0 && ctx.catalog.season) {
     advice.push(
-      `Forge ouverte pour le groupe « ${ctx.catalog.season.group} » jusqu'au ${ctx.catalog.season.end} (Vortex : ${ctx.catalog.season.towerName}).`,
+      `Forge ouverte pour le groupe « ${ctx.catalog.season.group} » jusqu'au ${frDate(ctx.catalog.season.end)} (Vortex : ${ctx.catalog.season.towerName}).`,
     );
   }
 

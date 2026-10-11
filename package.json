@@ -3,7 +3,6 @@
   "version": "2.0.0",
   "private": true,
   "description": "Conseiller ZUnivers : calcule le meilleur enchaînement d'actions pour faire progresser ta collection.",
-  "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.28.0",
   "engines": {

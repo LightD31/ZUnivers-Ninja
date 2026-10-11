@@ -9,6 +9,8 @@ export default defineConfig({
   worker: { format: 'es' },
   server: {
     port: 5173,
+    // Dans un conteneur de dev, VITE_HOST=0.0.0.0 rend le serveur accessible depuis l'hôte.
+    host: process.env.VITE_HOST ?? 'localhost',
     proxy: { '/api': 'http://localhost:8080', '/health': 'http://localhost:8080' },
   },
   build: { target: 'es2022', chunkSizeWarningLimit: 1500 },
