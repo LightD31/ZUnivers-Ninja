@@ -32,7 +32,7 @@ WORKDIR /app
 COPY --from=build /src/apps/worker/dist/ ./
 COPY --from=build /src/apps/web/dist ./web
 RUN mkdir -p /data && chown node:node /data
-# Version affichée par /health, fournie par le workflow de release (tag vX.Y.Z → X.Y.Z).
+# Version affichée par /health, fournie par la CI au push sur main (commit court, ex : cf3f33c).
 # Déclarée en dernier : changer de version ne reconstruit pas les couches précédentes.
 ARG APP_VERSION=dev
 ENV APP_VERSION=${APP_VERSION}
