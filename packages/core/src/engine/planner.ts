@@ -38,6 +38,14 @@ export function nodeSteps(node: SearchNode): Step[] {
 }
 
 const EPSILON = 1e-9;
+/**
+ * Un compte riche peut enchaîner des centaines d'invocations : une à une, elles épuisaient la
+ * profondeur de recherche avant le solde. Au-delà de ce nombre d'invocations payables, elles sont
+ * proposées par lots d'une fraction du solde.
+ */
+const INVOKE_STEPS = 50;
+/** En deçà de ce nombre d'invocations du meilleur pack, tous les packs restent proposés. */
+const INVOKE_TAIL = 4;
 
 function record(
   ctx: Context,
@@ -169,6 +177,16 @@ function weighted(ctx: Context, cost: Partial<Balances>): number {
 
 function affordable(state: State, cost: Partial<Balances>): boolean {
   return CURRENCIES.every((c) => state.balances[c] >= (cost[c] ?? 0));
+}
+
+/** Nombre de fois qu'on peut payer `cost` avec le solde. */
+function timesAffordable(state: State, cost: Partial<Balances>): number {
+  let times = Infinity;
+  for (const c of CURRENCIES) {
+    const amount = cost[c] ?? 0;
+    if (amount > 0) times = Math.min(times, Math.floor(state.balances[c] / amount));
+  }
+  return times;
 }
 
 function addCost(a: Partial<Balances>, currency: Currency, amount: number): Partial<Balances> {
@@ -379,15 +397,33 @@ export function candidates(ctx: Context, state: State): Candidate[] {
   const allow = allowed(ctx);
 
   if (allow.invoke) {
+    const repeatable: Candidate[] = [];
     for (const option of boosterOptions(ctx)) {
       if (option.oneTime && option.eventId && (state.eventInvocations[option.eventId] ?? 0) > 0)
         continue;
       const { ev, newCards } = invocationEV(ctx, state, option);
-      push(
-        [{ kind: 'invoke', booster: option.key }],
-        (ev + newCards * bonus) * evFactor - weighted(ctx, option.cost),
-        option.cost,
-      );
+      const gain = (ev + newCards * bonus) * evFactor - weighted(ctx, option.cost);
+      const action: Action = { kind: 'invoke', booster: option.key };
+      if (option.oneTime) push([action], gain, option.cost);
+      else if (gain > EPSILON && affordable(state, option.cost))
+        repeatable.push(candidate(ctx, [action], gain, option.cost));
+    }
+    // Packs répétables : seul le plus rentable par monnaie dépensée est proposé. Le faisceau
+    // compare des étapes, et à une invocation par étape le pack le plus cher l'emportait parce
+    // qu'il fait plus de valeur par invocation, même quand il en fait moins par ZUMonnaie.
+    const best = repeatable.reduce<Candidate | null>(
+      (a, c) => (!a || c.gain * a.cost > a.gain * c.cost ? c : a),
+      null,
+    );
+    const times = best ? timesAffordable(state, best.price) : 0;
+    if (best && times < INVOKE_TAIL) {
+      // Fin du solde : un autre pack peut mieux l'épuiser, le faisceau compare les combinaisons.
+      out.push(...repeatable);
+    } else if (best) {
+      const count = Math.max(1, Math.floor(times / INVOKE_STEPS));
+      const price: Partial<Balances> = {};
+      for (const c of CURRENCIES) if (best.price[c]) price[c] = best.price[c] * count;
+      out.push(candidate(ctx, Array(count).fill(best.actions[0]), best.gain * count, price));
     }
   }
 
