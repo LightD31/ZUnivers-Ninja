@@ -276,7 +276,7 @@ function sumDelta(a: Partial<Balances>, b: Partial<Balances>): Partial<Balances>
 
 function groupTitle(kind: ActionKind, cards: PlanCard[], size: number, fallback: string): string {
   const count = cards.reduce((n, c) => n + c.count, 0);
-  const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`;
+  const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n > 1 ? many : word}`;
   switch (kind) {
     case 'recycle':
       return `Recycler ${plural(count, 'carte')} en surplus`;
@@ -287,7 +287,7 @@ function groupTitle(kind: ActionKind, cards: PlanCard[], size: number, fallback:
     case 'constellation':
       return size === 1
         ? fallback
-        : `Constellations : ${plural(count, 'niveau')} sur ${plural(cards.length, 'carte')}`;
+        : `Constellations : ${plural(count, 'niveau', 'niveaux')} sur ${plural(cards.length, 'carte')}`;
     default:
       return fallback;
   }
