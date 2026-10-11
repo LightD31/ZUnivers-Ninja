@@ -12,6 +12,7 @@ import {
 import { Hono, type Context } from 'hono';
 import { buildDiscordMessage } from './notifiers/discord';
 import { logger } from './logger';
+import { PlanAbortedError, PlannerBusyError, PlannerTimeoutError } from './pool';
 import { VERSION, type PlanService } from './service';
 import type { StateStore } from './store';
 
@@ -83,8 +84,27 @@ export function createApp(service: PlanService, store: StateStore | null, option
     try {
       return await service.plan(user, ruleSet, parsePlannerQuery(c.req.query()), {
         fresh: c.req.query('fresh') === '1',
+        // Client parti (onglet fermé, nouvelle recherche…) : le calcul est abandonné.
+        signal: c.req.raw.signal,
       });
     } catch (error) {
+      if (error instanceof PlanAbortedError) {
+        return c.json({ error: 'Requête annulée.' }, 503);
+      }
+      if (error instanceof PlannerBusyError) {
+        c.header('Retry-After', '10');
+        return c.json({ error: 'Trop de calculs en cours, réessaie dans quelques secondes.' }, 503);
+      }
+      if (error instanceof PlannerTimeoutError) {
+        logger.warn(`Calcul trop long pour ${user}`, error.message);
+        return c.json(
+          {
+            error:
+              'Le calcul a pris trop de temps : réduis la largeur du faisceau ou la ramification.',
+          },
+          503,
+        );
+      }
       if (error instanceof ZuNotFoundError) {
         return c.json({ error: `Joueur « ${user} » introuvable sur ZUnivers (${ruleSet}).` }, 404);
       }

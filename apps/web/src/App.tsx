@@ -155,6 +155,14 @@ export function App() {
                   loading={false}
                   onRefresh={() => void run(user, settings, true)}
                 />
+                {plan.stats.timedOut && (
+                  <p className="surface flex items-center gap-2 border-l-2 border-zu-500 px-3 py-2 text-sm">
+                    <Clock className="size-4 shrink-0 text-zu-400" />
+                    Calcul écourté : la limite de temps du serveur a été atteinte, la fin du plan a
+                    été calculée plus simplement. Réduis la largeur du faisceau ou la ramification
+                    dans les réglages pour un plan entièrement optimisé.
+                  </p>
+                )}
                 <div>
                   <div className="flex items-end gap-1.5 px-2" role="tablist">
                     {(

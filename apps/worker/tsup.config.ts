@@ -1,14 +1,15 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  // planner-thread : chargé par le pool de threads (src/pool.ts), à côté de index.js.
+  entry: ['src/index.ts', 'src/planner-thread.ts'],
   format: ['esm'],
   platform: 'node',
   target: 'node22',
   outDir: 'dist',
   clean: true,
   sourcemap: true,
-  // Un seul fichier autonome : l'image Docker n'a pas besoin de node_modules.
+  // Fichiers autonomes : l'image Docker n'a pas besoin de node_modules.
   noExternal: [/.*/],
   banner: {
     js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",

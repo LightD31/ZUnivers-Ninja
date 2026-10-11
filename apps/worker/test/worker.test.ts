@@ -7,6 +7,7 @@ import { fixtureCatalog, fixturePlayer, NOW } from '../../../packages/core/test/
 import { loadConfig } from '../src/config';
 import { setLogLevel } from '../src/logger';
 import { buildDiscordMessage, sendDiscord } from '../src/notifiers/discord';
+import { PlannerBusyError, PlannerTimeoutError } from '../src/pool';
 import { runTick } from '../src/scheduler';
 import { createApp, parsePlannerQuery } from '../src/server';
 import type { PlanService } from '../src/service';
@@ -30,6 +31,11 @@ describe('configuration', () => {
     expect(loadConfig({ ZU_USERS: 'alice, bob,alice' }).users).toEqual(['alice', 'bob']);
     expect(loadConfig({ DISCORD_TAGS: 'carol' }).users).toEqual(['carol']);
     expect(loadConfig({}).ruleSet).toBe('NORMAL');
+  });
+
+  it('borne le planificateur par défaut', () => {
+    expect(loadConfig({})).toMatchObject({ threads: 2, queueLimit: 4, timeLimitMs: 20_000 });
+    expect(loadConfig({ PLANNER_TIME_LIMIT_SECONDS: '0' }).timeLimitMs).toBe(0);
   });
 
   it('refuse une configuration invalide', () => {
@@ -140,8 +146,35 @@ describe('API HTTP', () => {
       'alexpresso',
       'HARDCORE',
       { beamWidth: 64 },
-      { fresh: false },
+      { fresh: false, signal: expect.any(AbortSignal) },
     );
+  });
+
+  it('répond 503 quand le serveur est saturé', async () => {
+    const app = createApp(
+      fakeService(async () => {
+        throw new PlannerBusyError();
+      }),
+      null,
+      options,
+    );
+    const res = await app.request('/api/plan/alexpresso');
+    expect(res.status).toBe(503);
+    expect(res.headers.get('retry-after')).toBe('10');
+    expect((await res.json()).error).toMatch(/Trop de calculs/);
+  });
+
+  it('répond 503 quand le calcul dépasse le délai', async () => {
+    const app = createApp(
+      fakeService(async () => {
+        throw new PlannerTimeoutError(50_000);
+      }),
+      null,
+      options,
+    );
+    const res = await app.request('/api/plan/alexpresso');
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toMatch(/trop de temps/);
   });
 
   it('renvoie 404 pour un joueur inconnu', async () => {

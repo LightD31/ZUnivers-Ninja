@@ -44,6 +44,12 @@ const EnvSchema = z.object({
   BEAM_WIDTH: optionalNumber,
   BRANCHING: optionalNumber,
   KEEP_EXTRA: optionalNumber,
+  /** Threads dédiés au planificateur (calculs simultanés). */
+  PLANNER_THREADS: z.coerce.number().int().positive().default(2),
+  /** Calculs en attente au-delà desquels l'API répond 503. */
+  PLANNER_QUEUE_LIMIT: z.coerce.number().int().nonnegative().default(4),
+  /** Temps de recherche maximal par plan (0 = illimité), ensuite la fin est cherchée en glouton. */
+  PLANNER_TIME_LIMIT_SECONDS: z.coerce.number().nonnegative().default(20),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 
@@ -94,6 +100,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       ...(e.BRANCHING !== undefined ? { branching: e.BRANCHING } : {}),
       ...(e.KEEP_EXTRA !== undefined ? { keepExtra: e.KEEP_EXTRA } : {}),
     },
+    threads: e.PLANNER_THREADS,
+    queueLimit: e.PLANNER_QUEUE_LIMIT,
+    timeLimitMs: e.PLANNER_TIME_LIMIT_SECONDS * 1000,
     logLevel: e.LOG_LEVEL,
   };
 }

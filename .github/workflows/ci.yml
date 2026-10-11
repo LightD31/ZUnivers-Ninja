@@ -47,4 +47,5 @@ jobs:
           for i in $(seq 1 30); do curl -sf http://localhost:8080/health && break; sleep 1; done
           curl -sf http://localhost:8080/health
           curl -sf http://localhost:8080/ | grep -q 'ZUnivers Ninja'
+          docker exec ninja test -f /app/planner-thread.js
           docker rm -f ninja

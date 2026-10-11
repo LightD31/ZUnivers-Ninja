@@ -347,14 +347,20 @@ export interface SearchResult {
   root: SearchNode;
   best: SearchNode;
   explored: number;
+  /** La limite de temps a été atteinte : la fin du plan a été cherchée en glouton. */
+  timedOut: boolean;
 }
 
 /**
  * Recherche en faisceau : à chaque profondeur, on étend les meilleurs états avec leurs actions
  * candidates (suivies des actions sans regret), et on ne garde que les `beamWidth` meilleurs.
+ * Passé `timeLimitMs`, on continue en glouton depuis le meilleur état pour finir le plan.
  */
 export function search(ctx: Context): SearchResult {
-  const { beamWidth, branching, maxDepth } = ctx.options;
+  const { maxDepth, timeLimitMs } = ctx.options;
+  let { beamWidth, branching } = ctx.options;
+  const deadline = timeLimitMs > 0 ? performance.now() + timeLimitMs : Infinity;
+  let timedOut = false;
   const state = initialState(ctx);
   const start: SearchNode = {
     state,
@@ -370,6 +376,12 @@ export function search(ctx: Context): SearchResult {
   let explored = 1;
 
   for (let depth = 1; depth <= maxDepth; depth++) {
+    if (!timedOut && performance.now() > deadline) {
+      timedOut = true;
+      beamWidth = 1;
+      branching = 1;
+      beam = beam.slice(0, 1);
+    }
     const children = new Map<string, SearchNode>();
     for (const node of beam) {
       // On essaie les candidats dans l'ordre jusqu'à obtenir `branching` enfants qui progressent.
@@ -404,5 +416,5 @@ export function search(ctx: Context): SearchResult {
     if (beam[0]!.value > best.value + EPSILON) best = beam[0]!;
   }
 
-  return { root, best, explored };
+  return { root, best, explored, timedOut };
 }
