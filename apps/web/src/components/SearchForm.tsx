@@ -23,7 +23,7 @@ export function SearchForm({ initial = '', loading, onSearch, size = 'md' }: Pro
       <label className="relative flex-1">
         <span className="sr-only">Pseudo Discord</span>
         <Search
-          className={`pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-zinc-400 ${large ? 'size-5' : 'size-4'}`}
+          className={`pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-white/60 ${large ? 'size-5' : 'size-4'}`}
         />
         <input
           value={value}
@@ -31,9 +31,7 @@ export function SearchForm({ initial = '', loading, onSearch, size = 'md' }: Pro
           placeholder="Pseudo Discord (ex : alexpresso)"
           autoComplete="off"
           spellCheck={false}
-          className={`w-full rounded-xl border border-zinc-200 bg-white pr-3 text-zinc-900 shadow-sm outline-none transition placeholder:text-zinc-400 focus:border-accent-500 focus:ring-4 focus:ring-accent-500/15 dark:border-ink-700 dark:bg-ink-900 dark:text-zinc-100 ${
-            large ? 'h-13 pl-11 text-base' : 'h-10 pl-10 text-sm'
-          }`}
+          className={`field w-full pr-3 ${large ? 'h-13 pl-11 text-base' : 'h-10 pl-10 text-sm'}`}
         />
       </label>
       <button

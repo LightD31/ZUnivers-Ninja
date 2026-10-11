@@ -1,58 +1,167 @@
 @import 'tailwindcss';
 
-@custom-variant dark (&:where(.dark, .dark *));
-
+/* Thème calqué sur zunivers.zerator.com : fond sombre, police Prompt, vert ZUnivers et dégradés « chroma ». */
 @theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-sans: 'Prompt', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --color-accent-300: #ff9a9a;
-  --color-accent-400: #ff6b6b;
-  --color-accent-500: #ff3d3d;
-  --color-accent-600: #e52222;
-  --color-accent-700: #bf1414;
+  --color-zu-300: #a3ff85;
+  --color-zu-400: #64ef4c;
+  --color-zu-500: #05b600;
+  --color-zu-600: #048f00;
+  --color-zu-700: #007f00;
+  --color-zu-secondary: #248925;
+  --color-danger: #cf6679;
 
-  --color-ink-950: #0b0b0f;
-  --color-ink-900: #121218;
-  --color-ink-850: #17171f;
-  --color-ink-800: #1d1d27;
-  --color-ink-700: #2a2a37;
-  --color-ink-600: #3a3a4a;
+  --color-ink-950: #121212;
+  --color-ink-900: #1a1a1a;
+  --color-ink-850: #1e1e1e;
+  --color-ink-800: #212121;
+  --color-ink-700: #2c2c2c;
+  --color-ink-600: #424242;
+
+  --color-rarity-1: #8f989d;
+  --color-rarity-2: #a24fe6;
+  --color-rarity-3: #249ff3;
+  --color-rarity-4: #1fb866;
+  --color-rarity-5: #3df0a7;
+  --color-rarity-6: #f2c94c;
+
+  --color-gold: #ffc107;
 }
 
 @layer base {
   html {
-    color-scheme: light;
-  }
-  html.dark {
     color-scheme: dark;
   }
   body {
-    @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-ink-950 dark:text-zinc-100;
-    font-feature-settings: 'cv11', 'ss01';
+    @apply bg-ink-950 text-white antialiased;
+    background-image:
+      radial-gradient(ellipse 90% 45% at 50% -5%, rgb(5 182 0 / 0.07), transparent 70%),
+      repeating-linear-gradient(135deg, rgb(255 255 255 / 0.018) 0 2px, transparent 2px 18px);
+    background-attachment: fixed;
   }
   ::selection {
-    @apply bg-accent-500/25;
+    @apply bg-zu-500/35;
+  }
+  a {
+    @apply text-zu-500;
   }
 }
 
+/* Surfaces et contrôles façon Vuetify (rayon de 4 px, ombres légères). */
 @utility card {
-  @apply rounded-2xl border border-zinc-200 bg-white shadow-sm shadow-zinc-900/[0.03] dark:border-ink-700/70 dark:bg-ink-900 dark:shadow-none;
+  @apply rounded bg-ink-850/70 backdrop-blur-sm;
+}
+@utility surface {
+  @apply rounded bg-ink-800 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_1px_3px_1px_rgb(0_0_0/0.15)];
 }
 @utility btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500 disabled:cursor-not-allowed disabled:opacity-50;
+  @apply inline-flex items-center justify-center gap-2 rounded px-4 py-2 text-sm font-medium tracking-[0.06em] uppercase transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zu-500 disabled:cursor-not-allowed disabled:opacity-40;
 }
 @utility btn-primary {
-  @apply btn bg-accent-500 text-white hover:bg-accent-600 active:bg-accent-700;
+  @apply btn bg-zu-500 text-white shadow-[0_3px_1px_-2px_rgb(0_0_0/0.2),0_2px_2px_rgb(0_0_0/0.14),0_1px_5px_rgb(0_0_0/0.12)] hover:bg-[#19c513] active:bg-zu-600;
 }
 @utility btn-ghost {
-  @apply btn text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-ink-800 dark:hover:text-zinc-100;
+  @apply btn text-white/75 hover:bg-white/[0.08] hover:text-white;
 }
 @utility chip {
-  @apply inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs dark:border-ink-700 dark:bg-ink-850;
+  @apply inline-flex items-center gap-1.5 rounded bg-white/[0.07] px-2 py-1 text-xs;
 }
 @utility label {
-  @apply text-xs font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400;
+  @apply text-xs font-semibold tracking-[0.08em] text-white/60 uppercase;
+}
+@utility field {
+  @apply surface text-white outline-none transition placeholder:text-white/45 focus:ring-2 focus:ring-zu-500/70;
+}
+
+/* Dégradés signatures de ZUnivers. */
+@utility bg-chroma {
+  background-image: linear-gradient(
+    to right,
+    #eed371,
+    #f2cc7c,
+    #f0b7b2,
+    #ffdbf5,
+    #f8b3ff,
+    #e9c6ff,
+    #aaa5fa,
+    #b9cffb,
+    #aed8e6
+  );
+}
+@utility text-chroma {
+  @apply bg-chroma bg-clip-text text-transparent;
+}
+@utility bg-rainbow {
+  background-image: linear-gradient(
+    to right,
+    red,
+    #ff9a00,
+    #d0de21,
+    #4fdc4a,
+    #3fdad8,
+    #2fc9e2,
+    #1c7fee,
+    #5f15f2,
+    #ba0cf8,
+    #fb07d9,
+    red
+  );
+}
+
+/* Barre de navigation flottante : fond coloré et liseré chroma. */
+@utility zu-appbar {
+  border-bottom: 5px solid transparent;
+  background:
+    radial-gradient(55% 160% at 0% 30%, rgb(122 56 214 / 0.9), transparent 70%) padding-box,
+    radial-gradient(45% 160% at 100% 70%, rgb(32 160 140 / 0.85), transparent 70%) padding-box,
+    radial-gradient(25% 140% at 62% 0%, rgb(214 64 196 / 0.55), transparent 75%) padding-box,
+    linear-gradient(#0b0b0e, #0b0b0e) padding-box,
+    linear-gradient(
+        to right,
+        #ae6e9b,
+        #eed371,
+        #f0b7b2,
+        #ffdbf5,
+        #f8b3ff,
+        #aaa5fa,
+        #6fc4ee,
+        #aed8e6,
+        #fed5c6
+      )
+      border-box;
+}
+
+/* Liseré vert lumineux qui sépare les grandes zones. */
+@utility zu-divider {
+  @apply h-0.5 w-full;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    #7ff458 12%,
+    #05b600 50%,
+    #7ff458 88%,
+    transparent
+  );
+  box-shadow:
+    0 0 10px rgb(5 182 0 / 0.65),
+    0 0 2px rgb(127 244 88 / 0.9);
+}
+
+/* Titre de section encadré de deux traits verts. */
+@utility zu-heading {
+  @apply flex items-center justify-center gap-3 text-center text-xl font-bold tracking-tight uppercase sm:gap-4 sm:text-3xl;
+  &::before,
+  &::after {
+    content: '';
+    @apply h-1 w-6 shrink-0 rounded-full sm:w-20;
+    background: linear-gradient(90deg, transparent, #05b600);
+    box-shadow: 0 0 8px rgb(5 182 0 / 0.5);
+  }
+  &::after {
+    background: linear-gradient(270deg, transparent, #05b600);
+  }
 }
 
 @keyframes fade-up {

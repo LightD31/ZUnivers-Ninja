@@ -27,16 +27,16 @@ export const KIND_ICON: Record<ActionKind, LucideIcon> = {
 };
 
 export const KIND_TINT: Record<ActionKind, string> = {
-  daily: 'text-emerald-500 bg-emerald-500/10',
-  weekly: 'text-emerald-500 bg-emerald-500/10',
-  recycle: 'text-sky-500 bg-sky-500/10',
-  craft: 'text-orange-500 bg-orange-500/10',
-  enchant: 'text-amber-500 bg-amber-500/10',
-  fusion: 'text-fuchsia-500 bg-fuchsia-500/10',
-  constellation: 'text-violet-500 bg-violet-500/10',
-  invoke: 'text-accent-500 bg-accent-500/10',
-  ascension: 'text-teal-500 bg-teal-500/10',
-  evolution: 'text-lime-600 bg-lime-500/10',
+  daily: 'text-zu-400 bg-zu-500/15',
+  weekly: 'text-zu-400 bg-zu-500/15',
+  recycle: 'text-sky-400 bg-sky-400/12',
+  craft: 'text-orange-400 bg-orange-400/12',
+  enchant: 'text-gold bg-gold/12',
+  fusion: 'text-fuchsia-400 bg-fuchsia-400/12',
+  constellation: 'text-violet-400 bg-violet-400/12',
+  invoke: 'text-pink-400 bg-pink-400/12',
+  ascension: 'text-teal-300 bg-teal-300/12',
+  evolution: 'text-lime-400 bg-lime-400/12',
 };
 
 export const RARITY_LABEL: Record<number, string> = {
@@ -49,19 +49,19 @@ export const RARITY_LABEL: Record<number, string> = {
 };
 
 export const RARITY_TINT: Record<number, string> = {
-  1: 'text-zinc-500',
-  2: 'text-emerald-500',
-  3: 'text-sky-500',
-  4: 'text-violet-500',
-  5: 'text-amber-500',
-  6: 'text-pink-500',
+  1: 'text-rarity-1',
+  2: 'text-rarity-2',
+  3: 'text-rarity-3',
+  4: 'text-rarity-4',
+  5: 'text-rarity-5',
+  6: 'text-rarity-6',
 };
 
 export const SHINY_NAME: Record<Shiny, string> = { 0: 'Normales', 1: 'Dorées', 2: 'Chromas' };
 export const SHINY_BAR: Record<Shiny, string> = {
-  0: 'bg-zinc-400 dark:bg-zinc-500',
-  1: 'bg-amber-400',
-  2: 'bg-gradient-to-r from-pink-400 via-violet-500 to-sky-400',
+  0: 'bg-zu-500',
+  1: 'bg-gold',
+  2: 'bg-chroma',
 };
 
 export const CURRENCY_SHORT: Record<Currency, string> = {
