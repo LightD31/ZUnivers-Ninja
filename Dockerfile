@@ -5,7 +5,9 @@
 ARG NODE_IMAGE=node:22-alpine
 
 # --- Build : dépendances, tests, interface web et serveur -------------------
-FROM ${NODE_IMAGE} AS build
+# Toujours sur la plateforme de l'hôte : le résultat (JS + fichiers statiques) ne
+# dépend pas de l'architecture, et les tests sous émulation QEMU (arm64) sont trop lents.
+FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS build
 WORKDIR /src
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
