@@ -1,4 +1,10 @@
-import type { PlanResult, RuleSet } from '@zuninja/core';
+import {
+  DEFAULT_STRATEGY,
+  isStrategy,
+  type PlanResult,
+  type RuleSet,
+  type StrategyId,
+} from '@zuninja/core';
 import { CircleAlert, Clock, Crown, RefreshCw, Sparkles, Swords, Target, Zap } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Collection } from './components/Collection';
@@ -9,7 +15,7 @@ import { SettingsDrawer } from './components/SettingsDrawer';
 import { Summary } from './components/Summary';
 import { fetchPlan, PlanError, STANDALONE } from './lib/api';
 import { fmt, fmt1, formatTime, signed } from './lib/format';
-import { loadSettings, saveSettings, type Settings } from './lib/settings';
+import { loadSettings, saveSettings, withStrategy, type Settings } from './lib/settings';
 import { load, save } from './lib/storage';
 
 type Status =
@@ -21,19 +27,22 @@ type Tab = 'plan' | 'collection';
 
 const RECENT_KEY = 'zuninja:recent';
 
-function readUrl(): { user: string; ruleSet: RuleSet | null } {
+function readUrl(): { user: string; ruleSet: RuleSet | null; strategy: StrategyId | null } {
   const params = new URLSearchParams(location.search);
   const mode = params.get('mode')?.toUpperCase();
+  const strategy = params.get('strategy');
   return {
     user: params.get('u')?.trim() ?? '',
     ruleSet: mode === 'HARDCORE' || mode === 'NORMAL' ? mode : null,
+    strategy: isStrategy(strategy) ? strategy : null,
   };
 }
 
-function writeUrl(user: string, ruleSet: RuleSet) {
+function writeUrl(user: string, s: Settings) {
   const params = new URLSearchParams();
   if (user) params.set('u', user);
-  if (user && ruleSet === 'HARDCORE') params.set('mode', 'hardcore');
+  if (user && s.ruleSet === 'HARDCORE') params.set('mode', 'hardcore');
+  if (user && s.strategy !== DEFAULT_STRATEGY) params.set('strategy', s.strategy);
   const query = params.toString();
   history.replaceState(null, '', `${location.pathname}${query ? `?${query}` : ''}`);
 }
@@ -41,8 +50,11 @@ function writeUrl(user: string, ruleSet: RuleSet) {
 export function App() {
   const initial = useRef(readUrl());
   const [settings, setSettings] = useState<Settings>(() => {
-    const s = loadSettings();
-    return initial.current.ruleSet ? { ...s, ruleSet: initial.current.ruleSet } : s;
+    // Un lien partagé (?mode=, ?strategy=) l'emporte sur les réglages enregistrés.
+    let s = loadSettings();
+    if (initial.current.ruleSet) s = { ...s, ruleSet: initial.current.ruleSet };
+    if (initial.current.strategy) s = withStrategy(s, initial.current.strategy);
+    return s;
   });
   const [user, setUser] = useState(initial.current.user);
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
@@ -55,7 +67,7 @@ export function App() {
   const run = useCallback(async (name: string, s: Settings, fresh = false) => {
     const id = ++request.current;
     setStatus({ kind: 'loading' });
-    writeUrl(name, s.ruleSet);
+    writeUrl(name, s);
     try {
       const plan = await fetchPlan(name, s, fresh);
       if (id !== request.current) return;
@@ -114,7 +126,7 @@ export function App() {
     request.current++;
     setUser('');
     setStatus({ kind: 'idle' });
-    writeUrl('', settings.ruleSet);
+    writeUrl('', settings);
     document.title = 'ZUnivers Ninja';
   };
 

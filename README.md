@@ -88,7 +88,9 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
   - `beamWidth`, `branching` et `keepExtra` ;
   - `wBalance`, `wLoreDust`, `wLoreFragment` et `wUpgradeDust` ;
   - `fresh=1` pour ignorer le cache.
-- `GET /api/config` liste notamment les stratégies disponibles (`strategies`) et celle par défaut.
+- `GET /api/strategies` liste les stratégies disponibles (`strategies` : `id`, `label`,
+  `description`) et celle par défaut du serveur (`strategy`). Un bot peut s'en servir pour proposer
+  les mêmes choix que l'interface. `GET /api/config` les renvoie aussi.
 - `GET /health` sert de healthcheck pour Docker et Kubernetes.
 - `GET /api/plan/:pseudo/discord` renvoie une version compacte pour les bots Discord :
   - le message prêt à poster (`content` et `embeds`) ;
@@ -144,11 +146,14 @@ Le bot interroge Ninja et poste lui-même dans son salon. Dans ce cas, laisse `Z
    ```
    Une commande `/ninja pseudo:` peut appeler la même route sans `If-None-Match` pour afficher
    le plan à la demande.
+3. Pour la stratégie, ajoute `?strategy=<id>` à la route. La liste à proposer au joueur vient de
+   `GET /api/strategies`, ce qui évite de la recopier dans le bot.
 
 ## Stratégies
 
 Une stratégie est un préréglage du planificateur. Choisis-la dans les réglages de l'interface, avec
-`?strategy=` dans l'API, ou par joueur dans `ZU_USERS`.
+`?strategy=` dans l'API ou dans le lien de l'interface (`/?u=pseudo&strategy=prudent`), ou par
+joueur dans `ZU_USERS`.
 
 | Stratégie      | `strategy`       | Pour qui                                         | Ce qui change                                                  |
 | -------------- | ---------------- | ------------------------------------------------ | -------------------------------------------------------------- |
