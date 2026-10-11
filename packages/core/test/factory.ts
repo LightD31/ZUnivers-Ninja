@@ -106,6 +106,7 @@ export function makePlayer(overrides: Partial<Player> = {}): Player {
     corporation: null,
     inventory: {},
     challenges: [],
+    achievements: [],
     // Journa déjà fait aujourd'hui, bonus récent : aucune récompense automatique par défaut.
     loot: [{ date: '2026-10-11', daily: 1, weekly: 1 }],
     lootStreak: 1,

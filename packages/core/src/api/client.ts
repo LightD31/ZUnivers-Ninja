@@ -1,5 +1,7 @@
 import type { z } from 'zod';
 import {
+  AchievementCategoriesSchema,
+  AchievementEntriesSchema,
   ChallengesSchema,
   CorporationSchema,
   EventsSchema,
@@ -161,6 +163,10 @@ export function createClient(options: ClientOptions = {}) {
     overview: (name: string) =>
       getOptional(`/public/user/${enc(name)}/overview`, UserOverviewSchema),
     corporation: (id: string) => getOptional(`/public/corporation/${enc(id)}`, CorporationSchema),
+    achievementCategories: (name: string) =>
+      getOptional(`/public/achievement/${enc(name)}/category`, AchievementCategoriesSchema),
+    achievements: (name: string, categoryId: string) =>
+      getOptional(`/public/achievement/${enc(name)}/${enc(categoryId)}`, AchievementEntriesSchema),
   };
 }
 

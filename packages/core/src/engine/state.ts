@@ -10,6 +10,7 @@ import {
   type OwnedCard,
   type Shiny,
 } from '../model/types';
+import { goalCardMet, type AchievementCounter } from './achievements';
 import type { Context } from './context';
 import { OverlayMap } from './overlay';
 
@@ -52,6 +53,10 @@ export interface State {
   points: number;
   /** Points espérés des actions aléatoires (invocations, ascensions). */
   ev: number;
+  /** Progression de chaque succès de `ctx.achievements`. Remplacé, jamais muté en place. */
+  achievements: number[];
+  /** Points des succès obtenus pendant le plan. */
+  achievementPoints: number;
 }
 
 export const EMPTY_CARD = (itemId: string, shiny: Shiny): OwnedCard => ({
@@ -129,6 +134,8 @@ export function initialState(ctx: Context): State {
     owned,
     points,
     ev: 0,
+    achievements: ctx.achievements.map((a) => a.current),
+    achievementPoints: 0,
   };
 }
 
@@ -141,12 +148,61 @@ export function getCard(state: State, itemId: string, shiny: Shiny): OwnedCard {
   return state.cards.get(cardKey(itemId, shiny)) ?? EMPTY_CARD(itemId, shiny);
 }
 
+/** La carte remplit-elle sa part du succès `index` ? */
+function achievementCardMet(
+  ctx: Context,
+  state: State,
+  index: number,
+  itemId: string,
+  shiny: Shiny | null,
+): boolean {
+  const goal = ctx.achievements[index]!;
+  return goalCardMet(
+    (s) => state.cards.get(cardKey(itemId, s)),
+    ctx.items[itemId]?.rarity ?? 0,
+    shiny,
+    goal.constellation,
+  );
+}
+
+/** Fait progresser un succès ; une fois obtenu, il est acquis et rapporte ses points. */
+function advanceAchievement(ctx: Context, state: State, index: number, delta: number): void {
+  const goal = ctx.achievements[index]!;
+  const current = state.achievements[index]!;
+  if (current >= goal.max || delta === 0) return;
+  const next = Math.max(0, Math.min(goal.max, current + delta));
+  state.achievements = state.achievements.slice();
+  state.achievements[index] = next;
+  if (next >= goal.max) {
+    state.achievementPoints += goal.score;
+    state.balances.loreDust += goal.rewardLoreDust;
+  }
+}
+
+/** Fait progresser les succès à compteur liés à une action. */
+export function progressAchievements(
+  ctx: Context,
+  state: State,
+  counter: AchievementCounter,
+  amount: number,
+): void {
+  ctx.achievements.forEach((goal, index) => {
+    if (goal.counter === counter) advanceAchievement(ctx, state, index, amount);
+  });
+}
+
 /** Met à jour une carte (sur un état issu de `fork`) en maintenant le total de points. */
 export function putCard(ctx: Context, state: State, card: OwnedCard): void {
   const previous = getCard(state, card.itemId, card.shiny);
   state.points += cardPoints(ctx, card) - cardPoints(ctx, previous);
   state.owned += Number(isOwned(ctx, card)) - Number(isOwned(ctx, previous));
+  const goals = ctx.achievementsByItem.get(card.itemId);
+  const before = goals?.map((g) => achievementCardMet(ctx, state, g.index, card.itemId, g.shiny));
   state.cards.set(cardKey(card.itemId, card.shiny), card);
+  goals?.forEach((g, i) => {
+    const after = achievementCardMet(ctx, state, g.index, card.itemId, g.shiny);
+    if (after !== before![i]) advanceAchievement(ctx, state, g.index, after ? 1 : -1);
+  });
 }
 
 export function addCopies(
@@ -185,12 +241,12 @@ export function progressChallenges(state: State, action: ChallengeAction, amount
 }
 
 /**
- * Valeur d'un état pour le planificateur : points + espérance (réduite selon `evFactor`)
- * + bonus des cartes nouvelles + monnaies pondérées.
+ * Valeur d'un état pour le planificateur : points (collection et succès) + espérance (réduite
+ * selon `evFactor`) + bonus des cartes nouvelles + monnaies pondérées.
  */
 export function stateValue(ctx: Context, state: State): number {
   const { evFactor, newCardBonus, weights } = ctx.options;
-  let value = state.points + state.ev * evFactor;
+  let value = state.points + state.achievementPoints + state.ev * evFactor;
   if (newCardBonus > 0) value += newCardBonus * (state.owned + state.expectedNewCards * evFactor);
   for (const c of CURRENCIES) value += state.balances[c] * weights[c];
   return value;

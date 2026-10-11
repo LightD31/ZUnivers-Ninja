@@ -1,7 +1,15 @@
 import { ASCENSION_COST, FEATURE } from '../rules/constants';
 import { ascensionEV, boosterOptions, invocationEV } from '../rules/random';
 import { reserveBeforeConstellation, reserveFor, reserveTotal } from '../rules/reserve';
-import { CURRENCIES, type Balances, type Currency, type Item, type Shiny } from '../model/types';
+import {
+  CURRENCIES,
+  cardKey,
+  type Balances,
+  type Currency,
+  type Item,
+  type Shiny,
+} from '../model/types';
+import { goalCardMet } from './achievements';
 import { actionKey, applyAction, type Action, type Applied, type RecycleEntry } from './actions';
 import { canRecycle, craftCost, enchantCost, forgeCurrency, type Context } from './context';
 import { getCard, initialState, stateValue, type State } from './state';
@@ -46,6 +54,8 @@ const EPSILON = 1e-9;
 const INVOKE_STEPS = 50;
 /** En deçà de ce nombre d'invocations du meilleur pack, tous les packs restent proposés. */
 const INVOKE_TAIL = 4;
+/** Cartes manquantes au plus pour proposer de terminer un succès de collection d'un coup. */
+const ACHIEVEMENT_MISSING_MAX = 8;
 
 function record(
   ctx: Context,
@@ -379,6 +389,44 @@ function forgeCandidates(ctx: Context, state: State): Candidate[] {
     }
   }
 
+  // Terminer un succès de collection en forgeant toutes les cartes qui manquent : carte par
+  // carte, le faisceau ne verrait les points du succès qu'à la dernière.
+  ctx.achievements.forEach((goal, index) => {
+    const missing = goal.max - state.achievements[index]!;
+    if (!goal.cards || goal.constellation || missing <= 0 || missing > ACHIEVEMENT_MISSING_MAX)
+      return;
+    const actions: Action[] = [];
+    let cost: Partial<Balances> = {};
+    let gain = goal.score + goal.rewardLoreDust * w.loreDust;
+    for (const { itemId, shiny } of goal.cards) {
+      const item = ctx.items[itemId];
+      if (!item) return;
+      if (goalCardMet((s) => state.cards.get(cardKey(itemId, s)), item.rarity, shiny, false))
+        continue;
+      const normal = getCard(state, itemId, 0).copies;
+      if (shiny === 1) {
+        const enchant = enchantCost(ctx, item);
+        if (!allow.enchant || enchant === undefined) return;
+        if (normal === 0) {
+          const craft = craftCost(ctx, item);
+          if (!allow.craft || craft === undefined) return;
+          actions.push({ kind: 'craft', itemId });
+          cost = addCost(cost, forgeCurrency(item), craft);
+        }
+        actions.push({ kind: 'enchant', itemId });
+        cost = addCost(cost, forgeCurrency(item), enchant);
+        gain += item.scores[1] + bonus - (normal === 1 ? item.scores[0] + bonus : 0);
+      } else {
+        const craft = craftCost(ctx, item);
+        if (!allow.craft || craft === undefined) return;
+        actions.push({ kind: 'craft', itemId });
+        cost = addCost(cost, forgeCurrency(item), craft);
+        gain += item.scores[0] + bonus;
+      }
+    }
+    if (actions.length > 0) push(actions, gain - weighted(ctx, cost), cost);
+  });
+
   cache.set(writes, out);
   return out;
 }
@@ -528,11 +576,49 @@ export interface SearchResult {
 }
 
 /**
+ * Meilleur plan. Un succès rapporte beaucoup de points d'un coup : le faisceau peut alors remplir
+ * toutes ses places avec des variantes du plan qui l'obtient, et perdre un plan qui dépense mieux
+ * le même budget. La recherche est donc faite aussi sans les succès, et le meilleur des deux plans
+ * est gardé, évalué avec les succès : en tenir compte ne donne jamais un plan moins bon. Les deux
+ * recherches se partagent la limite de temps.
+ */
+export function search(ctx: Context): SearchResult {
+  if (ctx.achievements.length === 0) return beamSearch(ctx);
+  const options = { ...ctx.options, timeLimitMs: ctx.options.timeLimitMs / 2 };
+  const aware = beamSearch({ ...ctx, options });
+  const blind = beamSearch({ ...ctx, options, achievements: [], achievementsByItem: new Map() });
+  const replayed = rebuild(ctx, nodeSteps(blind.best));
+  return {
+    root: aware.root,
+    best: replayed && replayed.value > aware.best.value + EPSILON ? replayed : aware.best,
+    explored: aware.explored + blind.explored,
+    timedOut: aware.timedOut || blind.timedOut,
+  };
+}
+
+/** Rejoue des étapes dans ce contexte : mêmes actions, gains recalculés. */
+function rebuild(ctx: Context, steps: Step[]): SearchNode | null {
+  const state = initialState(ctx);
+  let node: SearchNode | null = {
+    state,
+    value: stateValue(ctx, state),
+    steps: null,
+    signature: [],
+    depth: 0,
+  };
+  for (const step of steps) {
+    node = tryApply(ctx, node, step.action, step.auto);
+    if (!node) return null;
+  }
+  return node;
+}
+
+/**
  * Recherche en faisceau : à chaque profondeur, on étend les meilleurs états avec leurs actions
  * candidates (suivies des actions sans regret), et on ne garde que les `beamWidth` meilleurs.
  * Passé `timeLimitMs`, on continue en glouton depuis le meilleur état pour finir le plan.
  */
-export function search(ctx: Context): SearchResult {
+function beamSearch(ctx: Context): SearchResult {
   const { maxDepth, timeLimitMs } = ctx.options;
   let { beamWidth, branching } = ctx.options;
   const deadline = timeLimitMs > 0 ? performance.now() + timeLimitMs : Infinity;

@@ -59,6 +59,12 @@ export function buildDiscordMessage(
   const challenges = plan.challenges
     .filter((c) => c.after !== c.before)
     .map((c) => `${c.description} : \`${c.before}/${c.max}\` → \`${c.after}/${c.max}\``);
+  const achievements = plan.achievements
+    .filter((a) => a.after !== a.before)
+    .map(
+      (a) =>
+        `${a.after >= a.max ? '🏆 ' : ''}${a.description} : \`${a.before}/${a.max}\` → \`${a.after}/${a.max}\``,
+    );
 
   const fields = [
     {
@@ -71,6 +77,9 @@ export function buildDiscordMessage(
       ? [{ name: 'Collection', value: collection.join('\n'), inline: false }]
       : []),
     ...(challenges.length ? [{ name: 'Défis', value: challenges.join('\n'), inline: false }] : []),
+    ...(achievements.length
+      ? [{ name: 'Succès', value: achievements.join('\n'), inline: false }]
+      : []),
   ].map((f) => ({ ...f, value: clip(f.value, FIELD_LIMIT) }));
 
   // Le lien ouvre le plan avec la même stratégie (paramètre omis pour la stratégie par défaut).
