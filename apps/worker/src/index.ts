@@ -38,7 +38,7 @@ async function main() {
       if (r.plan) {
         console.log(r.plan.commands.join('\n') || '(rien à faire)');
         console.log(
-          `\nGain : +${Math.round(r.plan.gain.points)} points, +${r.plan.gain.expected.toFixed(1)} espérés`,
+          `\nGain : ${r.plan.gain.points > 0 ? '+' : ''}${Math.round(r.plan.gain.points)} points, +${r.plan.gain.expected.toFixed(1)} espérés`,
         );
         for (const line of r.plan.advice) console.log(`• ${line}`);
       }

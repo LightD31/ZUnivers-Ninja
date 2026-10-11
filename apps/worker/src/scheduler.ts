@@ -53,7 +53,7 @@ export async function runTick(
           : {}),
       });
       logger.info(
-        `${user} : ${plan.commands.length} commandes, +${Math.round(plan.gain.points)} points${changed ? '' : ' (inchangé)'}${notified ? ', notifié' : ''}`,
+        `${user} : ${plan.commands.length} commandes, ${plan.gain.points > 0 ? '+' : ''}${Math.round(plan.gain.points)} points${changed ? '' : ' (inchangé)'}${notified ? ', notifié' : ''}`,
       );
       results.push({ user, plan, notified });
     } catch (error) {

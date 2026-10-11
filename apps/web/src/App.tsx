@@ -8,7 +8,7 @@ import { SearchForm } from './components/SearchForm';
 import { SettingsDrawer } from './components/SettingsDrawer';
 import { Summary } from './components/Summary';
 import { fetchPlan, PlanError, STANDALONE } from './lib/api';
-import { fmt, fmt1, formatTime } from './lib/format';
+import { fmt, fmt1, formatTime, signed } from './lib/format';
 import { loadSettings, saveSettings, type Settings } from './lib/settings';
 import { load, save } from './lib/storage';
 
@@ -305,7 +305,7 @@ function PlayerBanner({
   loading: boolean;
 }) {
   const tiles = [
-    { label: 'Points gagnés', value: `+${fmt(plan.gain.points)}`, accent: true },
+    { label: 'Points gagnés', value: signed(plan.gain.points), accent: plan.gain.points > 0 },
     {
       label: 'Gain espéré',
       value: plan.gain.expected > 0.05 ? `≈ +${fmt1(plan.gain.expected)}` : '—',

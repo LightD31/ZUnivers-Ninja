@@ -1,7 +1,7 @@
 import type { Currency, PlanResult, StepGroup } from '@zuninja/core';
 import { CircleCheck } from 'lucide-react';
 import { CURRENCY_DOT, CURRENCY_SHORT, KIND_ICON, KIND_TINT } from '../lib/game';
-import { fmt1, signed } from '../lib/format';
+import { signed, signed1 } from '../lib/format';
 import { CardChip, CardThumb } from './CardChip';
 import { CopyButton } from './CopyButton';
 
@@ -50,7 +50,7 @@ function GainBadge({ group }: { group: StepGroup }) {
   return (
     <span
       className={`shrink-0 rounded px-2 py-0.5 text-xs font-semibold tabular-nums ${
-        group.random ? 'bg-white/[0.08] text-white/75' : 'bg-zu-500 text-white'
+        group.random || group.gain < 0 ? 'bg-white/[0.08] text-white/75' : 'bg-zu-500 text-white'
       }`}
       title={
         group.random
@@ -58,7 +58,8 @@ function GainBadge({ group }: { group: StepGroup }) {
           : 'Gain de valeur (points de collection + monnaies)'
       }
     >
-      {group.random ? '≈ ' : ''}+{fmt1(group.gain)}
+      {group.random ? '≈ ' : ''}
+      {signed1(group.gain)}
     </span>
   );
 }

@@ -15,6 +15,7 @@ const DESCRIPTION_LIMIT = 4096;
 const FIELD_LIMIT = 1024;
 
 const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR');
+const signed = (n: number) => `${Math.round(n) > 0 ? '+' : ''}${fmt(n)}`;
 const clip = (s: string, max: number) => (s.length <= max ? s : `${s.slice(0, max - 1)}…`);
 
 export interface DiscordOptions {
@@ -61,7 +62,7 @@ export function buildDiscordMessage(
   const fields = [
     {
       name: 'Gain',
-      value: `+${fmt(plan.gain.points)} points${plan.gain.expected > 0.5 ? ` (+${fmt(plan.gain.expected)} espérés)` : ''}`,
+      value: `${signed(plan.gain.points)} points${plan.gain.expected > 0.5 ? ` (+${fmt(plan.gain.expected)} espérés)` : ''}`,
       inline: true,
     },
     ...(money.length ? [{ name: 'Monnaies', value: money.join('\n'), inline: true }] : []),
