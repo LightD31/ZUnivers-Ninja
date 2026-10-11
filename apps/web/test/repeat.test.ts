@@ -12,6 +12,7 @@ const group = (command: string, overrides: Partial<StepGroup> = {}): StepGroup =
   random: true,
   auto: false,
   balanceDelta: { balance: -1000 },
+  achievements: [],
   size: 1,
   ...overrides,
 });

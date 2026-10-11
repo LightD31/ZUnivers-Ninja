@@ -54,6 +54,8 @@ export interface PlanStep {
   random: boolean;
   auto: boolean;
   balanceDelta: Partial<Balances>;
+  /** Succès débloqués par cette étape (noms). */
+  achievements: string[];
 }
 
 export interface Snapshot {
@@ -232,7 +234,7 @@ export function commandLine(kind: ActionKind, args: string): string {
   return `/${COMMAND[kind]} ${option ? `${option}:` : ''}${args}`;
 }
 
-function describe(ctx: Context, step: Step): PlanStep {
+function describe(ctx: Context, step: Step, achievements: string[]): PlanStep {
   const action = step.action;
   const base = {
     kind: action.kind,
@@ -241,6 +243,7 @@ function describe(ctx: Context, step: Step): PlanStep {
     auto: step.auto,
     balanceDelta: step.balanceDelta,
     detail: step.note ?? null,
+    achievements,
   };
   const make = (
     cards: PlanCard[],
@@ -301,6 +304,8 @@ export interface StepGroup {
   random: boolean;
   auto: boolean;
   balanceDelta: Partial<Balances>;
+  /** Succès débloqués par ces étapes (noms). */
+  achievements: string[];
   /** Nombre d'actions élémentaires regroupées. */
   size: number;
 }
@@ -377,6 +382,7 @@ export function groupSteps(steps: PlanStep[]): StepGroup[] {
     let balanceDelta: Partial<Balances> = {};
     let size = 0;
     let auto = true;
+    const achievements: string[] = [];
     while (i < steps.length && steps[i]!.kind === step.kind) {
       const current = steps[i]!;
       for (const c of current.cards) {
@@ -387,6 +393,7 @@ export function groupSteps(steps: PlanStep[]): StepGroup[] {
       gain += current.gain;
       balanceDelta = sumDelta(balanceDelta, current.balanceDelta);
       auto &&= current.auto;
+      achievements.push(...current.achievements);
       size++;
       i++;
     }
@@ -404,6 +411,7 @@ export function groupSteps(steps: PlanStep[]): StepGroup[] {
       random: false,
       auto,
       balanceDelta,
+      achievements,
       size,
     });
   }
@@ -592,7 +600,11 @@ function buildInsights(ctx: Context, state: State): Insights {
 }
 
 /** Rejoue un plan depuis l'état initial pour vérifier qu'il est valide. */
-export function replay(ctx: Context, actions: Action[]): State {
+export function replay(
+  ctx: Context,
+  actions: Action[],
+  onStep?: (before: State, after: State) => void,
+): State {
   let state = initialState(ctx);
   for (const action of actions) {
     const applied = applyAction(ctx, state, action);
@@ -600,6 +612,7 @@ export function replay(ctx: Context, actions: Action[]): State {
     for (const [c, v] of Object.entries(applied.state.balances)) {
       if (v < 0) throw new Error(`Plan invalide : ${c} négatif après ${JSON.stringify(action)}`);
     }
+    onStep?.(state, applied.state);
     state = applied.state;
   }
   return state;
@@ -623,13 +636,21 @@ export function createPlan({
   const ctx = buildContext(catalog, player, now, resolveOptions(options));
   const { best, explored, timedOut } = search(ctx);
   const steps = sortInvocations(nodeSteps(best));
+  // Succès débloqués à chaque étape, pour les signaler sur la commande qui les obtient.
+  const unlocked: string[][] = [];
   const finalState = replay(
     ctx,
     steps.map((s) => s.action),
+    (from, to) =>
+      unlocked.push(
+        ctx.achievements
+          .filter((a, i) => from.achievements[i]! < a.max && to.achievements[i]! >= a.max)
+          .map((a) => a.name),
+      ),
   );
   const before = initialState(ctx);
 
-  const planSteps = steps.map((s) => describe(ctx, s));
+  const planSteps = steps.map((s, i) => describe(ctx, s, unlocked[i] ?? []));
   const groups = groupSteps(planSteps);
   const commands = groups.map((g) => g.command);
   const afterSnapshot = snapshot(ctx, finalState);

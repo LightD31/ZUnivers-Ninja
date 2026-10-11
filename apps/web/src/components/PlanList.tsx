@@ -1,5 +1,5 @@
 import type { Currency, PlanResult, StepGroup } from '@zuninja/core';
-import { CircleCheck } from 'lucide-react';
+import { CircleCheck, Trophy } from 'lucide-react';
 import { CURRENCY_DOT, CURRENCY_SHORT, KIND_ICON, KIND_TINT } from '../lib/game';
 import { signed, signed1 } from '../lib/format';
 import { collapseRepeats } from '../lib/repeat';
@@ -122,6 +122,12 @@ export function PlanList({ plan }: { plan: PlanResult }) {
                       )}
                     </p>
                     {group.detail && <p className="mt-0.5 text-xs text-white/60">{group.detail}</p>}
+                    {group.achievements.length > 0 && (
+                      <p className="mt-1 flex items-start gap-1.5 text-xs font-medium text-gold">
+                        <Trophy className="mt-px size-3.5 shrink-0" />
+                        <span>Succès débloqué : {group.achievements.join(', ')}</span>
+                      </p>
+                    )}
                   </div>
                   <GainBadge group={group} />
                 </div>
