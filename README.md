@@ -30,7 +30,7 @@ La v2 est une réécriture complète : TypeScript, aucune base de données, une 
   - le plan pas à pas, avec la commande prête à copier et les visuels des cartes ;
   - l'évolution des monnaies et de la collection, les défis et l'état du Vortex ;
   - les fusions à compléter et les cartes manquantes les plus rentables ;
-  - des réglages du planificateur ajustables, dont la stratégie.
+  - le choix de la stratégie sous la recherche, et des réglages avancés du planificateur.
 - **Stratégies** selon ta façon de jouer : Équilibré, Prudent, Épargne, Vortex, Collectionneur ou
   Échangeur (voir [Stratégies](#stratégies)).
 - **Notifications Discord** : le plan n'est envoyé que s'il a changé depuis le dernier envoi. Un
@@ -151,7 +151,7 @@ Le bot interroge Ninja et poste lui-même dans son salon. Dans ce cas, laisse `Z
 
 ## Stratégies
 
-Une stratégie est un préréglage du planificateur. Choisis-la dans les réglages de l'interface, avec
+Une stratégie est un préréglage du planificateur. Choisis-la sous la recherche de l'interface, avec
 `?strategy=` dans l'API ou dans le lien de l'interface (`/?u=pseudo&strategy=prudent`), ou par
 joueur dans `ZU_USERS`.
 
