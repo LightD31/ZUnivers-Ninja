@@ -196,23 +196,25 @@ function cardRef(c: PlanCard, kind?: ActionKind): string {
 }
 
 /**
- * Option nommée de chaque commande Discord, avec l'espacement copié depuis Discord : collée telle
- * quelle (`/im  évènement:chroma`, `/recyclage carte:1001 + 1002`), une commande remplit
- * directement son option. `/journa`, `/bonus` et `/as` n'en ont pas.
+ * Option nommée de chaque commande Discord : collée telle quelle (`/im évènement:chroma`,
+ * `/recyclage carte:1001 + 1002`), une commande remplit directement son option. `/journa`,
+ * `/bonus` et `/as` n'en ont pas.
  */
 const OPTION: Partial<Record<ActionKind, string>> = {
-  invoke: '  évènement:',
-  recycle: ' carte:',
-  craft: ' carte:',
-  enchant: ' carte:',
-  fusion: ' carte:',
-  constellation: ' carte:',
-  evolution: ' carte:',
+  invoke: 'évènement',
+  recycle: 'carte',
+  craft: 'carte',
+  enchant: 'carte',
+  fusion: 'carte',
+  constellation: 'carte',
+  evolution: 'carte',
 };
 
-/** Ligne de commande Discord, ou `/commande` seule sans argument. */
+/** Ligne de commande Discord (`/commande option:valeur`), ou `/commande` seule sans argument. */
 export function commandLine(kind: ActionKind, args: string): string {
-  return args ? `/${COMMAND[kind]}${OPTION[kind] ?? ' '}${args}` : `/${COMMAND[kind]}`;
+  if (!args) return `/${COMMAND[kind]}`;
+  const option = OPTION[kind];
+  return `/${COMMAND[kind]} ${option ? `${option}:` : ''}${args}`;
 }
 
 function describe(ctx: Context, step: Step): PlanStep {

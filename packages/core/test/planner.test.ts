@@ -274,7 +274,7 @@ describe('cas synthétiques', () => {
   });
 
   it("nomme l'option des invocations pour qu'un copier-coller dans Discord la remplisse", () => {
-    expect(commandLine('invoke', 'chroma')).toBe('/im  évènement:chroma');
+    expect(commandLine('invoke', 'chroma')).toBe('/im évènement:chroma');
     expect(commandLine('invoke', '')).toBe('/im');
     expect(commandLine('recycle', '1001 + 1002*')).toBe('/recyclage carte:1001 + 1002*');
     expect(commandLine('enchant', '1023')).toBe('/enchantement carte:1023');
@@ -284,7 +284,7 @@ describe('cas synthétiques', () => {
     for (const c of createPlan({ catalog, player, now: NOW }).commands.filter((c) =>
       c.startsWith('/im'),
     ))
-      expect(c).toMatch(/^\/im( {2}évènement:\S.*)?$/);
+      expect(c).toMatch(/^\/im( évènement:\S.*)?$/);
   });
 
   it('respecte keepExtra pour les échanges', () => {
