@@ -175,6 +175,18 @@ export interface Challenge {
   action: ChallengeAction;
 }
 
+/** Succès pas encore obtenu. Le planificateur en déduit l'objectif depuis la description. */
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  /** Points de succès, comptés dans le classement général. */
+  score: number;
+  rewardLoreDust: number;
+  current: number;
+  max: number;
+}
+
 export interface LootDay {
   date: string;
   daily: number;
@@ -193,6 +205,8 @@ export interface Player {
   corporation: { id: string; name: string; bonuses: Record<string, number> } | null;
   inventory: Record<CardKey, OwnedCard>;
   challenges: Challenge[];
+  /** Succès en cours (vide si l'API ne les fournit pas). */
+  achievements: Achievement[];
   /** Historique des récompenses, trié par date croissante. */
   loot: LootDay[];
   lootStreak: number;

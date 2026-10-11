@@ -227,3 +227,29 @@ export const CorporationSchema = z.looseObject({
     .transform((v) => v ?? []),
 });
 export type ApiCorporation = z.infer<typeof CorporationSchema>;
+
+/** `/public/achievement/{pseudo}/category` : catégories de succès et progression globale. */
+export const AchievementCategorySchema = z.looseObject({
+  id: z.string(),
+  name: z.string().default(''),
+  doneCount: num.default(0),
+  totalCount: num.default(0),
+});
+export const AchievementCategoriesSchema = z.array(AchievementCategorySchema);
+export type ApiAchievementCategory = z.infer<typeof AchievementCategorySchema>;
+
+/** `/public/achievement/{pseudo}/{catégorie}` : un succès, obtenu (`date`) ou en cours. */
+export const AchievementEntrySchema = z.looseObject({
+  /** Date d'obtention, absente tant que le succès n'est pas obtenu. */
+  date: z.string().nullish(),
+  achievement: z.looseObject({
+    id: z.string(),
+    name: z.string().default(''),
+    description: z.string().default(''),
+    score: num.default(0),
+    rewardLoreDust: num.nullish(),
+  }),
+  progress: z.looseObject({ type: z.string().nullish(), current: num, max: num }).nullish(),
+});
+export const AchievementEntriesSchema = z.array(AchievementEntrySchema);
+export type ApiAchievementEntry = z.infer<typeof AchievementEntrySchema>;

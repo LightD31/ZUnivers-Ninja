@@ -76,6 +76,18 @@ export interface ChallengeSummary {
   plannable: boolean;
 }
 
+export interface AchievementSummary {
+  name: string;
+  description: string;
+  before: number;
+  after: number;
+  max: number;
+  /** Points de succès (classement général). */
+  score: number;
+  /** Poudre créatrice offerte. */
+  reward: number;
+}
+
 export interface FusionInsight {
   result: PlanCard;
   inputs: { card: PlanCard; have: number; need: number }[];
@@ -119,8 +131,11 @@ export interface PlanResult {
   commands: string[];
   before: Snapshot;
   after: Snapshot;
-  gain: { points: number; expected: number; value: number };
+  /** `achievements` : points des succès obtenus par le plan. */
+  gain: { points: number; expected: number; value: number; achievements: number };
   challenges: ChallengeSummary[];
+  /** Succès que le plan fait progresser, puis les plus proches d'être obtenus. */
+  achievements: AchievementSummary[];
   advice: string[];
   season: {
     name: string;
@@ -506,6 +521,28 @@ function buildAdvice(ctx: Context, before: State, after: State): string[] {
 }
 
 const MISSING_LIMIT = 40;
+/** Succès non touchés par le plan affichés en plus, les plus proches d'être obtenus. */
+const ACHIEVEMENT_NEAR_LIMIT = 3;
+
+function buildAchievements(ctx: Context, finalState: State): AchievementSummary[] {
+  const all = ctx.achievements.map((goal, i) => ({
+    name: goal.name,
+    description: goal.description,
+    before: goal.current,
+    after: finalState.achievements[i] ?? goal.current,
+    max: goal.max,
+    score: goal.score,
+    reward: goal.rewardLoreDust,
+  }));
+  const progressed = all
+    .filter((a) => a.after > a.before)
+    .sort((a, b) => Number(b.after >= b.max) - Number(a.after >= a.max) || b.score - a.score);
+  const near = all
+    .filter((a) => a.after === a.before)
+    .sort((a, b) => a.max - a.after - (b.max - b.after) || b.score - a.score)
+    .slice(0, ACHIEVEMENT_NEAR_LIMIT);
+  return [...progressed, ...near];
+}
 
 function buildInsights(ctx: Context, state: State): Insights {
   const keep = 1 + ctx.options.keepExtra;
@@ -644,8 +681,10 @@ export function createPlan({
       points: afterSnapshot.points - beforeSnapshot.points,
       expected: finalState.ev,
       value: stateValue(ctx, finalState) - stateValue(ctx, before),
+      achievements: finalState.achievementPoints,
     },
     challenges,
+    achievements: buildAchievements(ctx, finalState),
     advice: buildAdvice(ctx, before, finalState),
     insights: buildInsights(ctx, finalState),
     season: season

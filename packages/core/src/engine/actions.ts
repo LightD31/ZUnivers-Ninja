@@ -23,6 +23,7 @@ import {
   fork,
   getCard,
   pay,
+  progressAchievements,
   progressChallenges,
   putCard,
   type State,
@@ -140,6 +141,12 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
         }
       }
       progressChallenges(s, 'recycle', recycled);
+      progressAchievements(
+        ctx,
+        s,
+        'recycle',
+        action.cards.reduce((n, c) => n + c.count, 0),
+      );
       return { state: s, touched: action.cards.map((c) => c.itemId) };
     }
 
@@ -194,6 +201,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
         addCopies(ctx, s, input.itemId, action.shiny, -input.quantity);
       addCopies(ctx, s, result.id, action.shiny, 1);
       progressChallenges(s, 'fusion', 1);
+      progressAchievements(ctx, s, 'fusion', 1);
       return { state: s, touched: [result.id, ...fusion.inputs.map((i) => i.itemId)] };
     }
 
@@ -252,6 +260,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       s.ev += ev;
       s.expectedNewCards += newCards;
       progressChallenges(s, 'ascension', 1);
+      progressAchievements(ctx, s, 'ascension', 1);
       return {
         state: s,
         touched: [],

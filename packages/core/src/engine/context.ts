@@ -9,6 +9,7 @@ import {
   type RarityConfig,
   type Shiny,
 } from '../model/types';
+import { resolveAchievements, type AchievementGoal } from './achievements';
 import { DEFAULT_STRATEGY, STRATEGIES, isStrategy, type StrategyId } from './strategies';
 
 export interface PlannerOptions {
@@ -126,6 +127,10 @@ export interface Context {
   corporation: { loot: number; recycle: Partial<Record<Currency, number>> };
   /** Toutes les cartes connues, triées par numéro (ordre stable pour le déterminisme). */
   itemList: Item[];
+  /** Succès que le planificateur sait faire progresser. */
+  achievements: AchievementGoal[];
+  /** Succès de collection concernés par chaque carte (index dans `achievements`). */
+  achievementsByItem: Map<string, { index: number; shiny: Shiny | null }[]>;
 }
 
 export function buildContext(
@@ -166,6 +171,19 @@ export function buildContext(
     },
   };
 
+  const itemList = Object.values(catalog.items).sort(
+    (a, b) => a.identifier - b.identifier || a.id.localeCompare(b.id),
+  );
+  const achievements = resolveAchievements(catalog, player, itemList);
+  const achievementsByItem = new Map<string, { index: number; shiny: Shiny | null }[]>();
+  achievements.forEach((goal, index) => {
+    for (const card of goal.cards ?? []) {
+      const list = achievementsByItem.get(card.itemId) ?? [];
+      list.push({ index, shiny: card.shiny });
+      achievementsByItem.set(card.itemId, list);
+    }
+  });
+
   return {
     catalog,
     player,
@@ -177,9 +195,9 @@ export function buildContext(
     forgeablePacks,
     features,
     corporation,
-    itemList: Object.values(catalog.items).sort(
-      (a, b) => a.identifier - b.identifier || a.id.localeCompare(b.id),
-    ),
+    itemList,
+    achievements,
+    achievementsByItem,
   };
 }
 

@@ -1,4 +1,5 @@
 import type {
+  ApiAchievementEntry,
   ApiChallenge,
   ApiCorporation,
   ApiEvent,
@@ -19,6 +20,7 @@ import {
   CLASSIC_PACK_SLUG,
   STAR_RARITY,
   cardKey,
+  type Achievement,
   type Catalog,
   type Challenge,
   type ChallengeAction,
@@ -210,6 +212,25 @@ export function normalizeChallenge(raw: ApiChallenge): Challenge {
   };
 }
 
+/** Succès pas encore obtenus (sans date d'obtention). */
+export function normalizeAchievements(raw: ApiAchievementEntry[]): Achievement[] {
+  return raw
+    .filter((e) => !e.date)
+    .map((e) => {
+      const progress = e.progress ?? { current: 0, max: 1 };
+      const max = Math.max(1, progress.max);
+      return {
+        id: e.achievement.id,
+        name: e.achievement.name,
+        description: e.achievement.description,
+        score: e.achievement.score,
+        rewardLoreDust: e.achievement.rewardLoreDust ?? 0,
+        current: Math.min(Math.max(0, progress.current), max),
+        max,
+      };
+    });
+}
+
 /**
  * Niveau d'une carte Constellation. L'API compte à rebours : `upgradeLevel` 1 est le niveau
  * maximum (égal à la rareté), `upgradeLevel` = rareté le premier niveau. C'est le calcul que fait
@@ -255,6 +276,8 @@ export interface RawPlayer {
   corporation: ApiCorporation | null;
   /** Facultatif : absent des anciens instantanés. */
   overview?: ApiUserOverview | null;
+  /** Facultatif : absent des anciens instantanés. */
+  achievements?: ApiAchievementEntry[] | null;
 }
 
 const FINAL_EVOLUTION_SCORE = 600;
@@ -289,6 +312,7 @@ export function normalizePlayer(raw: RawPlayer, ruleSet = 'NORMAL'): Player {
         : null,
     inventory: normalizeInventory(raw.inventory),
     challenges: raw.challenges.map(normalizeChallenge),
+    achievements: normalizeAchievements(raw.achievements ?? []),
     loot: normalizeLoot(raw.loot),
     lootStreak: u.currentLootStreak,
     tower: currentTower

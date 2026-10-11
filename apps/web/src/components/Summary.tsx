@@ -1,5 +1,5 @@
 import { CURRENCY_LABEL, type Currency, type PlanResult, type Shiny } from '@zuninja/core';
-import { Lightbulb, Mountain, Target } from 'lucide-react';
+import { Lightbulb, Mountain, Target, Trophy } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { CURRENCY_DOT, SHINY_BAR, SHINY_NAME } from '../lib/game';
 import { fmt, formatDate, pct, signed } from '../lib/format';
@@ -149,6 +149,36 @@ export function Summary({ plan }: { plan: PlanResult }) {
                 <Progress before={c.before} after={c.after} total={c.max} bar="bg-zu-500" />
                 <p className="text-xs text-white/60">
                   +{c.reward} poudre{!c.plannable && c.after < c.max ? ' · à faire toi-même' : ''}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {plan.achievements.length > 0 && (
+        <Section title="Succès" icon={<Trophy className="size-3.5" />}>
+          {plan.gain.achievements > 0 && (
+            <p className="mb-3 text-sm">
+              Le plan rapporte{' '}
+              <span className="font-semibold text-zu-400">{signed(plan.gain.achievements)}</span>{' '}
+              points de succès.
+            </p>
+          )}
+          <ul className="space-y-3 text-sm">
+            {plan.achievements.map((a, i) => (
+              <li key={i} className="space-y-1.5">
+                <div className="flex items-baseline gap-2">
+                  <span className={a.after >= a.max ? 'text-white/45 line-through' : ''}>
+                    {a.description}
+                  </span>
+                  <span className="ml-auto shrink-0 font-mono text-xs tabular-nums">
+                    {a.after}/{a.max}
+                  </span>
+                </div>
+                <Progress before={a.before} after={a.after} total={a.max} bar="bg-gold" />
+                <p className="text-xs text-white/60">
+                  +{fmt(a.score)} points{a.reward > 0 ? ` · +${fmt(a.reward)} poudre` : ''}
                 </p>
               </li>
             ))}

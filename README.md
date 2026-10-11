@@ -25,10 +25,12 @@ La v2 est une réécriture complète : TypeScript, aucune base de données, une 
   - fusions, y compris quand il faut d'abord créer un composant manquant ;
   - constellations et carte Évolution ;
   - invocations et ascensions, estimées en espérance à partir des vrais taux de drop ;
-  - défis de la semaine.
+  - défis de la semaine ;
+  - succès : collections (toutes les cartes d'une rareté, d'un pack, toutes les constellations…)
+    et compteurs (recyclages, fusions, ascension du Vortex en cours).
 - **Interface web** :
   - le plan pas à pas, avec la commande prête à copier et les visuels des cartes ;
-  - l'évolution des monnaies et de la collection, les défis et l'état du Vortex ;
+  - l'évolution des monnaies et de la collection, les défis, les succès et l'état du Vortex ;
   - les fusions à compléter et les cartes manquantes les plus rentables ;
   - le choix de la stratégie sous la recherche, et des réglages avancés du planificateur.
 - **Stratégies** selon ta façon de jouer : Équilibré, Prudent, Épargne, Vortex, Collectionneur ou
@@ -173,6 +175,8 @@ Les réglages explicites l'emportent toujours sur la stratégie : avec
 1. **Normalisation.** Les données de l'API (cartes, fusions, config de recyclage, évènements,
    Vortex, inventaire, défis…) sont converties en un modèle simple. Une carte Constellation est
    une ligne distincte de l'inventaire : elle ne compte jamais comme un exemplaire utilisable.
+   L'API ne décrit un succès que par son texte : le planificateur en déduit les cartes visées, et
+   ne garde le succès que si ces cartes redonnent exactement la progression affichée par l'API.
 2. **Réserve.** Pour chaque carte, le planificateur calcule les exemplaires à protéger :
    - 1 exemplaire gardé ;
    - ceux nécessaires aux fusions encore à faire ;
@@ -186,13 +190,16 @@ Les réglages explicites l'emportent toujours sur la stratégie : avec
 4. **Recherche en faisceau** sur les dépenses (création, enchantement, fusion à compléter,
    invocation, ascension, évolution). À chaque étape, les meilleurs états sont étendus avec leurs
    actions les plus prometteuses. Un état vaut :
-   `points de collection + points espérés des tirages + Σ monnaies × poids`.
+   `points de collection + points de succès + points espérés des tirages + Σ monnaies × poids`.
    Selon la stratégie, les points espérés ne comptent pas (Prudent) ou chaque carte nouvelle rapporte
    un bonus (Collectionneur).
    Pour comparer les plans en cours, le faisceau compte aussi les monnaies restantes à leur valeur
    d'opportunité : ce que rapporteraient les meilleures dépenses possibles avec elles. Sans ça, une
    grosse dépense peu rentable (une fusion qui vide la poudre) éliminerait des plans qui
    utilisent mieux le même budget. Le plan final reste choisi sur la valeur ci-dessus.
+   Un succès rapporte beaucoup de points d'un coup, ce qui peut aussi attirer tout le faisceau vers
+   un mauvais plan : la recherche est donc faite avec et sans les succès, et le meilleur des deux
+   plans est gardé. Tenir compte des succès ne donne ainsi jamais un plan moins bon.
    Passé `PLANNER_TIME_LIMIT_SECONDS`, la recherche continue en glouton depuis le meilleur état :
    le plan reste complet, et l'interface signale qu'il a été écourté.
 5. **Validation.** Le plan retenu est rejoué depuis l'état de départ. Une action impossible ou une

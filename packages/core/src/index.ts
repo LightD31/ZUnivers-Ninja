@@ -24,6 +24,12 @@ export {
   type StrategyId,
 } from './engine/strategies';
 export { initialState, stateValue, type State } from './engine/state';
+export {
+  resolveAchievements,
+  type AchievementGoal,
+  type AchievementCounter,
+  type GoalCard,
+} from './engine/achievements';
 export { applyAction, actionKey, type Action, type ActionKind } from './engine/actions';
 export {
   search,
@@ -46,6 +52,7 @@ export {
   type PlanCard,
   type Snapshot,
   type ChallengeSummary,
+  type AchievementSummary,
   type Insights,
   type FusionInsight,
   type MissingCard,
