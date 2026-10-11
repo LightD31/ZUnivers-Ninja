@@ -13,7 +13,7 @@ import type { Config } from './config';
 import { logger } from './logger';
 
 export const VERSION = '2.0.0';
-const USER_AGENT = `ZUnivers-Ninja/${VERSION} (+https://github.com/alexpresso/zunivers-ninja)`;
+const USER_AGENT = `ZUnivers-Ninja/${VERSION} (+https://github.com/LightD31/ZUnivers-Ninja)`;
 const PLAN_CACHE_MS = 60_000;
 
 /** Limite le nombre de calculs simultanés (le planificateur occupe le CPU). */

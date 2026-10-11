@@ -425,7 +425,7 @@ function Footer({ plan }: { plan: PlanResult | null }) {
         <span>Projet communautaire, non affilié à ZUnivers.</span>
         <a
           className="hover:text-accent-500"
-          href="https://github.com/alexpresso/zunivers-ninja"
+          href="https://github.com/LightD31/ZUnivers-Ninja"
           target="_blank"
           rel="noreferrer"
         >

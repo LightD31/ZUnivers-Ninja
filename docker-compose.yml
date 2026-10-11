@@ -4,7 +4,7 @@
 #   3. Ouvre http://localhost:8080
 services:
   zunivers-ninja:
-    image: ghcr.io/alexpresso/zunivers-ninja:latest
+    image: ghcr.io/lightd31/zunivers-ninja:latest
     build: .
     container_name: zunivers-ninja
     restart: unless-stopped

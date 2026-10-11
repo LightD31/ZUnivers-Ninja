@@ -10,7 +10,7 @@ commandes à taper aujourd'hui. L'outil existe en interface web et en conseils a
 
 </div>
 
-> Projet communautaire, non affilié à ZUnivers.
+> Projet communautaire, non affilié à ZUnivers. Basé sur le ZUnivers Ninja original d'[AlexPresso](https://github.com/AlexPresso/ZUnivers-Ninja).
 
 ## Ce que fait la v2
 
@@ -41,8 +41,8 @@ La v2 est une réécriture complète : TypeScript, aucune base de données, une 
 ## Démarrage rapide (Docker)
 
 ```bash
-curl -O https://raw.githubusercontent.com/AlexPresso/ZUnivers-Ninja/main/docker-compose.yml
-curl -o .env https://raw.githubusercontent.com/AlexPresso/ZUnivers-Ninja/main/.env.example
+curl -O https://raw.githubusercontent.com/LightD31/ZUnivers-Ninja/main/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/LightD31/ZUnivers-Ninja/main/.env.example
 # Édite .env : au minimum ZU_USERS (et WEBHOOK_URL pour Discord)
 docker compose up -d
 ```

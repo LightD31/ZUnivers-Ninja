@@ -20,7 +20,7 @@ RUN pnpm test && pnpm build
 FROM ${NODE_IMAGE}
 LABEL org.opencontainers.image.title="ZUnivers Ninja" \
       org.opencontainers.image.description="Conseiller ZUnivers : interface web, API et notifications Discord" \
-      org.opencontainers.image.source="https://github.com/alexpresso/zunivers-ninja"
+      org.opencontainers.image.source="https://github.com/LightD31/ZUnivers-Ninja"
 ENV NODE_ENV=production \
     TZ=Europe/Paris \
     PORT=8080 \

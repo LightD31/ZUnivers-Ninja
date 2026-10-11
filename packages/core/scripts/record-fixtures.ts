@@ -38,7 +38,7 @@ function strip(value: unknown, key = ''): unknown {
   return value;
 }
 
-const client = createClient({ userAgent: 'github.com/alexpresso/zunivers-ninja (fixtures)' });
+const client = createClient({ userAgent: 'github.com/LightD31/ZUnivers-Ninja (fixtures)' });
 const catalog = await fetchRawCatalog(client);
 const player = await fetchRawPlayer(client, name);
 const write = (file: string, data: unknown) =>
