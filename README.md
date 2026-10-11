@@ -217,6 +217,12 @@ ZU_USERS=alexpresso DRY_RUN=1 pnpm --filter @zuninja/worker once   # un passage 
 pnpm fixtures     # réenregistre l'instantané de l'API utilisé par les tests
 ```
 
+**Publier une version** : crée une release GitHub avec un nouveau tag `vX.Y.Z` (ou
+`git tag vX.Y.Z && git push origin vX.Y.Z`). Le workflow `release.yml` publie alors l'image
+`ghcr.io/lightd31/zunivers-ninja` (`X.Y.Z`, `X.Y` et `latest`). La version affichée par
+`/health` vient du tag : aucun commit de changement de version n'est nécessaire. Hors image,
+elle vaut `dev`.
+
 Avec Docker : `docker compose -f docker-compose.dev.yml up`.
 
 ```
