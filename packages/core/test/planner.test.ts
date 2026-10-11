@@ -134,6 +134,7 @@ describe('cas synthétiques', () => {
       now: TEST_NOW,
     });
     expect(plan.commands).toEqual(['/constellation 3001 + 3001 + 3001', '/recyclage 3001 + 3001']);
+    expect(plan.groups[0]?.title).toBe('Constellations : 3 niveaux sur 1 carte');
   });
 
   it('complète une fusion en créant le composant manquant', () => {
