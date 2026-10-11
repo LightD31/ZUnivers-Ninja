@@ -157,6 +157,41 @@ describe('API HTTP', () => {
     expect((await res.json()).error).toMatch(/introuvable/);
   });
 
+  it('renvoie un message Discord prêt à poster', async () => {
+    const app = createApp(
+      fakeService(async () => plan),
+      null,
+      { ...options, webUrl: 'https://ninja.example' },
+    );
+    const res = await app.request('/api/plan/alexpresso/discord?mention=1');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.hash).toBe(plan.hash);
+    expect(body.empty).toBe(false);
+    expect(body.commandCount).toBe(plan.commands.length);
+    expect(body.content).toBe(`Conseils pour <@${plan.player.discordId}>`);
+    expect(body.embeds[0].url).toBe('https://ninja.example/?u=alexpresso');
+    expect(body.player.discordId).toBe(plan.player.discordId);
+  });
+
+  it.each(['/api/plan/alexpresso', '/api/plan/alexpresso/discord'])(
+    '%s répond 304 tant que le plan ne change pas',
+    async (path) => {
+      const app = createApp(
+        fakeService(async () => plan),
+        null,
+        options,
+      );
+      const first = await app.request(path);
+      const etag = first.headers.get('etag');
+      expect(etag).toBe(`W/"${plan.hash}"`);
+      const again = await app.request(path, { headers: { 'If-None-Match': etag! } });
+      expect(again.status).toBe(304);
+      const changed = await app.request(path, { headers: { 'If-None-Match': 'W/"autre"' } });
+      expect(changed.status).toBe(200);
+    },
+  );
+
   it('borne les paramètres du planificateur', () => {
     expect(
       parsePlannerQuery({ beamWidth: '0', branching: 'abc', keepExtra: '3', wLoreDust: '0.02' }),
