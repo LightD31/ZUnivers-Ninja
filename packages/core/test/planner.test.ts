@@ -209,6 +209,34 @@ describe('cas synthétiques', () => {
     }
   });
 
+  it('ignore les constellations quand le mode de jeu n’en a pas (régression Hardcore)', () => {
+    // Le Hardcore n'annonce pas UPGRADE. Les paires « enchantement + constellation » proposées
+    // quand même échouaient, gonflaient la valeur de la poudre et occupaient toutes les places
+    // de candidats : le plan ne créait plus rien. Les doublons restaient aussi réservés à des
+    // constellations impossibles, donc jamais recyclés.
+    const known = Array.from({ length: 20 }, (_, i) => makeItem(2001 + i));
+    const missing = Array.from({ length: 5 }, (_, i) => makeItem(3001 + i, { goldable: false }));
+    const plan = createPlan({
+      catalog: makeCatalog([...known, ...missing], {
+        settings: {
+          dailyReward: 1000,
+          weeklyReward: 1000,
+          dailyLoreDust: 10,
+          features: ['LOOT', 'CRAFT', 'RECYCLE', 'FUSION', 'INVOKE'],
+        },
+      }),
+      player: makePlayer({
+        balances: { balance: 0, loreDust: 1000, loreFragment: 0, upgradeDust: 0 },
+        inventory: Object.fromEntries(known.flatMap((c) => [owned(c.id, 0, 2), owned(c.id, 1, 1)])),
+      }),
+      now: TEST_NOW,
+    });
+    expect(plan.commands.some((c) => c.startsWith('/constellation'))).toBe(false);
+    // 20 doublons normaux recyclés (20 × 20 poudres) : 1 400 poudres, soit 2 créations à 500.
+    expect(plan.steps.filter((s) => s.kind === 'recycle').flatMap((s) => s.cards)).toHaveLength(20);
+    expect(plan.steps.filter((s) => s.kind === 'craft')).toHaveLength(2);
+  });
+
   it("n'invoque pas quand l'invocation n'apporte rien", () => {
     const a = makeItem(1001, {
       recyclable: false,

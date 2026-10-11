@@ -124,11 +124,18 @@ export function createClient(options: ClientOptions = {}) {
     return parsed.data;
   }
 
+  /** Ressource facultative : absente (204 ou 404) ou illisible, elle vaut `null`. */
   async function getOptional<S extends z.ZodType>(
     path: string,
     schema: S,
   ): Promise<z.output<S> | null> {
-    const data = await raw(path);
+    let data: unknown;
+    try {
+      data = await raw(path);
+    } catch (error) {
+      if (error instanceof ZuNotFoundError) return null;
+      throw error;
+    }
     if (data === null) return null;
     const parsed = schema.safeParse(data);
     return parsed.success ? parsed.data : null;
