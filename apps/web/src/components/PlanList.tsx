@@ -113,10 +113,11 @@ export function PlanList({ plan }: { plan: PlanResult }) {
                       {group.title}
                       {repeat > 1 && (
                         <span
-                          className="ml-2 text-lg leading-none font-bold text-zu-400 tabular-nums"
+                          className="ml-2 inline-block rounded bg-zu-500/15 px-2 py-0.5 align-[1px] text-xs font-semibold text-zu-400 tabular-nums"
                           title={`À taper ${repeat} fois d'affilée`}
                         >
-                          ×{repeat}
+                          <span className="font-mono">×</span>
+                          {repeat}
                         </span>
                       )}
                     </p>
