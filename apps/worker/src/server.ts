@@ -2,12 +2,17 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { serveStatic } from '@hono/node-server/serve-static';
 import {
+  DEFAULT_STRATEGY,
+  STRATEGIES,
+  STRATEGY_IDS,
+  isStrategy,
   ZuApiError,
   ZuNotFoundError,
   ZuSchemaError,
   type PlanResult,
   type PlannerOptionsInput,
   type RuleSet,
+  type StrategyId,
 } from '@zuninja/core';
 import { Hono, type Context } from 'hono';
 import { buildDiscordMessage } from './notifiers/discord';
@@ -18,6 +23,8 @@ import type { StateStore } from './store';
 
 export interface ServerOptions {
   ruleSet: RuleSet;
+  /** Stratégie par défaut du serveur (variable STRATEGY). */
+  strategy?: StrategyId | undefined;
   users: string[];
   webDir: string;
   webUrl?: string | undefined;
@@ -33,6 +40,7 @@ const clamp = (value: string | undefined, min: number, max: number): number | un
 /** Options du planificateur lues dans la requête, bornées pour éviter les abus. */
 export function parsePlannerQuery(query: Record<string, string | undefined>): PlannerOptionsInput {
   const options: PlannerOptionsInput = {};
+  if (isStrategy(query.strategy)) options.strategy = query.strategy;
   const beamWidth = clamp(query.beamWidth, 1, 64);
   const branching = clamp(query.branching, 1, 16);
   const keepExtra = clamp(query.keepExtra, 0, 10);
@@ -72,6 +80,12 @@ export function createApp(service: PlanService, store: StateStore | null, option
       users: options.users,
       cron: options.cron,
       webUrl: options.webUrl ?? null,
+      strategy: options.strategy ?? DEFAULT_STRATEGY,
+      strategies: STRATEGY_IDS.map((id) => ({
+        id,
+        label: STRATEGIES[id].label,
+        description: STRATEGIES[id].description,
+      })),
     }),
   );
 
@@ -81,6 +95,15 @@ export function createApp(service: PlanService, store: StateStore | null, option
     if (!user || user.length > 64) return c.json({ error: 'Pseudo invalide.' }, 400);
     const ruleSetParam = (c.req.query('ruleset') ?? options.ruleSet).toUpperCase();
     const ruleSet: RuleSet = ruleSetParam === 'HARDCORE' ? 'HARDCORE' : 'NORMAL';
+    const strategy = c.req.query('strategy');
+    if (strategy && !isStrategy(strategy)) {
+      return c.json(
+        {
+          error: `Stratégie « ${strategy} » inconnue. Valeurs possibles : ${STRATEGY_IDS.join(', ')}.`,
+        },
+        400,
+      );
+    }
     try {
       return await service.plan(user, ruleSet, parsePlannerQuery(c.req.query()), {
         fresh: c.req.query('fresh') === '1',
@@ -169,6 +192,7 @@ export function createApp(service: PlanService, store: StateStore | null, option
     return c.json({
       hash: plan.hash,
       generatedAt: plan.generatedAt,
+      strategy: plan.strategy,
       empty: plan.commands.length === 0,
       player: {
         name: plan.player.name,

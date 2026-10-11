@@ -33,6 +33,19 @@ describe('configuration', () => {
     expect(loadConfig({}).ruleSet).toBe('NORMAL');
   });
 
+  it('lit la stratégie par défaut et celle de chaque joueur', () => {
+    const config = loadConfig({ ZU_USERS: 'Alice:prudent, bob,carol:vortex', STRATEGY: 'epargne' });
+    expect(config.users).toEqual(['Alice', 'bob', 'carol']);
+    expect(config.strategies).toEqual({ alice: 'prudent', carol: 'vortex' });
+    expect(config.planner.strategy).toBe('epargne');
+    expect(loadConfig({}).planner.strategy).toBeUndefined();
+  });
+
+  it('refuse une stratégie inconnue', () => {
+    expect(() => loadConfig({ ZU_USERS: 'alice:yolo' })).toThrow(/stratégie « yolo » inconnue/);
+    expect(() => loadConfig({ STRATEGY: 'yolo' })).toThrow(/Configuration invalide/);
+  });
+
   it('borne le planificateur par défaut', () => {
     expect(loadConfig({})).toMatchObject({ threads: 2, queueLimit: 4, timeLimitMs: 20_000 });
     expect(loadConfig({ PLANNER_TIME_LIMIT_SECONDS: '0' }).timeLimitMs).toBe(0);
@@ -52,6 +65,7 @@ describe('message Discord', () => {
     expect(message.attachment).toBeNull();
     expect(embed.description).toBe('```\n/journa\n/im\n```');
     expect(embed.url).toBe('https://ninja.example/?u=alexpresso');
+    expect((embed.footer as { text: string }).text).toMatch(/^Stratégie : Équilibré/);
     expect(message.payload.allowed_mentions).toEqual({ parse: [], users: [] });
   });
 
@@ -96,6 +110,24 @@ describe('passage planifié', () => {
     await runTick(service, store, [{ name: 'test', notify }], options);
     expect(notify).toHaveBeenCalledTimes(1);
     expect(store.user('AlexPresso').hash).toBe(plan.hash);
+  });
+
+  it('calcule chaque joueur avec sa stratégie', async () => {
+    const store = new StateStore(join(tmp(), 'state.json'));
+    const service = fakeService(async () => plan);
+    await runTick(service, store, [], {
+      users: ['Alice', 'bob'],
+      strategies: { alice: 'collectionneur' },
+      ruleSet: 'NORMAL',
+      dryRun: true,
+    });
+    expect(service.plan).toHaveBeenCalledWith(
+      'Alice',
+      'NORMAL',
+      { strategy: 'collectionneur' },
+      { fresh: true },
+    );
+    expect(service.plan).toHaveBeenCalledWith('bob', 'NORMAL', {}, { fresh: true });
   });
 
   it("enregistre l'erreur d'un joueur sans bloquer les autres", async () => {
@@ -150,6 +182,34 @@ describe('API HTTP', () => {
     );
   });
 
+  it('transmet la stratégie demandée et refuse une stratégie inconnue', async () => {
+    const service = fakeService(async () => plan);
+    const app = createApp(service, null, options);
+    const res = await app.request('/api/plan/alexpresso?strategy=vortex');
+    expect(res.status).toBe(200);
+    expect(service.plan).toHaveBeenCalledWith(
+      'alexpresso',
+      'NORMAL',
+      { strategy: 'vortex' },
+      { fresh: false, signal: expect.any(AbortSignal) },
+    );
+    const bad = await app.request('/api/plan/alexpresso?strategy=yolo');
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).error).toMatch(/inconnue/);
+    expect(service.plan).toHaveBeenCalledTimes(1);
+  });
+
+  it('liste les stratégies disponibles', async () => {
+    const app = createApp(
+      fakeService(async () => plan),
+      null,
+      { ...options, strategy: 'prudent' },
+    );
+    const body = await (await app.request('/api/config')).json();
+    expect(body.strategy).toBe('prudent');
+    expect(body.strategies.map((s: { id: string }) => s.id)).toContain('collectionneur');
+  });
+
   it('répond 503 quand le serveur est saturé', async () => {
     const app = createApp(
       fakeService(async () => {
@@ -200,6 +260,7 @@ describe('API HTTP', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.hash).toBe(plan.hash);
+    expect(body.strategy).toEqual({ id: 'equilibre', label: 'Équilibré' });
     expect(body.empty).toBe(false);
     expect(body.commandCount).toBe(plan.commands.length);
     expect(body.content).toBe(`Conseils pour <@${plan.player.discordId}>`);

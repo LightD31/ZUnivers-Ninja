@@ -335,6 +335,11 @@ function PlayerBanner({
           <p className="truncate text-sm text-white/60">
             @{plan.player.name}
             {plan.player.corporation && <> · {plan.player.corporation}</>}
+            {plan.strategy && (
+              <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-white/80 uppercase">
+                {plan.strategy.label}
+              </span>
+            )}
             {plan.ruleSet === 'HARDCORE' && (
               <span className="ml-2 rounded bg-danger px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-white uppercase">
                 Hardcore

@@ -29,6 +29,7 @@ import {
 } from './context';
 import { nodeSteps, search, type Step } from './planner';
 import { getCard, initialState, stateValue, type State } from './state';
+import { STRATEGIES, type StrategyId } from './strategies';
 
 export interface PlanCard {
   itemId: string;
@@ -101,6 +102,8 @@ export interface PlanResult {
   version: 1;
   generatedAt: string;
   ruleSet: string;
+  /** Stratégie utilisée pour calculer le plan. */
+  strategy: { id: StrategyId; label: string };
   player: {
     name: string;
     discordId: string | null;
@@ -566,6 +569,7 @@ export function createPlan({
     version: 1,
     generatedAt: now.toISOString(),
     ruleSet: catalog.ruleSet,
+    strategy: { id: ctx.options.strategy, label: STRATEGIES[ctx.options.strategy].label },
     player: {
       name: player.name,
       discordId: player.discordId,

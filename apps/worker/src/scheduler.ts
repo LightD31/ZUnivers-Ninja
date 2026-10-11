@@ -1,4 +1,4 @@
-import type { PlanResult, RuleSet } from '@zuninja/core';
+import type { PlanResult, RuleSet, StrategyId } from '@zuninja/core';
 import { logger } from './logger';
 import type { Notifier } from './notifiers/types';
 import type { PlanService } from './service';
@@ -8,6 +8,8 @@ export interface TickOptions {
   users: string[];
   ruleSet: RuleSet;
   dryRun: boolean;
+  /** Stratégie choisie par joueur (pseudo en minuscules), sinon celle du serveur. */
+  strategies?: Record<string, StrategyId>;
 }
 
 export interface TickResult {
@@ -31,7 +33,10 @@ export async function runTick(
   for (const user of options.users) {
     const now = new Date().toISOString();
     try {
-      const plan = await service.plan(user, options.ruleSet, {}, { fresh: true });
+      const strategy = options.strategies?.[user.toLowerCase()];
+      const plan = await service.plan(user, options.ruleSet, strategy ? { strategy } : {}, {
+        fresh: true,
+      });
       const previous = store.user(user);
       const changed = plan.commands.length > 0 && plan.hash !== previous.hash;
       let notified = false;
@@ -53,7 +58,7 @@ export async function runTick(
           : {}),
       });
       logger.info(
-        `${user} : ${plan.commands.length} commandes, ${plan.gain.points > 0 ? '+' : ''}${Math.round(plan.gain.points)} points${changed ? '' : ' (inchangé)'}${notified ? ', notifié' : ''}`,
+        `${user} (${plan.strategy.label}) : ${plan.commands.length} commandes, ${plan.gain.points > 0 ? '+' : ''}${Math.round(plan.gain.points)} points${changed ? '' : ' (inchangé)'}${notified ? ', notifié' : ''}`,
       );
       results.push({ user, plan, notified });
     } catch (error) {

@@ -15,6 +15,14 @@ export {
   type PlannerOptions,
   type PlannerOptionsInput,
 } from './engine/context';
+export {
+  STRATEGIES,
+  STRATEGY_IDS,
+  DEFAULT_STRATEGY,
+  isStrategy,
+  type Strategy,
+  type StrategyId,
+} from './engine/strategies';
 export { initialState, stateValue, type State } from './engine/state';
 export { applyAction, actionKey, type Action, type ActionKind } from './engine/actions';
 export {

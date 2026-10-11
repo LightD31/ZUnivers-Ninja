@@ -30,7 +30,9 @@ La v2 est une réécriture complète : TypeScript, aucune base de données, une 
   - le plan pas à pas, avec la commande prête à copier et les visuels des cartes ;
   - l'évolution des monnaies et de la collection, les défis et l'état du Vortex ;
   - les fusions à compléter et les cartes manquantes les plus rentables ;
-  - des réglages du planificateur ajustables.
+  - des réglages du planificateur ajustables, dont la stratégie.
+- **Stratégies** selon ta façon de jouer : Équilibré, Prudent, Épargne, Vortex, Collectionneur ou
+  Échangeur (voir [Stratégies](#stratégies)).
 - **Notifications Discord** : le plan n'est envoyé que s'il a changé depuis le dernier envoi. Un
   webhook JSON générique est aussi disponible pour tes propres intégrations.
 - **Robustesse** :
@@ -59,31 +61,34 @@ utilise un miroir :
 
 Toutes les variables sont facultatives, et documentées dans [`.env.example`](.env.example).
 
-| Variable                     | Défaut         | Rôle                                                                                                  |
-| ---------------------------- | -------------- | ----------------------------------------------------------------------------------------------------- |
-| `ZU_USERS`                   | —              | Pseudos Discord à conseiller automatiquement, séparés par des virgules. Vide = interface web seule.   |
-| `RULESET`                    | `NORMAL`       | Mode de jeu : `NORMAL` ou `HARDCORE`.                                                                 |
-| `CRON`                       | `*/30 * * * *` | Fréquence des conseils automatiques.                                                                  |
-| `TZ`                         | `Europe/Paris` | Fuseau du cron.                                                                                       |
-| `WEBHOOK_URL`                | —              | Webhook Discord où envoyer les conseils.                                                              |
-| `DISCORD_MENTION`            | `false`        | Mentionne le joueur dans le message.                                                                  |
-| `JSON_WEBHOOK_URL`           | —              | Reçoit le plan complet en JSON (remplace l'ancien système de plugins).                                |
-| `WEB_URL`                    | —              | URL publique de l'interface, utilisée pour les liens dans Discord.                                    |
-| `BEAM_WIDTH` / `BRANCHING`   | `16` / `6`     | Effort de recherche du planificateur.                                                                 |
-| `PLANNER_THREADS`            | `2`            | Threads de calcul : nombre de plans calculés en parallèle.                                            |
-| `PLANNER_QUEUE_LIMIT`        | `4`            | Calculs en attente au-delà desquels l'API répond `503`.                                               |
-| `PLANNER_TIME_LIMIT_SECONDS` | `20`           | Temps de recherche maximal par plan, ensuite la fin du plan est calculée en glouton (`0` = illimité). |
-| `KEEP_EXTRA`                 | `0`            | Exemplaires gardés en plus pour les échanges.                                                         |
-| `DRY_RUN`                    | `false`        | Calcule sans rien envoyer.                                                                            |
-| `PORT`                       | `8080`         | Port HTTP.                                                                                            |
+| Variable                     | Défaut         | Rôle                                                                                                                                                                               |
+| ---------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ZU_USERS`                   | —              | Pseudos Discord à conseiller automatiquement, séparés par des virgules. Vide = interface web seule. Ajoute `:stratégie` pour choisir celle d'un joueur (ex : `alice:prudent,bob`). |
+| `RULESET`                    | `NORMAL`       | Mode de jeu : `NORMAL` ou `HARDCORE`.                                                                                                                                              |
+| `STRATEGY`                   | `equilibre`    | Stratégie par défaut (voir [Stratégies](#stratégies)).                                                                                                                             |
+| `CRON`                       | `*/30 * * * *` | Fréquence des conseils automatiques.                                                                                                                                               |
+| `TZ`                         | `Europe/Paris` | Fuseau du cron.                                                                                                                                                                    |
+| `WEBHOOK_URL`                | —              | Webhook Discord où envoyer les conseils.                                                                                                                                           |
+| `DISCORD_MENTION`            | `false`        | Mentionne le joueur dans le message.                                                                                                                                               |
+| `JSON_WEBHOOK_URL`           | —              | Reçoit le plan complet en JSON (remplace l'ancien système de plugins).                                                                                                             |
+| `WEB_URL`                    | —              | URL publique de l'interface, utilisée pour les liens dans Discord.                                                                                                                 |
+| `BEAM_WIDTH` / `BRANCHING`   | `16` / `6`     | Effort de recherche du planificateur.                                                                                                                                              |
+| `PLANNER_THREADS`            | `2`            | Threads de calcul : nombre de plans calculés en parallèle.                                                                                                                         |
+| `PLANNER_QUEUE_LIMIT`        | `4`            | Calculs en attente au-delà desquels l'API répond `503`.                                                                                                                            |
+| `PLANNER_TIME_LIMIT_SECONDS` | `20`           | Temps de recherche maximal par plan, ensuite la fin du plan est calculée en glouton (`0` = illimité).                                                                              |
+| `KEEP_EXTRA`                 | `0`            | Exemplaires gardés en plus pour les échanges.                                                                                                                                      |
+| `DRY_RUN`                    | `false`        | Calcule sans rien envoyer.                                                                                                                                                         |
+| `PORT`                       | `8080`         | Port HTTP.                                                                                                                                                                         |
 
 ### API
 
 - `GET /api/plan/:pseudo` renvoie le plan complet en JSON. Paramètres facultatifs :
   - `ruleset` ;
+  - `strategy` (`equilibre`, `prudent`, `epargne`, `vortex`, `collectionneur` ou `echangeur`) ;
   - `beamWidth`, `branching` et `keepExtra` ;
   - `wBalance`, `wLoreDust`, `wLoreFragment` et `wUpgradeDust` ;
   - `fresh=1` pour ignorer le cache.
+- `GET /api/config` liste notamment les stratégies disponibles (`strategies`) et celle par défaut.
 - `GET /health` sert de healthcheck pour Docker et Kubernetes.
 - `GET /api/plan/:pseudo/discord` renvoie une version compacte pour les bots Discord :
   - le message prêt à poster (`content` et `embeds`) ;
@@ -140,6 +145,24 @@ Le bot interroge Ninja et poste lui-même dans son salon. Dans ce cas, laisse `Z
    Une commande `/ninja pseudo:` peut appeler la même route sans `If-None-Match` pour afficher
    le plan à la demande.
 
+## Stratégies
+
+Une stratégie est un préréglage du planificateur. Choisis-la dans les réglages de l'interface, avec
+`?strategy=` dans l'API, ou par joueur dans `ZU_USERS`.
+
+| Stratégie      | `strategy`       | Pour qui                                         | Ce qui change                                                  |
+| -------------- | ---------------- | ------------------------------------------------ | -------------------------------------------------------------- |
+| Équilibré      | `equilibre`      | Le plus de points, tirages compris (par défaut)  | —                                                              |
+| Prudent        | `prudent`        | Préfère les points garantis aux tirages          | Invocations et ascensions comptées pour moitié                 |
+| Épargne        | `epargne`        | Garde des monnaies pour un évènement ou un pack  | Monnaies valorisées × 15 : seules les grosses dépenses passent |
+| Vortex         | `vortex`         | Veut monter dans la tour d'Ascension             | Réputation valorisée × 50, poudre réservée aux `/as`           |
+| Collectionneur | `collectionneur` | Veut des cartes nouvelles plutôt que des étoiles | +25 points par carte jamais possédée                           |
+| Échangeur      | `echangeur`      | Échange avec d'autres joueurs                    | Garde 2 doublons de chaque carte                               |
+
+Les réglages explicites l'emportent toujours sur la stratégie : avec
+`?strategy=epargne&wBalance=0.002`, la ZUMonnaie garde sa valeur par défaut. Côté serveur,
+`KEEP_EXTRA`, `BEAM_WIDTH` et `BRANCHING` s'appliquent aussi par-dessus la stratégie.
+
 ## Comment fonctionne le planificateur
 
 1. **Normalisation.** Les données de l'API (cartes, fusions, config de recyclage, évènements,
@@ -159,6 +182,8 @@ Le bot interroge Ninja et poste lui-même dans son salon. Dans ce cas, laisse `Z
    invocation, ascension, évolution). À chaque étape, les meilleurs états sont étendus avec leurs
    actions les plus prometteuses. Un état vaut :
    `points de collection + points espérés des tirages + Σ monnaies × poids`.
+   Selon la stratégie, les points espérés sont réduits (Prudent) ou chaque carte nouvelle rapporte
+   un bonus (Collectionneur).
    Passé `PLANNER_TIME_LIMIT_SECONDS`, la recherche continue en glouton depuis le meilleur état :
    le plan reste complet, et l'interface signale qu'il a été écourté.
 5. **Validation.** Le plan retenu est rejoué depuis l'état de départ. Une action impossible ou une

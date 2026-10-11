@@ -8,7 +8,7 @@ import { getCard, initialState, stateValue, type State } from './state';
 
 export interface Step {
   action: Action;
-  /** Variation de la valeur (points + espérance + monnaies pondérées). */
+  /** Variation de la valeur (points + espérance + bonus de stratégie + monnaies pondérées). */
   gain: number;
   balanceDelta: Partial<Balances>;
   ev?: number;
@@ -175,6 +175,9 @@ function forgeLists(ctx: Context) {
 export function candidates(ctx: Context, state: State): Candidate[] {
   const out: Candidate[] = [];
   const w = ctx.options.weights;
+  // Bonus des cartes nouvelles et part de l'espérance retenue : mêmes termes que `stateValue`.
+  const bonus = ctx.options.newCardBonus;
+  const evFactor = ctx.options.evFactor;
   const push = (actions: Action[], gain: number, cost: Partial<Balances>) => {
     if (gain <= EPSILON || !affordable(state, cost)) return;
     out.push({ actions, gain, cost: weighted(ctx, cost), key: actions.map(actionKey).join('>') });
@@ -189,7 +192,11 @@ export function candidates(ctx: Context, state: State): Candidate[] {
       const price = { [currency]: cost };
       const normal = getCard(state, item.id, 0);
       if (normal.copies === 0) {
-        push([{ kind: 'craft', itemId: item.id }], item.scores[0] - cost * w[currency], price);
+        push(
+          [{ kind: 'craft', itemId: item.id }],
+          item.scores[0] + bonus - cost * w[currency],
+          price,
+        );
         continue;
       }
       const reserve = reserveFor(ctx, state, item.id, 0);
@@ -221,7 +228,7 @@ export function candidates(ctx: Context, state: State): Candidate[] {
             { kind: 'craft', itemId: item.id },
             { kind: 'enchant', itemId: item.id },
           ],
-          item.scores[1] - (cost + enchant) * w[currency],
+          item.scores[1] + bonus - (cost + enchant) * w[currency],
           { [currency]: cost + enchant },
         );
       }
@@ -234,12 +241,13 @@ export function candidates(ctx: Context, state: State): Candidate[] {
       if (normal.copies < 1) continue;
       const cost = enchantCost(ctx, item)!;
       const currency = forgeCurrency(item);
-      const lostNormal = normal.copies === 1 ? item.scores[0] : 0;
+      // Enchanter le dernier exemplaire normal le retire de la collection.
+      const lostNormal = normal.copies === 1 ? item.scores[0] + bonus : 0;
       const golden = getCard(state, item.id, 1);
       if (golden.copies === 0) {
         push(
           [{ kind: 'enchant', itemId: item.id }],
-          item.scores[1] - lostNormal - cost * w[currency],
+          item.scores[1] + bonus - lostNormal - cost * w[currency],
           {
             [currency]: cost,
           },
@@ -270,7 +278,7 @@ export function candidates(ctx: Context, state: State): Candidate[] {
       if (!result || getCard(state, result.id, 0).copies > 0) continue;
       const actions: Action[] = [];
       let cost: Partial<Balances> = {};
-      let gain = result.scores[0];
+      let gain = result.scores[0] + bonus;
       let feasible = true;
       for (const input of fusion.inputs) {
         const item = ctx.items[input.itemId];
@@ -282,7 +290,7 @@ export function candidates(ctx: Context, state: State): Candidate[] {
           feasible = false;
           break;
         }
-        if (copies === 0) gain += item.scores[0];
+        if (copies === 0) gain += item.scores[0] + bonus;
         cost = addCost(cost, forgeCurrency(item), unit * missing);
         for (let i = 0; i < missing; i++) actions.push({ kind: 'craft', itemId: item.id });
       }
@@ -296,14 +304,24 @@ export function candidates(ctx: Context, state: State): Candidate[] {
     for (const option of boosterOptions(ctx)) {
       if (option.oneTime && option.eventId && (state.eventInvocations[option.eventId] ?? 0) > 0)
         continue;
-      const { ev } = invocationEV(ctx, state, option);
-      push([{ kind: 'invoke', booster: option.key }], ev - weighted(ctx, option.cost), option.cost);
+      const { ev, newCards } = invocationEV(ctx, state, option);
+      push(
+        [{ kind: 'invoke', booster: option.key }],
+        (ev + newCards * bonus) * evFactor - weighted(ctx, option.cost),
+        option.cost,
+      );
     }
   }
 
   if (allow.ascension && state.ascensionsLeft > 0) {
-    const { ev } = ascensionEV(ctx, state);
-    push([{ kind: 'ascension' }], ev - ASCENSION_COST * w.loreDust, { loreDust: ASCENSION_COST });
+    const { ev, newCards } = ascensionEV(ctx, state);
+    push(
+      [{ kind: 'ascension' }],
+      (ev + newCards * bonus) * evFactor - ASCENSION_COST * w.loreDust,
+      {
+        loreDust: ASCENSION_COST,
+      },
+    );
   }
 
   const evolution = ctx.player.evolution;

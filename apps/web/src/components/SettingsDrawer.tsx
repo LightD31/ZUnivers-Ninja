@@ -1,7 +1,7 @@
-import { CURRENCY_LABEL, type Currency } from '@zuninja/core';
+import { CURRENCY_LABEL, STRATEGIES, STRATEGY_IDS, type Currency } from '@zuninja/core';
 import { RotateCcw, X } from 'lucide-react';
 import { useEffect } from 'react';
-import { DEFAULT_SETTINGS, type Settings } from '../lib/settings';
+import { DEFAULT_SETTINGS, isCustomized, withStrategy, type Settings } from '../lib/settings';
 
 interface Props {
   open: boolean;
@@ -74,6 +74,39 @@ export function SettingsDrawer({ open, settings, onChange, onClose }: Props) {
           </button>
         </div>
         <div className="space-y-6">
+          <fieldset className="space-y-2">
+            <legend className="mb-2 flex w-full items-baseline justify-between text-sm font-medium">
+              Stratégie
+              {isCustomized(settings) && (
+                <span className="text-xs font-normal text-white/60">réglages modifiés</span>
+              )}
+            </legend>
+            {STRATEGY_IDS.map((id) => {
+              const strategy = STRATEGIES[id];
+              const checked = settings.strategy === id;
+              return (
+                <label
+                  key={id}
+                  className={`flex cursor-pointer gap-3 rounded border px-3 py-2 transition ${
+                    checked ? 'border-zu-500 bg-zu-500/10' : 'border-white/10 hover:border-white/25'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="strategy"
+                    value={id}
+                    checked={checked}
+                    onChange={() => onChange(withStrategy(settings, id))}
+                    className="mt-1 accent-zu-500"
+                  />
+                  <span className="space-y-0.5">
+                    <span className="block text-sm font-medium">{strategy.label}</span>
+                    <span className="block text-xs text-white/60">{strategy.description}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </fieldset>
           <Slider
             label="Largeur du faisceau"
             hint="Nombre de plans explorés en parallèle. Plus c'est grand, meilleur (et plus lent) est le résultat. 1 = glouton."

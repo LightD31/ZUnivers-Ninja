@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_API_BASE_URL } from '@zuninja/core';
+import { DEFAULT_API_BASE_URL, STRATEGY_IDS, isStrategy, type StrategyId } from '@zuninja/core';
 import { z } from 'zod';
 
 const bool = z
@@ -18,11 +18,16 @@ const optionalUrl = z
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8080),
   HOST: z.string().default('0.0.0.0'),
-  /** Pseudos Discord à conseiller automatiquement (séparés par des virgules). */
+  /**
+   * Pseudos Discord à conseiller automatiquement (séparés par des virgules), chacun suivi au
+   * besoin de sa stratégie : `alice:prudent,bob`.
+   */
   ZU_USERS: z.string().optional(),
   /** Ancien nom de ZU_USERS (v1). */
   DISCORD_TAGS: z.string().optional(),
   RULESET: z.enum(['NORMAL', 'HARDCORE']).default('NORMAL'),
+  /** Stratégie par défaut du planificateur. */
+  STRATEGY: z.enum(STRATEGY_IDS).optional(),
   CRON: z.string().default('*/30 * * * *'),
   TZ: z.string().default('Europe/Paris'),
   WEBHOOK_URL: optionalUrl,
@@ -65,23 +70,40 @@ function defaultWebDir(): string {
   return candidates.find((p) => existsSync(resolve(p, 'index.html'))) ?? candidates[0]!;
 }
 
+const invalid = (issues: string[]) =>
+  new Error(`Configuration invalide :\n${issues.map((i) => `  - ${i}`).join('\n')}`);
+
+/** Joueurs suivis et stratégie choisie par chacun (`pseudo:stratégie`), indexée en minuscules. */
+function parseUsers(value: string) {
+  const users: string[] = [];
+  const strategies: Record<string, StrategyId> = {};
+  for (const entry of value.split(/[,\s]+/)) {
+    const [name = '', strategy] = entry.split(':').map((part) => part.trim());
+    if (!name) continue;
+    if (strategy !== undefined) {
+      if (!isStrategy(strategy))
+        throw invalid([
+          `ZU_USERS : stratégie « ${strategy} » inconnue pour ${name} (${STRATEGY_IDS.join(', ')})`,
+        ]);
+      strategies[name.toLowerCase()] = strategy;
+    }
+    if (!users.includes(name)) users.push(name);
+  }
+  return { users, strategies };
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   const parsed = EnvSchema.safeParse(env);
   if (!parsed.success) {
-    const issues = parsed.error.issues
-      .map((i) => `  - ${i.path.join('.')} : ${i.message}`)
-      .join('\n');
-    throw new Error(`Configuration invalide :\n${issues}`);
+    throw invalid(parsed.error.issues.map((i) => `${i.path.join('.')} : ${i.message}`));
   }
   const e = parsed.data;
-  const users = (e.ZU_USERS ?? e.DISCORD_TAGS ?? '')
-    .split(/[,\s]+/)
-    .map((u) => u.trim())
-    .filter(Boolean);
+  const { users, strategies } = parseUsers(e.ZU_USERS ?? e.DISCORD_TAGS ?? '');
   return {
     port: e.PORT,
     host: e.HOST,
-    users: [...new Set(users)],
+    users,
+    strategies,
     ruleSet: e.RULESET,
     cron: e.CRON,
     timezone: e.TZ,
@@ -96,6 +118,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     apiBaseUrl: e.API_BASE_URL,
     catalogTtlMs: e.CATALOG_TTL_MINUTES * 60_000,
     planner: {
+      ...(e.STRATEGY !== undefined ? { strategy: e.STRATEGY } : {}),
       ...(e.BEAM_WIDTH !== undefined ? { beamWidth: e.BEAM_WIDTH } : {}),
       ...(e.BRANCHING !== undefined ? { branching: e.BRANCHING } : {}),
       ...(e.KEEP_EXTRA !== undefined ? { keepExtra: e.KEEP_EXTRA } : {}),
