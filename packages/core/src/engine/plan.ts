@@ -115,7 +115,7 @@ export interface PlanResult {
   steps: PlanStep[];
   /** Étapes regroupées, dans l'ordre : une commande Discord par groupe. */
   groups: StepGroup[];
-  /** Lignes de commandes, regroupées comme l'ancien ZUnivers Ninja (`/création 1001 + 1002`). */
+  /** Lignes de commandes, regroupées comme l'ancien ZUnivers Ninja (`/création carte:1001 + 1002`). */
   commands: string[];
   before: Snapshot;
   after: Snapshot;
@@ -198,11 +198,16 @@ function cardRef(c: PlanCard, kind?: ActionKind): string {
 /**
  * Option nommée de chaque commande Discord, avec l'espacement copié depuis Discord : collée telle
  * quelle (`/im  évènement:chroma`, `/recyclage carte:1001 + 1002`), une commande remplit
- * directement son option. Sans entrée ici, les arguments suivent la commande après une espace.
+ * directement son option. `/journa`, `/bonus` et `/as` n'en ont pas.
  */
 const OPTION: Partial<Record<ActionKind, string>> = {
   invoke: '  évènement:',
   recycle: ' carte:',
+  craft: ' carte:',
+  enchant: ' carte:',
+  fusion: ' carte:',
+  constellation: ' carte:',
+  evolution: ' carte:',
 };
 
 /** Ligne de commande Discord, ou `/commande` seule sans argument. */
@@ -310,7 +315,7 @@ function groupTitle(kind: ActionKind, cards: PlanCard[], size: number, fallback:
 
 /**
  * Regroupe les actions consécutives combinables (création, enchantement, constellation) en une
- * seule commande, comme l'ancien ZUnivers Ninja (`/création 1001 + 1002`).
+ * seule commande, comme l'ancien ZUnivers Ninja (`/création carte:1001 + 1002`).
  */
 export function groupSteps(steps: PlanStep[]): StepGroup[] {
   const groups: StepGroup[] = [];

@@ -121,7 +121,7 @@ describe('cas synthétiques', () => {
     // 11 doublons × 5 = 55 poudres → création de la carte manquante (50).
     expect(plan.commands).toEqual([
       `/recyclage carte:${Array(11).fill('1001').join(' + ')}`,
-      '/création 1002',
+      '/création carte:1002',
     ]);
     expect(plan.after.balances.loreDust).toBe(5);
     expect(plan.after.unique[0]).toBe(2);
@@ -135,7 +135,7 @@ describe('cas synthétiques', () => {
       now: TEST_NOW,
     });
     expect(plan.commands).toEqual([
-      '/constellation 3001 + 3001 + 3001',
+      '/constellation carte:3001 + 3001 + 3001',
       '/recyclage carte:3001 + 3001',
     ]);
     expect(plan.groups[0]?.title).toBe('Constellations : 3 niveaux sur 1 carte');
@@ -169,7 +169,7 @@ describe('cas synthétiques', () => {
       }),
       now: TEST_NOW,
     });
-    expect(plan.commands).toEqual(['/création 2002', '/fusion 5001']);
+    expect(plan.commands).toEqual(['/création carte:2002', '/fusion carte:5001']);
   });
 
   it('préfère plusieurs petites dépenses rentables à une grosse qui épuise le budget', () => {
@@ -277,6 +277,9 @@ describe('cas synthétiques', () => {
     expect(commandLine('invoke', 'chroma')).toBe('/im  évènement:chroma');
     expect(commandLine('invoke', '')).toBe('/im');
     expect(commandLine('recycle', '1001 + 1002*')).toBe('/recyclage carte:1001 + 1002*');
+    expect(commandLine('enchant', '1023')).toBe('/enchantement carte:1023');
+    expect(commandLine('evolution', '1023')).toBe('/évolution carte:1023');
+    expect(commandLine('daily', '')).toBe('/journa');
     // Invocation basique : pas d'option.
     for (const c of createPlan({ catalog, player, now: NOW }).commands.filter((c) =>
       c.startsWith('/im'),
