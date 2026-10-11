@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Collection } from './components/Collection';
 import { Header, Logo } from './components/Header';
 import { PlanList } from './components/PlanList';
+import { StrategyPicker } from './components/StrategyPicker';
 import { SearchForm } from './components/SearchForm';
 import { SettingsDrawer } from './components/SettingsDrawer';
 import { Summary } from './components/Summary';
@@ -144,7 +145,12 @@ export function App() {
 
       <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-9">
         {!user ? (
-          <Landing onSearch={search} suggestions={suggestions} />
+          <Landing
+            onSearch={search}
+            suggestions={suggestions}
+            settings={settings}
+            onSettings={setSettings}
+          />
         ) : (
           <div className="space-y-5">
             <div className="max-w-xl">
@@ -155,6 +161,7 @@ export function App() {
                 onSearch={search}
               />
             </div>
+            <StrategyPicker settings={settings} onChange={setSettings} />
 
             {status.kind === 'loading' && <LoadingState />}
             {status.kind === 'error' && (
@@ -227,9 +234,13 @@ export function App() {
 function Landing({
   onSearch,
   suggestions,
+  settings,
+  onSettings,
 }: {
   onSearch: (u: string) => void;
   suggestions: string[];
+  settings: Settings;
+  onSettings: (s: Settings) => void;
 }) {
   const features = [
     {
@@ -266,6 +277,9 @@ function Landing({
         </p>
         <div className="mt-8 max-w-xl">
           <SearchForm loading={false} onSearch={onSearch} size="lg" />
+        </div>
+        <div className="mt-4">
+          <StrategyPicker settings={settings} onChange={onSettings} />
         </div>
         {suggestions.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-2">
