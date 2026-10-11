@@ -58,4 +58,14 @@ describe('client API', () => {
     const client = createClient({ baseUrl: 'https://api.test', fetch });
     await expect(client.towerSeason()).resolves.toBeNull();
   });
+
+  it('renvoie null pour une ressource facultative absente (404, régression Hardcore)', async () => {
+    // En Hardcore, l'API répond 404 sans saison de Vortex : le catalogue entier échouait, et
+    // le serveur annonçait le joueur introuvable.
+    const fetch = fakeFetch({});
+    const client = createClient({ baseUrl: 'https://api.test', fetch });
+    await expect(client.towerSeason()).resolves.toBeNull();
+    await expect(client.evolution('alice')).resolves.toBeNull();
+    await expect(client.user('alice')).rejects.toBeInstanceOf(ZuNotFoundError);
+  });
 });

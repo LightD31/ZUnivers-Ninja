@@ -1,6 +1,7 @@
 import type { Context } from '../engine/context';
 import { isEnchantable } from '../engine/context';
 import { getCard, type State } from '../engine/state';
+import { FEATURE } from './constants';
 import type { Shiny } from '../model/types';
 
 export interface Reserve {
@@ -39,7 +40,9 @@ export function reserveFor(ctx: Context, state: State, itemId: string, shiny: Sh
   if (shiny === 0 && isEnchantable(ctx, item) && getCard(state, itemId, 1).copies === 0)
     reserve.enchant = 1;
 
-  if (item.upgradable && shiny <= 1 && item.shinyAvailable[shiny]) {
+  // Pas de constellations dans ce mode de jeu (Hardcore) : rien à garder pour elles.
+  const constellations = ctx.options.allow.constellation && ctx.features.has(FEATURE.upgrade);
+  if (constellations && item.upgradable && shiny <= 1 && item.shinyAvailable[shiny]) {
     reserve.constellation = Math.max(0, item.rarity - getCard(state, itemId, shiny).constellation);
   }
   return reserve;

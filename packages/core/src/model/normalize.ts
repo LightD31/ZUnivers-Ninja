@@ -209,13 +209,23 @@ export function normalizeChallenge(raw: ApiChallenge): Challenge {
   };
 }
 
+/**
+ * Niveau d'une carte Constellation. L'API compte à rebours : `upgradeLevel` 1 est le niveau
+ * maximum (égal à la rareté), `upgradeLevel` = rareté le premier niveau. C'est le calcul que fait
+ * le site ZUnivers pour afficher « Niveau x/rareté » : niveau = rareté − upgradeLevel + 1.
+ */
+export function constellationLevel(upgradeLevel: number, rarity: number): number {
+  if (upgradeLevel <= 0) return 0;
+  return Math.min(rarity, Math.max(1, rarity - upgradeLevel + 1));
+}
+
 export function normalizeInventory(entries: ApiInventoryEntry[]): Record<string, OwnedCard> {
   const inventory: Record<string, OwnedCard> = {};
   for (const e of entries) {
     const shiny: Shiny = e.shinyLevel != null ? toShiny(e.shinyLevel) : e.isGolden ? 1 : 0;
     const key = cardKey(e.item.id, shiny);
     const card = (inventory[key] ??= { itemId: e.item.id, shiny, copies: 0, constellation: 0 });
-    const level = e.upgradeLevel ?? 0;
+    const level = constellationLevel(e.upgradeLevel ?? 0, e.item.rarity);
     // Une carte Constellation est une ligne distincte de l'inventaire : elle ne compte pas
     // parmi les exemplaires utilisables.
     if (level > 0) card.constellation = Math.max(card.constellation, level);

@@ -12,7 +12,7 @@ import {
   type PlanResult,
   type StrategyId,
 } from '../src';
-import { makeCatalog, makeItem, makePlayer, TEST_NOW } from './factory';
+import { makeCatalog, makeItem, makePlayer, owned, TEST_NOW } from './factory';
 import { fixtureCatalog, fixturePlayer, NOW } from './helpers';
 
 describe('résolution des options', () => {
@@ -25,7 +25,7 @@ describe('résolution des options', () => {
 
   it('complète les poids partiels du préréglage avec ceux par défaut', () => {
     const options = resolveOptions({ strategy: 'vortex' });
-    expect(options.weights.loreDust).toBe(0.005);
+    expect(options.weights.loreDust).toBe(STRATEGIES.vortex.options.weights!.loreDust);
     expect(options.weights.balance).toBe(DEFAULT_OPTIONS.weights.balance);
     expect(options.reputationWeight).toBeGreaterThan(DEFAULT_OPTIONS.reputationWeight);
   });
@@ -80,20 +80,31 @@ describe('stratégies sur un joueur réel (fixtures)', () => {
     }
   });
 
-  it('Prudent fait moins d’actions aléatoires', () => {
-    const random = (p: PlanResult) => count(p, 'invoke') + count(p, 'ascension');
-    expect(random(plans.prudent)).toBeLessThan(random(equilibre));
+  it('Prudent ne fait aucun tirage', () => {
+    const draws = (p: PlanResult) => count(p, 'invoke') + count(p, 'ascension');
+    expect(draws(equilibre)).toBeGreaterThan(0);
+    expect(draws(plans.prudent)).toBe(0);
   });
 
-  it('Épargne garde plus de poudre', () => {
+  it('Épargne garde plus de poudre, sans dépenser plus de ZUMonnaie', () => {
+    // Régression : les invocations convertissaient la ZUMonnaie en poudre (doublons recyclés).
     expect(plans.epargne.after.balances.loreDust).toBeGreaterThan(
       equilibre.after.balances.loreDust,
     );
+    expect(plans.epargne.after.balances.balance).toBeGreaterThanOrEqual(
+      equilibre.after.balances.balance,
+    );
+    expect(count(plans.epargne, 'invoke')).toBeLessThanOrEqual(count(equilibre, 'invoke'));
   });
 
-  it('Vortex tente plus d’ascensions', () => {
-    expect(count(plans.vortex, 'ascension')).toBeGreaterThan(count(equilibre, 'ascension'));
-  });
+  it('Vortex tente plus d’ascensions quand la poudre manque', () => {
+    // Avec la poudre du joueur, Équilibré fait déjà toutes ses ascensions : on la retire pour
+    // qu'elles soient en concurrence avec les créations et enchantements.
+    const poor = { ...player, balances: { ...player.balances, loreDust: 0 } };
+    const ascensions = (strategy: StrategyId) =>
+      count(createPlan({ catalog, player: poor, now: NOW, options: { strategy } }), 'ascension');
+    expect(ascensions('vortex')).toBeGreaterThan(ascensions('equilibre'));
+  }, 30_000);
 
   it('Collectionneur obtient plus de cartes différentes', () => {
     expect(unique(plans.collectionneur)).toBeGreaterThan(unique(equilibre));
@@ -117,7 +128,44 @@ describe('stratégies sur un joueur réel (fixtures)', () => {
 });
 
 describe('stratégies sur des cas synthétiques', () => {
-  it("n'invoque pas quand les tirages ne comptent pas", () => {
+  it('Prudent préfère un enchantement garanti à une invocation plus rentable en espérance', () => {
+    // 500 poudres : soit l'invocation d'évènement (20 cartes, ~87 points espérés), soit
+    // l'enchantement d'une carte (+59 points garantis).
+    const pool = Array.from({ length: 50 }, (_, i) => makeItem(1001 + i));
+    const owned1 = makeItem(1100, { recyclable: false, upgradable: false });
+    const input = {
+      catalog: makeCatalog([...pool, owned1], {
+        events: [
+          {
+            id: 'event',
+            name: 'Évènement',
+            packId: null,
+            packSlug: 'classique',
+            packName: null,
+            balanceCost: 0,
+            loreDustCost: 500,
+            oneTime: true,
+            active: true,
+            invokeCount: 20,
+            begin: '2026-10-01T00:00:00',
+            end: '2026-10-31T23:59:59',
+            itemIds: [],
+          },
+        ],
+      }),
+      player: makePlayer({
+        balances: { balance: 0, loreDust: 500, loreFragment: 0, upgradeDust: 0 },
+        inventory: Object.fromEntries([owned(owned1.id, 0, 1)]),
+      }),
+      now: TEST_NOW,
+    };
+    const invokes = (strategy: StrategyId) =>
+      createPlan({ ...input, options: { strategy } }).steps.some((s) => s.kind === 'invoke');
+    expect(invokes('equilibre')).toBe(true);
+    expect(invokes('prudent')).toBe(false);
+  });
+
+  it("Prudent n'invoque pas, même quand l'invocation est rentable", () => {
     const items = Array.from({ length: 50 }, (_, i) => makeItem(1001 + i));
     const input = {
       catalog: makeCatalog(items),
@@ -127,7 +175,7 @@ describe('stratégies sur des cas synthétiques', () => {
       now: TEST_NOW,
     };
     expect(createPlan(input).commands.some((c) => c.startsWith('/im'))).toBe(true);
-    const cautious = createPlan({ ...input, options: { strategy: 'prudent', evFactor: 0 } });
+    const cautious = createPlan({ ...input, options: { strategy: 'prudent' } });
     expect(cautious.commands.some((c) => c.startsWith('/im'))).toBe(false);
   });
 });

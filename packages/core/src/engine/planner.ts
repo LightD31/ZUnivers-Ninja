@@ -1,4 +1,4 @@
-import { ASCENSION_COST } from '../rules/constants';
+import { ASCENSION_COST, FEATURE } from '../rules/constants';
 import { ascensionEV, boosterOptions, invocationEV } from '../rules/random';
 import { reserveBeforeConstellation, reserveFor, reserveTotal } from '../rules/reserve';
 import { CURRENCIES, type Balances, type Currency, type Item, type Shiny } from '../model/types';
@@ -190,7 +190,19 @@ export function candidates(ctx: Context, state: State): Candidate[] {
       key: actions.map(actionKey).join('>'),
     });
   };
-  const { allow } = ctx.options;
+  // Mêmes conditions que `applyAction` : une action désactivée dans ce mode de jeu (pas de
+  // constellations en Hardcore, par exemple) ne doit pas être proposée.
+  const has = (feature: string) => ctx.features.has(feature);
+  const { allow: wanted } = ctx.options;
+  const allow = {
+    craft: wanted.craft && has(FEATURE.craft),
+    enchant: wanted.enchant && has(FEATURE.craft),
+    fusion: wanted.fusion && has(FEATURE.fusion),
+    constellation: wanted.constellation && has(FEATURE.upgrade),
+    invoke: wanted.invoke,
+    ascension: wanted.ascension && has(FEATURE.tower),
+    evolution: wanted.evolution && has(FEATURE.evolution),
+  };
   const lists = forgeLists(ctx);
 
   if (allow.craft) {
