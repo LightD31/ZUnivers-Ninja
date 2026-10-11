@@ -420,6 +420,13 @@ function buildAdvice(ctx: Context, before: State, after: State): string[] {
     if (remaining > 0) advice.push(`Encore ${remaining} /journa avant le prochain /bonus.`);
   }
 
+  if (player.invokeBeforePity != null && ctx.features.has(FEATURE.invoke)) {
+    const left = player.invokeBeforePity;
+    advice.push(
+      `Bienveillance : carte 4 ★ garantie dans ${left} carte${left > 1 ? 's' : ''} invoquée${left > 1 ? 's' : ''} (${Math.ceil(left / 10)} invocation${left > 10 ? 's' : ''}).`,
+    );
+  }
+
   const trade = after.challenges.find(
     (c) => c.action === null && /chang/i.test(c.description) && c.current < c.max,
   );

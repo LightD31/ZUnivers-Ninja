@@ -1,4 +1,4 @@
-import { CONSTELLATION_POINTS_FACTOR } from '../rules/constants';
+import { CONSTELLATION_POINTS_FACTOR, PITY_CARDS } from '../rules/constants';
 import { ascensionCredits, gameClock } from '../rules/time';
 import {
   CURRENCIES,
@@ -41,6 +41,11 @@ export interface State {
   expectedNew: Record<string, number>;
   /** Cartes nouvelles attendues de toutes les actions aléatoires simulées (invocations, ascensions). */
   expectedNewCards: number;
+  /**
+   * Bienveillance : probabilité que la carte 4 ★ garantie soit la d-ième prochaine carte invoquée
+   * (indice d de 1 à 210). `null` quand le compteur du joueur est inconnu.
+   */
+  pity: Float64Array | null;
   /** Cartes du catalogue possédées, chaque brillance comptant à part. */
   owned: number;
   /** Points de collection certains (cartes + constellations). */
@@ -64,6 +69,13 @@ export function cardPoints(ctx: Context, card: OwnedCard): number {
 }
 
 const isOwned = (ctx: Context, card: OwnedCard) => card.copies > 0 && !!ctx.items[card.itemId];
+
+function initialPity(invokeBeforePity: number | null | undefined): Float64Array | null {
+  if (invokeBeforePity == null) return null;
+  const dist = new Float64Array(PITY_CARDS + 1);
+  dist[Math.min(PITY_CARDS, Math.max(1, Math.round(invokeBeforePity)))] = 1;
+  return dist;
+}
 
 export function initialState(ctx: Context): State {
   const { player, catalog, now } = ctx;
@@ -113,6 +125,7 @@ export function initialState(ctx: Context): State {
     eventInvocations: {},
     expectedNew: {},
     expectedNewCards: 0,
+    pity: initialPity(player.invokeBeforePity),
     owned,
     points,
     ev: 0,

@@ -208,6 +208,14 @@ Les invocations et les ascensions sont aléatoires. Leur valeur est donc une esp
 partir des taux de drop officiels et des cartes qu'il te manque. Pour les ascensions, la réputation
 gagnée compte aussi.
 
+Pour les invocations, deux règles du jeu s'ajoutent :
+
+- **Cartes mises en avant** : dans une invocation d'évènement, une carte d'une rareté mise en avant
+  est forcément l'une des cartes de l'évènement. L'invocation vaut donc plus si elles te manquent.
+- **Bienveillance** : après 209 cartes invoquées sans 4 ★, la 210ᵉ est une 4 ★. Le compteur du
+  joueur (`invokeBeforePity`) est suivi en probabilité d'une invocation à l'autre. Les conseils
+  indiquent combien de cartes restent avant la prochaine 4 ★ garantie.
+
 ## Développement
 
 Prérequis : Node 22 et pnpm 10 (`corepack enable`).

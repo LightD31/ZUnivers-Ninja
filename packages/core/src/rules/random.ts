@@ -6,6 +6,7 @@ import {
   ASCENSION_FAIL_REFUND,
   BOOSTERS,
   FEATURE,
+  PITY_CARDS,
   REPUTATION_ATTEMPT,
   REPUTATION_SUCCESS,
   REPUTATION_TOP_FLOOR,
@@ -43,11 +44,22 @@ function getPool(ctx: Context, packId: string | null, invocableOnly: boolean): P
   const cached = cache.get(key);
   if (cached) return cached;
 
+  const items = ctx.itemList.filter(
+    (item) =>
+      (packId === null ? item.isClassic : item.packId === packId) &&
+      (!invocableOnly || item.invocable) &&
+      !item.isFusion &&
+      !item.isStar,
+  );
+  const pool = buildPool(ctx, key, items);
+  cache.set(key, pool);
+  return pool;
+}
+
+/** Seaux d'une réserve de tirage, par rareté et brillance, avec la valeur moyenne d'un doublon. */
+function buildPool(ctx: Context, key: string, items: Item[]): Pool {
   const pool: Pool = new Map();
-  for (const item of ctx.itemList) {
-    if (packId === null ? !item.isClassic : item.packId !== packId) continue;
-    if (invocableOnly && !item.invocable) continue;
-    if (item.isFusion || item.isStar) continue;
+  for (const item of items) {
     for (const shiny of [0, 1, 2] as Shiny[]) {
       if (!item.shinyAvailable[shiny]) continue;
       const k = bucketKey(key, item.rarity, shiny);
@@ -64,7 +76,6 @@ function getPool(ctx: Context, packId: string | null, invocableOnly: boolean): P
     );
     bucket.dupValue = bucket.items.length > 0 ? total / bucket.items.length : 0;
   }
-  cache.set(key, pool);
   return pool;
 }
 
@@ -124,6 +135,11 @@ export interface BoosterOption {
   chroma: boolean;
   eventId?: string;
   oneTime?: boolean;
+  /**
+   * Cartes mises en avant par l'évènement, par rareté : une carte tirée dans une de ces raretés
+   * est forcément l'une d'elles (le site affiche « N'importe quelle carte » pour les autres).
+   */
+  featured?: Map<number, Item[]>;
 }
 
 const boosterCache = new WeakMap<Context, BoosterOption[]>();
@@ -156,6 +172,12 @@ function listBoosterOptions(ctx: Context): BoosterOption[] {
     const cost: Partial<Balances> = {};
     if (event.balanceCost > 0) cost.balance = event.balanceCost;
     if (event.loreDustCost > 0) cost.loreDust = event.loreDustCost;
+    const featured = new Map<number, Item[]>();
+    for (const id of event.itemIds) {
+      const item = ctx.items[id];
+      if (!item || item.isFusion || item.isStar) continue;
+      featured.set(item.rarity, [...(featured.get(item.rarity) ?? []), item]);
+    }
     options.push({
       key: `event:${event.id}`,
       label: `Invocation « ${event.name} »`,
@@ -167,22 +189,91 @@ function listBoosterOptions(ctx: Context): BoosterOption[] {
       chroma: classic,
       eventId: event.id,
       oneTime: event.oneTime,
+      ...(featured.size > 0 ? { featured } : {}),
     });
   }
   return options;
 }
 
-/** Espérance (en points) d'une invocation, et cartes nouvelles attendues (au total et par seau). */
+const featuredPools = new WeakMap<BoosterOption, Pool>();
+
+function featuredPool(ctx: Context, option: BoosterOption): Pool | null {
+  if (!option.featured) return null;
+  let pool = featuredPools.get(option);
+  if (!pool) {
+    pool = buildPool(ctx, option.key, [...option.featured.values()].flat());
+    featuredPools.set(option, pool);
+  }
+  return pool;
+}
+
+const pityCache = new WeakMap<
+  Float64Array,
+  Map<string, { next: Float64Array; triggers: number }>
+>();
+
+/**
+ * Fait avancer la bienveillance de `cards` cartes. `dist[d]` est la probabilité que la 4 ★
+ * garantie soit la d-ième prochaine carte ; une 4 ★ naturelle (probabilité `pR4`) ou garantie
+ * remet le compteur à 210. Renvoie la nouvelle distribution et le nombre espéré de 4 ★ garanties.
+ */
+export function pityStep(
+  dist: Float64Array,
+  cards: number,
+  pR4: number,
+): { next: Float64Array; triggers: number } {
+  const key = `${cards}|${pR4}`;
+  let cache = pityCache.get(dist);
+  if (!cache) pityCache.set(dist, (cache = new Map()));
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  let current = dist;
+  let triggers = 0;
+  for (let card = 0; card < cards; card++) {
+    const next = new Float64Array(PITY_CARDS + 1);
+    // d = 1 : 4 ★ garantie. Sinon 4 ★ naturelle (le compteur repart à 210) ou rapprochement d'un cran.
+    let reset = current[1]!;
+    triggers += reset;
+    for (let d = 2; d <= PITY_CARDS; d++) {
+      const mass = current[d]!;
+      reset += mass * pR4;
+      next[d - 1] = mass * (1 - pR4);
+    }
+    next[PITY_CARDS] = reset;
+    current = next;
+  }
+  const result = { next: current, triggers };
+  cache.set(key, result);
+  return result;
+}
+
+/**
+ * Espérance (en points) d'une invocation, cartes nouvelles attendues (au total et par seau), et
+ * bienveillance après l'invocation. Une 4 ★ garantie remplace un tirage ordinaire : son gain est
+ * la valeur d'un tirage 4 ★ moins celle d'un tirage moyen, pondérée par la probabilité qu'elle
+ * tombe pendant cette invocation.
+ */
 export function invocationEV(
   ctx: Context,
   state: State,
   option: BoosterOption,
-): { ev: number; newCards: number; expectedNew: Record<string, number> } {
+): {
+  ev: number;
+  newCards: number;
+  expectedNew: Record<string, number>;
+  pity: Float64Array | null;
+} {
   const pool = getPool(ctx, option.packId, true);
   const poolKey = `${option.packId ?? 'classic'}|true`;
+  const featured = featuredPool(ctx, option);
   const expectedNew: Record<string, number> = {};
   let perCard = 0;
-  let newCards = 0;
+  let perCardNew = 0;
+  // Tirage d'une carte 4 ★ (pour la bienveillance) : valeur, cartes nouvelles par seau.
+  let r4Value = 0;
+  let r4New = 0;
+  const r4Buckets: [string, number][] = [];
   option.spec.rarity.forEach((pRarity, i) => {
     const rarity = i + 1;
     const pGolden = option.spec.golden[i] ?? 0;
@@ -193,21 +284,39 @@ export function invocationEV(
       [2, pChroma],
     ];
     for (const [shiny, pShiny] of shares) {
+      if (pShiny <= 0) continue;
+      // Rareté mise en avant par l'évènement : seules ses cartes peuvent tomber.
+      const featuredBucket = option.featured?.has(rarity)
+        ? featured?.get(bucketKey(option.key, rarity, shiny))
+        : undefined;
+      const { value, pNew, key } = featuredBucket
+        ? cardEV(state, option.key, featuredBucket, rarity, shiny)
+        : cardEV(state, poolKey, pool.get(bucketKey(poolKey, rarity, shiny)), rarity, shiny);
       const p = pRarity * pShiny;
-      if (p <= 0) continue;
-      const { value, pNew, key } = cardEV(
-        state,
-        poolKey,
-        pool.get(bucketKey(poolKey, rarity, shiny)),
-        rarity,
-        shiny,
-      );
       perCard += p * value;
+      perCardNew += p * pNew;
       expectedNew[key] = (expectedNew[key] ?? 0) + option.cards * p * pNew;
-      newCards += option.cards * p * pNew;
+      if (rarity === 4) {
+        r4Value += pShiny * value;
+        r4New += pShiny * pNew;
+        r4Buckets.push([key, pShiny * pNew]);
+      }
     }
   });
-  return { ev: perCard * option.cards, newCards, expectedNew };
+  let ev = perCard * option.cards;
+  let newCards = perCardNew * option.cards;
+  let pity = state.pity;
+  if (pity) {
+    const step = pityStep(pity, option.cards, option.spec.rarity[3] ?? 0);
+    pity = step.next;
+    if (step.triggers > 0) {
+      ev += step.triggers * (r4Value - perCard);
+      newCards += step.triggers * (r4New - perCardNew);
+      for (const [key, pNew] of r4Buckets)
+        expectedNew[key] = (expectedNew[key] ?? 0) + step.triggers * pNew;
+    }
+  }
+  return { ev, newCards, expectedNew, pity };
 }
 
 /** Espérance (en points) d'une tentative d'ascension à l'étage courant, et cartes nouvelles attendues. */

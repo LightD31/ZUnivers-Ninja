@@ -80,6 +80,7 @@ function fixtureApi() {
     [/^\/public\/event\/current$/, c.events],
     [/^\/public\/tower\/season$/, c.season],
     [/^\/public\/tower$/, c.towers],
+    [/^\/public\/user\/[^/]+\/overview$/, { invokeBeforePity: 160 }],
     [/^\/public\/user\//, p.user],
     [/^\/public\/inventory\//, p.inventory],
     [/^\/public\/challenge\//, p.challenges],
@@ -113,8 +114,10 @@ function service(fetch: ReturnType<typeof fixtureApi>) {
     }),
   );
 }
+/** Requêtes du profil joueur (`/public/user/{pseudo}`) : une par calcul de plan. */
 const userCalls = (fetch: ReturnType<typeof fixtureApi>) =>
-  fetch.mock.calls.filter(([url]) => String(url).includes('/public/user/')).length;
+  fetch.mock.calls.filter(([url]) => /\/public\/user\/[^/]+$/.test(new URL(String(url)).pathname))
+    .length;
 
 describe('service de plans', { timeout: 30_000 }, () => {
   it('partage le calcul entre des requêtes identiques simultanées', async () => {

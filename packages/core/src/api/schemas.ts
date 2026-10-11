@@ -202,6 +202,13 @@ export const UserTowerSchema = z.looseObject({
 });
 export type ApiUserTower = z.infer<typeof UserTowerSchema>;
 
+/** `/public/user/{pseudo}/overview` : seul le compteur de bienveillance sert au planificateur. */
+export const UserOverviewSchema = z.looseObject({
+  /** Cartes à invoquer avant la carte 4 ★ garantie (la 210ᵉ sans 4 ★). */
+  invokeBeforePity: num.nullish(),
+});
+export type ApiUserOverview = z.infer<typeof UserOverviewSchema>;
+
 export const EvolutionSchema = z.looseObject({
   upgradeDust: num.nullish(),
   evolutionUpgradeDustCost: z.array(num).default([]),

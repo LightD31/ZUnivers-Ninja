@@ -203,5 +203,7 @@ export interface Player {
     steps: { itemId: string; name: string; rarity: number; score: number; owned: boolean }[];
   } | null;
   tradesLeft: number;
+  /** Cartes à invoquer avant la carte 4 ★ garantie (bienveillance), si connu. */
+  invokeBeforePity: number | null;
   stats: { inventoryCount: number; uniqueCount: number; uniqueGoldenCount: number };
 }

@@ -219,11 +219,12 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       if (!option || !canAfford(s0, option.cost)) return null;
       if (option.oneTime && option.eventId && (s0.eventInvocations[option.eventId] ?? 0) > 0)
         return null;
-      const { ev, newCards, expectedNew } = invocationEV(ctx, s0, option);
+      const { ev, newCards, expectedNew, pity } = invocationEV(ctx, s0, option);
       const s = fork(s0);
       pay(s, option.cost);
       s.ev += ev;
       s.expectedNewCards += newCards;
+      s.pity = pity;
       s.expectedNew = { ...s.expectedNew };
       for (const [k, v] of Object.entries(expectedNew))
         s.expectedNew[k] = (s.expectedNew[k] ?? 0) + v;
