@@ -39,6 +39,7 @@ export {
   replay,
   groupCommands,
   groupSteps,
+  sortInvocations,
   type StepGroup,
   type PlanResult,
   type PlanStep,

@@ -316,6 +316,34 @@ function groupTitle(kind: ActionKind, cards: PlanCard[], size: number, fallback:
 }
 
 /**
+ * Trie chaque suite d'invocations consécutives par pack, dans l'ordre de première apparition.
+ * Une invocation ne fait que dépenser des monnaies, sans rien rapporter avant la suivante : dans
+ * une suite sans autre action, tout ordre reste payable et donne les mêmes cartes en moyenne.
+ * Le joueur tape alors chaque pack d'affilée (22 classiques, puis 14 dorées…) au lieu de les
+ * alterner au fil de la recherche.
+ */
+export function sortInvocations(steps: Step[]): Step[] {
+  const out: Step[] = [];
+  let i = 0;
+  while (i < steps.length) {
+    if (steps[i]!.action.kind !== 'invoke') {
+      out.push(steps[i++]!);
+      continue;
+    }
+    const byBooster = new Map<string, Step[]>();
+    for (; i < steps.length; i++) {
+      const { action } = steps[i]!;
+      if (action.kind !== 'invoke') break;
+      const run = byBooster.get(action.booster);
+      if (run) run.push(steps[i]!);
+      else byBooster.set(action.booster, [steps[i]!]);
+    }
+    for (const run of byBooster.values()) out.push(...run);
+  }
+  return out;
+}
+
+/**
  * Regroupe les actions consécutives combinables (création, enchantement, constellation) en une
  * seule commande, comme l'ancien ZUnivers Ninja (`/création carte:1001 + 1002`).
  */
@@ -557,7 +585,7 @@ export function createPlan({
   const started = performance.now();
   const ctx = buildContext(catalog, player, now, resolveOptions(options));
   const { best, explored, timedOut } = search(ctx);
-  const steps = nodeSteps(best);
+  const steps = sortInvocations(nodeSteps(best));
   const finalState = replay(
     ctx,
     steps.map((s) => s.action),

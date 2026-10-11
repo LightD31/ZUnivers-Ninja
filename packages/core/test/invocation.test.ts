@@ -5,6 +5,7 @@ import {
   nodeSteps,
   normalizePlayer,
   search,
+  sortInvocations,
   type GameEvent,
 } from '../src';
 import { initialState } from '../src/engine/state';
@@ -12,6 +13,7 @@ import { PITY_CARDS } from '../src/rules/constants';
 import { pityStep } from '../src/rules/random';
 import { makeCatalog, makeContext, makeItem, makePlayer, owned } from './factory';
 import { rawPlayer } from './helpers';
+import type { Action } from '../src/engine/actions';
 
 const at = (d: number) => {
   const dist = new Float64Array(PITY_CARDS + 1);
@@ -124,5 +126,37 @@ describe('choix du pack', () => {
       0,
     );
     expect(spent).toBe(600_000);
+  });
+});
+
+describe('ordre des invocations', () => {
+  const step = (action: Action) => ({ action, gain: 1, balanceDelta: {}, auto: false });
+  const im = (booster: string) => step({ kind: 'invoke', booster });
+
+  it('regroupe chaque suite continue d’invocations par pack, sans traverser les autres actions', () => {
+    const steps = [
+      im('basic'),
+      im('chroma'),
+      im('basic'),
+      im('golden'),
+      im('chroma'),
+      step({ kind: 'craft', itemId: 'item-1001' }),
+      im('chroma'),
+      im('basic'),
+      im('chroma'),
+    ];
+    expect(
+      sortInvocations(steps).map((s) => (s.action.kind === 'invoke' ? s.action.booster : 'craft')),
+    ).toEqual([
+      'basic',
+      'basic',
+      'chroma',
+      'chroma',
+      'golden',
+      'craft',
+      'chroma',
+      'chroma',
+      'basic',
+    ]);
   });
 });
