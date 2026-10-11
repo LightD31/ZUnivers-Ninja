@@ -29,6 +29,8 @@ export {
   createPlan,
   replay,
   groupCommands,
+  groupSteps,
+  type StepGroup,
   type PlanResult,
   type PlanStep,
   type PlanCard,

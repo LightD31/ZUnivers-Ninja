@@ -166,10 +166,17 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       if (!canAfford(s0, price)) return null;
       const s = fork(s0);
       pay(s, price);
+      const lastNormal = getCard(s0, item.id, 0).copies === 1;
       addCopies(ctx, s, item.id, 0, -1);
       addCopies(ctx, s, item.id, 1, 1);
       progressChallenges(s, 'enchant', 1);
-      return { state: s, touched: [item.id] };
+      return {
+        state: s,
+        touched: [item.id],
+        ...(lastNormal
+          ? { note: 'Utilise ta dernière version normale : la dorée rapporte plus de points.' }
+          : {}),
+      };
     }
 
     case 'fusion': {

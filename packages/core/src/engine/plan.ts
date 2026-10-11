@@ -110,6 +110,8 @@ export interface PlanResult {
     subscribed: boolean;
   };
   steps: PlanStep[];
+  /** Étapes regroupées, dans l'ordre : une commande Discord par groupe. */
+  groups: StepGroup[];
   /** Lignes de commandes, regroupées comme l'ancien ZUnivers Ninja (`/création 1001 + 1002`). */
   commands: string[];
   before: Snapshot;
@@ -240,32 +242,102 @@ function describe(ctx: Context, step: Step): PlanStep {
   }
 }
 
-/** Regroupe les commandes consécutives combinables, comme l'ancien ZUnivers Ninja. */
-export function groupCommands(steps: PlanStep[]): string[] {
-  const lines: string[] = [];
+export interface StepGroup {
+  kind: ActionKind;
+  /** Ligne de commande Discord. */
+  command: string;
+  title: string;
+  detail: string | null;
+  /** Cartes concernées (quantités fusionnées). */
+  cards: PlanCard[];
+  gain: number;
+  random: boolean;
+  auto: boolean;
+  balanceDelta: Partial<Balances>;
+  /** Nombre d'actions élémentaires regroupées. */
+  size: number;
+}
+
+function sumDelta(a: Partial<Balances>, b: Partial<Balances>): Partial<Balances> {
+  const out: Partial<Balances> = { ...a };
+  for (const [k, v] of Object.entries(b) as [Currency, number][]) out[k] = (out[k] ?? 0) + v;
+  return out;
+}
+
+function groupTitle(kind: ActionKind, cards: PlanCard[], size: number, fallback: string): string {
+  const count = cards.reduce((n, c) => n + c.count, 0);
+  const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`;
+  switch (kind) {
+    case 'recycle':
+      return `Recycler ${plural(count, 'carte')} en surplus`;
+    case 'craft':
+      return size === 1 ? fallback : `Créer ${plural(count, 'carte')}`;
+    case 'enchant':
+      return size === 1 ? fallback : `Enchanter ${plural(count, 'carte')}`;
+    case 'constellation':
+      return size === 1
+        ? fallback
+        : `Constellations : ${plural(count, 'niveau')} sur ${plural(cards.length, 'carte')}`;
+    default:
+      return fallback;
+  }
+}
+
+/**
+ * Regroupe les actions consécutives combinables (création, enchantement, constellation) en une
+ * seule commande, comme l'ancien ZUnivers Ninja (`/création 1001 + 1002`).
+ */
+export function groupSteps(steps: PlanStep[]): StepGroup[] {
+  const groups: StepGroup[] = [];
   let i = 0;
   while (i < steps.length) {
     const step = steps[i]!;
     if (!COMBINABLE.has(step.kind) || step.kind === 'recycle') {
-      lines.push(step.command);
+      groups.push({ ...step, size: 1 });
       i++;
       continue;
     }
     const counts = new Map<string, PlanCard>();
+    let gain = 0;
+    let balanceDelta: Partial<Balances> = {};
+    let size = 0;
+    let auto = true;
     while (i < steps.length && steps[i]!.kind === step.kind) {
-      for (const c of steps[i]!.cards) {
+      const current = steps[i]!;
+      for (const c of current.cards) {
         const key = `${c.itemId}:${c.shiny}`;
         const existing = counts.get(key);
         counts.set(key, existing ? { ...existing, count: existing.count + c.count } : { ...c });
       }
+      gain += current.gain;
+      balanceDelta = sumDelta(balanceDelta, current.balanceDelta);
+      auto &&= current.auto;
+      size++;
       i++;
     }
-    lines.push(
-      `/${COMMAND[step.kind]} ${[...counts.values()].map((c) => cardRef(c, step.kind)).join(' + ')}`,
-    );
+    const cards = [...counts.values()];
+    groups.push({
+      kind: step.kind,
+      command:
+        size === 1
+          ? step.command
+          : `/${COMMAND[step.kind]} ${cards.map((c) => cardRef(c, step.kind)).join(' + ')}`,
+      title: groupTitle(step.kind, cards, size, step.title),
+      detail: size === 1 ? step.detail : null,
+      cards,
+      gain,
+      random: false,
+      auto,
+      balanceDelta,
+      size,
+    });
   }
-  return lines;
+  return groups;
 }
+
+/** Lignes de commandes du plan. */
+export const groupCommands = (steps: PlanStep[]): string[] =>
+  groupSteps(steps).map((g) => g.command);
 
 function snapshot(ctx: Context, state: State): Snapshot {
   const unique: [number, number, number] = [0, 0, 0];
@@ -452,7 +524,8 @@ export function createPlan({
   const before = initialState(ctx);
 
   const planSteps = steps.map((s) => describe(ctx, s));
-  const commands = groupCommands(planSteps);
+  const groups = groupSteps(planSteps);
+  const commands = groups.map((g) => g.command);
   const afterSnapshot = snapshot(ctx, finalState);
   const beforeSnapshot = snapshot(ctx, before);
 
@@ -493,6 +566,7 @@ export function createPlan({
       subscribed: player.subscribed,
     },
     steps: planSteps,
+    groups,
     commands,
     before: beforeSnapshot,
     after: afterSnapshot,
