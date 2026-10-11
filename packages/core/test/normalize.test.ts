@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   challengeActionFor,
+  constellationLevel,
   normalizeFusion,
   normalizeInventory,
   normalizeLoot,
@@ -8,20 +9,19 @@ import {
 } from '../src';
 import { fixtureCatalog, fixturePlayer, rawCatalog } from './helpers';
 
-const item = rawCatalog().items[0]!;
+const item = { ...rawCatalog().items[0]!, rarity: 3 };
 const entry = (quantity: number, shinyLevel: number, upgradeLevel: number): ApiInventoryEntry =>
   ({ item, quantity, shinyLevel, upgradeLevel }) as ApiInventoryEntry;
 
 describe('inventaire', () => {
-  it('sépare les cartes Constellation des exemplaires utilisables (régression)', () => {
-    // L'ancienne version rangeait toute ligne `upgradeLevel > 0` dans un inventaire à part et
-    // lisait le niveau comme « niveaux restants ».
-    const inventory = normalizeInventory([entry(3, 0, 0), entry(1, 0, 2), entry(1, 1, 0)]);
+  it('sépare les cartes Constellation des exemplaires utilisables', () => {
+    // Rareté 3, `upgradeLevel` 3 : premier niveau de constellation sur 3.
+    const inventory = normalizeInventory([entry(3, 0, 0), entry(1, 0, 3), entry(1, 1, 0)]);
     expect(inventory[`${item.id}:0`]).toEqual({
       itemId: item.id,
       shiny: 0,
       copies: 3,
-      constellation: 2,
+      constellation: 1,
     });
     expect(inventory[`${item.id}:1`]).toEqual({
       itemId: item.id,
@@ -29,6 +29,20 @@ describe('inventaire', () => {
       copies: 1,
       constellation: 0,
     });
+  });
+
+  it('lit le niveau de constellation à rebours, comme le site ZUnivers (régression)', () => {
+    // Joueur réel : la carte #2099 (rareté 2) avec `upgradeLevel` 1 est déjà au niveau 2/2, le
+    // planificateur proposait une constellation de plus que le jeu refusait.
+    expect([1, 2, 3].map((u) => constellationLevel(u, 3))).toEqual([3, 2, 1]);
+    expect(constellationLevel(1, 2)).toBe(2);
+    expect(constellationLevel(2, 2)).toBe(1);
+    expect(constellationLevel(1, 1)).toBe(1);
+    expect(constellationLevel(0, 4)).toBe(0);
+    // Valeur hors bornes : au moins le premier niveau, jamais au-delà de la rareté.
+    expect(constellationLevel(9, 2)).toBe(1);
+    const inventory = normalizeInventory([entry(2, 0, 0), entry(1, 0, 1)]);
+    expect(inventory[`${item.id}:0`]?.constellation).toBe(3);
   });
 
   it("gère l'ancien format isGolden", () => {
