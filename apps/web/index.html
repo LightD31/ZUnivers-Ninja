@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="ZUnivers Ninja calcule le meilleur enchaînement d'actions ZUnivers pour faire progresser ta collection."
+    />
+    <meta name="theme-color" content="#0e0e12" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <title>ZUnivers Ninja</title>
+    <script>
+      try {
+        const t = localStorage.getItem('zuninja:theme');
+        if (t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches))
+          document.documentElement.classList.add('dark');
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

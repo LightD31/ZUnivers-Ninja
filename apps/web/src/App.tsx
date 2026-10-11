@@ -1,0 +1,451 @@
+import type { PlanResult, RuleSet } from '@zuninja/core';
+import { CircleAlert, Clock, Crown, RefreshCw, Sparkles, Swords, Target, Zap } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Collection } from './components/Collection';
+import { Header, Logo } from './components/Header';
+import { PlanList } from './components/PlanList';
+import { SearchForm } from './components/SearchForm';
+import { SettingsDrawer } from './components/SettingsDrawer';
+import { Summary } from './components/Summary';
+import { fetchPlan, PlanError, STANDALONE } from './lib/api';
+import { fmt, fmt1, formatTime } from './lib/format';
+import { loadSettings, saveSettings, type Settings } from './lib/settings';
+import { load, save } from './lib/storage';
+
+type Status =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'done'; plan: PlanResult };
+type Tab = 'plan' | 'collection';
+
+const RECENT_KEY = 'zuninja:recent';
+
+function readUrl(): { user: string; ruleSet: RuleSet | null } {
+  const params = new URLSearchParams(location.search);
+  const mode = params.get('mode')?.toUpperCase();
+  return {
+    user: params.get('u')?.trim() ?? '',
+    ruleSet: mode === 'HARDCORE' || mode === 'NORMAL' ? mode : null,
+  };
+}
+
+function writeUrl(user: string, ruleSet: RuleSet) {
+  const params = new URLSearchParams();
+  if (user) params.set('u', user);
+  if (user && ruleSet === 'HARDCORE') params.set('mode', 'hardcore');
+  const query = params.toString();
+  history.replaceState(null, '', `${location.pathname}${query ? `?${query}` : ''}`);
+}
+
+function useTheme() {
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark);
+    try {
+      localStorage.setItem('zuninja:theme', dark ? 'dark' : 'light');
+    } catch {
+      // stockage indisponible
+    }
+  }, [dark]);
+  return [dark, () => setDark((d) => !d)] as const;
+}
+
+export function App() {
+  const initial = useRef(readUrl());
+  const [settings, setSettings] = useState<Settings>(() => {
+    const s = loadSettings();
+    return initial.current.ruleSet ? { ...s, ruleSet: initial.current.ruleSet } : s;
+  });
+  const [user, setUser] = useState(initial.current.user);
+  const [status, setStatus] = useState<Status>({ kind: 'idle' });
+  const [tab, setTab] = useState<Tab>('plan');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [recent, setRecent] = useState<string[]>(() => load(RECENT_KEY, []));
+  const [tracked, setTracked] = useState<string[]>([]);
+  const [dark, toggleTheme] = useTheme();
+  const request = useRef(0);
+
+  const run = useCallback(async (name: string, s: Settings, fresh = false) => {
+    const id = ++request.current;
+    setStatus({ kind: 'loading' });
+    writeUrl(name, s.ruleSet);
+    try {
+      const plan = await fetchPlan(name, s, fresh);
+      if (id !== request.current) return;
+      setStatus({ kind: 'done', plan });
+      document.title = `${plan.player.displayName} · ZUnivers Ninja`;
+      setRecent((r) => {
+        const next = [
+          plan.player.name,
+          ...r.filter((x) => x.toLowerCase() !== plan.player.name.toLowerCase()),
+        ].slice(0, 6);
+        save(RECENT_KEY, next);
+        return next;
+      });
+    } catch (error) {
+      if (id !== request.current) return;
+      setStatus({
+        kind: 'error',
+        message: error instanceof PlanError ? error.message : 'Une erreur inattendue est survenue.',
+      });
+    }
+  }, []);
+
+  // Premier chargement : pseudo dans l'URL.
+  useEffect(() => {
+    if (initial.current.user) void run(initial.current.user, settings);
+    if (!STANDALONE) {
+      fetch('./api/config')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((c: { users?: string[] } | null) => setTracked(c?.users ?? []))
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Réglages modifiés : on les garde et on recalcule (avec un léger délai pour les curseurs).
+  const firstSettings = useRef(true);
+  useEffect(() => {
+    saveSettings(settings);
+    if (firstSettings.current) {
+      firstSettings.current = false;
+      return;
+    }
+    if (!user) return;
+    const timer = setTimeout(() => void run(user, settings), 450);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings]);
+
+  const search = (name: string) => {
+    setUser(name);
+    setTab('plan');
+    void run(name, settings);
+  };
+
+  const goHome = () => {
+    request.current++;
+    setUser('');
+    setStatus({ kind: 'idle' });
+    writeUrl('', settings.ruleSet);
+    document.title = 'ZUnivers Ninja';
+  };
+
+  const plan = status.kind === 'done' ? status.plan : null;
+  const suggestions = [...new Set([...tracked, ...recent])].slice(0, 8);
+
+  return (
+    <div className="flex min-h-dvh flex-col">
+      <Header
+        ruleSet={settings.ruleSet}
+        onRuleSet={(ruleSet) => setSettings((s) => ({ ...s, ruleSet }))}
+        dark={dark}
+        onToggleTheme={toggleTheme}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onHome={goHome}
+      />
+
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
+        {!user ? (
+          <Landing onSearch={search} suggestions={suggestions} />
+        ) : (
+          <div className="space-y-5">
+            <div className="max-w-xl">
+              <SearchForm
+                key={user}
+                initial={user}
+                loading={status.kind === 'loading'}
+                onSearch={search}
+              />
+            </div>
+
+            {status.kind === 'loading' && <LoadingState />}
+            {status.kind === 'error' && (
+              <ErrorState message={status.message} onRetry={() => void run(user, settings, true)} />
+            )}
+            {plan && (
+              <>
+                <PlayerBanner
+                  plan={plan}
+                  loading={false}
+                  onRefresh={() => void run(user, settings, true)}
+                />
+                <div
+                  className="flex gap-1 border-b border-zinc-200 dark:border-ink-800"
+                  role="tablist"
+                >
+                  {(
+                    [
+                      ['plan', 'Plan'],
+                      ['collection', 'Collection'],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      role="tab"
+                      aria-selected={tab === key}
+                      onClick={() => setTab(key)}
+                      className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition ${
+                        tab === key
+                          ? 'border-accent-500 text-zinc-900 dark:text-zinc-100'
+                          : 'border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+                  <div className="min-w-0">
+                    {tab === 'plan' ? <PlanList plan={plan} /> : <Collection plan={plan} />}
+                  </div>
+                  <Summary plan={plan} />
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </main>
+
+      <Footer plan={plan} />
+      <SettingsDrawer
+        open={settingsOpen}
+        settings={settings}
+        onChange={setSettings}
+        onClose={() => setSettingsOpen(false)}
+      />
+    </div>
+  );
+}
+
+function Landing({
+  onSearch,
+  suggestions,
+}: {
+  onSearch: (u: string) => void;
+  suggestions: string[];
+}) {
+  const features = [
+    {
+      icon: Target,
+      title: 'Plan optimal',
+      text: "Recherche en faisceau qui maximise tes points de collection, au lieu d'une simple liste de règles.",
+    },
+    {
+      icon: Swords,
+      title: 'Toutes les mécaniques',
+      text: 'Journa, bonus, recyclage, forge, fusions, constellations, invocations, Vortex, évolution et défis.',
+    },
+    {
+      icon: Zap,
+      title: 'Copier-coller',
+      text: 'Chaque étape donne la commande Discord exacte, dans le bon ordre.',
+    },
+    {
+      icon: Sparkles,
+      title: 'Notifications',
+      text: 'Auto-hébergé avec Docker : reçois ton plan sur Discord dès qu’il change.',
+    },
+  ];
+  return (
+    <div className="mx-auto flex max-w-3xl flex-col items-center pt-10 text-center sm:pt-16">
+      <Logo className="size-16" />
+      <h1 className="mt-6 text-4xl font-extrabold tracking-tight sm:text-5xl">
+        Ton prochain coup <span className="text-accent-500">ZUnivers</span>,
+        <br className="hidden sm:block" /> calculé pour toi.
+      </h1>
+      <p className="mt-4 max-w-xl text-zinc-600 dark:text-zinc-400">
+        Entre ton pseudo Discord : ZUnivers Ninja analyse ta collection et te donne la meilleure
+        suite de commandes pour progresser aujourd'hui.
+      </p>
+      <div className="mt-8 w-full max-w-xl">
+        <SearchForm loading={false} onSearch={onSearch} size="lg" />
+      </div>
+      {suggestions.length > 0 && (
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              type="button"
+              className="chip hover:border-accent-500/50"
+              onClick={() => onSearch(s)}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="mt-14 grid w-full gap-3 text-left sm:grid-cols-2">
+        {features.map(({ icon: Icon, title, text }) => (
+          <div key={title} className="card p-4">
+            <Icon className="size-5 text-accent-500" />
+            <p className="mt-3 font-semibold">{title}</p>
+            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{text}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PlayerBanner({
+  plan,
+  onRefresh,
+  loading,
+}: {
+  plan: PlanResult;
+  onRefresh: () => void;
+  loading: boolean;
+}) {
+  const tiles = [
+    { label: 'Points gagnés', value: `+${fmt(plan.gain.points)}`, accent: true },
+    {
+      label: 'Gain espéré',
+      value: plan.gain.expected > 0.05 ? `≈ +${fmt1(plan.gain.expected)}` : '—',
+    },
+    { label: 'Commandes', value: fmt(plan.commands.length) },
+    { label: 'Points de collection', value: fmt(plan.after.points) },
+  ];
+  return (
+    <section className="card animate-fade-up p-4 sm:p-5">
+      <div className="flex flex-wrap items-center gap-4">
+        <Avatar src={plan.player.avatar} name={plan.player.displayName} />
+        <div className="min-w-0 flex-1">
+          <h1 className="flex items-center gap-2 truncate text-xl font-bold">
+            {plan.player.displayName}
+            {plan.player.subscribed && (
+              <Crown className="size-4 text-amber-500" aria-label="Abonné premium" />
+            )}
+          </h1>
+          <p className="truncate text-sm text-zinc-500 dark:text-zinc-400">
+            @{plan.player.name}
+            {plan.player.corporation && <> · {plan.player.corporation}</>}
+            {plan.ruleSet === 'HARDCORE' && (
+              <span className="ml-1.5 rounded bg-accent-500/10 px-1.5 py-0.5 text-xs font-semibold text-accent-500">
+                Hardcore
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-zinc-500">
+          <Clock className="size-3.5" />
+          {formatTime(plan.generatedAt)}
+          <button
+            type="button"
+            className="btn-ghost px-2"
+            onClick={onRefresh}
+            disabled={loading}
+            title="Recalculer avec des données fraîches"
+          >
+            <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Actualiser</span>
+          </button>
+        </div>
+      </div>
+      <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {tiles.map((t) => (
+          <div key={t.label} className="rounded-xl bg-zinc-50 px-3 py-2.5 dark:bg-ink-850">
+            <dt className="text-xs text-zinc-500 dark:text-zinc-400">{t.label}</dt>
+            <dd
+              className={`mt-0.5 font-mono text-lg font-semibold tabular-nums ${t.accent ? 'text-emerald-600 dark:text-emerald-400' : ''}`}
+            >
+              {t.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function Avatar({ src, name }: { src: string | null; name: string }) {
+  const [failed, setFailed] = useState(false);
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt=""
+        onError={() => setFailed(true)}
+        className="size-14 rounded-2xl object-cover ring-1 ring-zinc-200 dark:ring-ink-700"
+      />
+    );
+  }
+  return (
+    <div className="grid size-14 place-items-center rounded-2xl bg-accent-500/10 text-xl font-bold text-accent-500">
+      {name.slice(0, 1).toUpperCase()}
+    </div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div
+      className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]"
+      aria-busy="true"
+      aria-label="Calcul du plan"
+    >
+      <div className="card space-y-4 p-4">
+        <p className="text-sm text-zinc-500">
+          Analyse de la collection et recherche du meilleur plan…
+        </p>
+        {Array.from({ length: 5 }, (_, i) => (
+          <div key={i} className="flex animate-pulse gap-3">
+            <div className="size-9 rounded-xl bg-zinc-100 dark:bg-ink-800" />
+            <div className="flex-1 space-y-2">
+              <div className="h-3 w-1/3 rounded bg-zinc-100 dark:bg-ink-800" />
+              <div className="h-7 rounded-lg bg-zinc-100 dark:bg-ink-800" />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="card h-64 animate-pulse" />
+    </div>
+  );
+}
+
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="card flex flex-col items-center gap-3 px-6 py-12 text-center" role="alert">
+      <CircleAlert className="size-9 text-accent-500" />
+      <p className="max-w-md font-medium">{message}</p>
+      <button type="button" className="btn-ghost" onClick={onRetry}>
+        <RefreshCw className="size-4" />
+        Réessayer
+      </button>
+    </div>
+  );
+}
+
+function Footer({ plan }: { plan: PlanResult | null }) {
+  return (
+    <footer className="border-t border-zinc-200 py-6 text-xs text-zinc-500 dark:border-ink-800 dark:text-zinc-500">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4">
+        <span>Projet communautaire, non affilié à ZUnivers.</span>
+        <a
+          className="hover:text-accent-500"
+          href="https://github.com/LightD31/ZUnivers-Ninja"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Code source
+        </a>
+        <a
+          className="hover:text-accent-500"
+          href="https://zunivers.zerator.com/guide"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Guide ZUnivers
+        </a>
+        {plan && (
+          <span className="ml-auto font-mono">
+            {fmt(plan.stats.explored)} états explorés en {fmt(plan.stats.durationMs)} ms · faisceau{' '}
+            {plan.stats.beamWidth}
+          </span>
+        )}
+      </div>
+    </footer>
+  );
+}
