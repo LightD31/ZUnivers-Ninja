@@ -184,6 +184,10 @@ Les réglages explicites l'emportent toujours sur la stratégie : avec
    `points de collection + points espérés des tirages + Σ monnaies × poids`.
    Selon la stratégie, les points espérés sont réduits (Prudent) ou chaque carte nouvelle rapporte
    un bonus (Collectionneur).
+   Pour comparer les plans en cours, le faisceau compte aussi les monnaies restantes à leur valeur
+   d'opportunité : ce que rapporteraient les meilleures dépenses possibles avec elles. Sans ça, une
+   grosse dépense peu rentable (une fusion qui vide la poudre) éliminerait des plans qui
+   utilisent mieux le même budget. Le plan final reste choisi sur la valeur ci-dessus.
    Passé `PLANNER_TIME_LIMIT_SECONDS`, la recherche continue en glouton depuis le meilleur état :
    le plan reste complet, et l'interface signale qu'il a été écourté.
 5. **Validation.** Le plan retenu est rejoué depuis l'état de départ. Une action impossible ou une
