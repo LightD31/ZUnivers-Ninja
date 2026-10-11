@@ -35,23 +35,28 @@ export const STRATEGIES: Record<StrategyId, Strategy> = {
     id: 'prudent',
     label: 'Prudent',
     description:
-      'Privilégie les points garantis : les invocations et ascensions ne comptent que pour moitié.',
-    options: { evFactor: 0.5 },
+      'Aucun tirage : ni invocation ni ascension, seulement des points garantis. La ZUMonnaie est gardée.',
+    // Les tirages ne comptent pas : simplement réduire leur espérance ne changeait presque aucun
+    // plan réel, la poudre allant déjà d'abord aux dépenses garanties.
+    options: { evFactor: 0 },
   },
   epargne: {
     id: 'epargne',
     label: 'Épargne',
     description:
       'Garde des monnaies pour un évènement ou un nouveau pack : ne dépense que pour les actions très rentables.',
-    // Poids par défaut × 15.
-    options: { weights: { balance: 0.03, loreDust: 0.15, loreFragment: 0.15, upgradeDust: 0.75 } },
+    // Poids par défaut × 15, et × 50 pour la ZUMonnaie : sinon les invocations, dont les doublons
+    // se recyclent en poudre, convertissaient la ZUMonnaie en poudre au lieu de la garder.
+    options: { weights: { balance: 0.1, loreDust: 0.15, loreFragment: 0.15, upgradeDust: 0.75 } },
   },
   vortex: {
     id: 'vortex',
     label: 'Vortex',
     description:
-      "Monte dans la tour d'Ascension : la réputation vaut plus, la poudre est réservée aux ascensions.",
-    options: { reputationWeight: 0.05, weights: { loreDust: 0.005 } },
+      "Monte dans la tour d'Ascension : toutes les ascensions disponibles, la poudre leur est réservée.",
+    // Réputation × 50, poudre × 10 : la poudre ne part plus dans de petites créations quand des
+    // ascensions restent à faire.
+    options: { reputationWeight: 0.05, weights: { loreDust: 0.1 } },
   },
   collectionneur: {
     id: 'collectionneur',

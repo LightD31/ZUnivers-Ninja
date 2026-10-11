@@ -25,7 +25,7 @@ describe('résolution des options', () => {
 
   it('complète les poids partiels du préréglage avec ceux par défaut', () => {
     const options = resolveOptions({ strategy: 'vortex' });
-    expect(options.weights.loreDust).toBe(0.005);
+    expect(options.weights.loreDust).toBe(STRATEGIES.vortex.options.weights!.loreDust);
     expect(options.weights.balance).toBe(DEFAULT_OPTIONS.weights.balance);
     expect(options.reputationWeight).toBeGreaterThan(DEFAULT_OPTIONS.reputationWeight);
   });
@@ -80,10 +80,21 @@ describe('stratégies sur un joueur réel (fixtures)', () => {
     }
   });
 
-  it('Épargne garde plus de poudre', () => {
+  it('Prudent ne fait aucun tirage', () => {
+    const draws = (p: PlanResult) => count(p, 'invoke') + count(p, 'ascension');
+    expect(draws(equilibre)).toBeGreaterThan(0);
+    expect(draws(plans.prudent)).toBe(0);
+  });
+
+  it('Épargne garde plus de poudre, sans dépenser plus de ZUMonnaie', () => {
+    // Régression : les invocations convertissaient la ZUMonnaie en poudre (doublons recyclés).
     expect(plans.epargne.after.balances.loreDust).toBeGreaterThan(
       equilibre.after.balances.loreDust,
     );
+    expect(plans.epargne.after.balances.balance).toBeGreaterThanOrEqual(
+      equilibre.after.balances.balance,
+    );
+    expect(count(plans.epargne, 'invoke')).toBeLessThanOrEqual(count(equilibre, 'invoke'));
   });
 
   it('Vortex tente plus d’ascensions quand la poudre manque', () => {
@@ -154,7 +165,7 @@ describe('stratégies sur des cas synthétiques', () => {
     expect(invokes('prudent')).toBe(false);
   });
 
-  it("n'invoque pas quand les tirages ne comptent pas", () => {
+  it("Prudent n'invoque pas, même quand l'invocation est rentable", () => {
     const items = Array.from({ length: 50 }, (_, i) => makeItem(1001 + i));
     const input = {
       catalog: makeCatalog(items),
@@ -164,7 +175,7 @@ describe('stratégies sur des cas synthétiques', () => {
       now: TEST_NOW,
     };
     expect(createPlan(input).commands.some((c) => c.startsWith('/im'))).toBe(true);
-    const cautious = createPlan({ ...input, options: { strategy: 'prudent', evFactor: 0 } });
+    const cautious = createPlan({ ...input, options: { strategy: 'prudent' } });
     expect(cautious.commands.some((c) => c.startsWith('/im'))).toBe(false);
   });
 });
