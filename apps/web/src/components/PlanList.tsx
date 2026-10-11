@@ -114,7 +114,7 @@ export function PlanList({ plan }: { plan: PlanResult }) {
                   <GainBadge group={group} />
                 </div>
                 <div className="surface flex items-center gap-1 border-l-2 border-zu-500 pl-3">
-                  <code className="min-w-0 flex-1 overflow-x-auto py-1.5 font-mono text-[13px] whitespace-nowrap text-white/90 [scrollbar-width:thin]">
+                  <code className="min-w-0 flex-1 overflow-x-auto py-1.5 font-mono text-[13px] whitespace-pre text-white/90 [scrollbar-width:thin]">
                     {group.command}
                   </code>
                   <CopyButton text={group.command} />

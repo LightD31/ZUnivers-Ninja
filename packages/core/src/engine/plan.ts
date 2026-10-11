@@ -195,6 +195,21 @@ function cardRef(c: PlanCard, kind?: ActionKind): string {
   return Array.from({ length: Math.max(1, c.count) }, () => ref).join(' + ');
 }
 
+/**
+ * Nom de l'option de chaque commande Discord. Avec l'option nommée (`/im  évènement:chroma`),
+ * une commande collée telle quelle dans Discord remplit directement son option.
+ */
+const OPTION: Partial<Record<ActionKind, string>> = {
+  invoke: 'évènement',
+};
+
+/** Ligne de commande Discord : `/commande  option:valeur`, ou `/commande` sans argument. */
+export function commandLine(kind: ActionKind, args: string): string {
+  const option = OPTION[kind];
+  if (!args) return `/${COMMAND[kind]}`;
+  return option ? `/${COMMAND[kind]}  ${option}:${args}` : `/${COMMAND[kind]} ${args}`;
+}
+
 function describe(ctx: Context, step: Step): PlanStep {
   const action = step.action;
   const base = {
@@ -215,7 +230,7 @@ function describe(ctx: Context, step: Step): PlanStep {
     cards,
     title,
     detail,
-    command: `/${COMMAND[action.kind]}${args ? ` ${args}` : ''}`,
+    command: commandLine(action.kind, args),
   });
 
   switch (action.kind) {
@@ -331,7 +346,7 @@ export function groupSteps(steps: PlanStep[]): StepGroup[] {
       command:
         size === 1
           ? step.command
-          : `/${COMMAND[step.kind]} ${cards.map((c) => cardRef(c, step.kind)).join(' + ')}`,
+          : commandLine(step.kind, cards.map((c) => cardRef(c, step.kind)).join(' + ')),
       title: groupTitle(step.kind, cards, size, step.title),
       detail: size === 1 ? step.detail : null,
       cards,

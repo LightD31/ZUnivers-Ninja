@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildContext,
   createPlan,
+  commandLine,
   replay,
   resolveOptions,
   search,
@@ -267,6 +268,16 @@ describe('cas synthétiques', () => {
     });
     expect(plan.commands.some((c) => c.startsWith('/im'))).toBe(true);
     expect(plan.gain.expected).toBeGreaterThan(0);
+  });
+
+  it("nomme l'option des invocations pour qu'un copier-coller dans Discord la remplisse", () => {
+    expect(commandLine('invoke', 'chroma')).toBe('/im  évènement:chroma');
+    expect(commandLine('invoke', '')).toBe('/im');
+    // Invocation basique : pas d'option.
+    for (const c of createPlan({ catalog, player, now: NOW }).commands.filter((c) =>
+      c.startsWith('/im'),
+    ))
+      expect(c).toMatch(/^\/im( {2}évènement:\S.*)?$/);
   });
 
   it('respecte keepExtra pour les échanges', () => {
