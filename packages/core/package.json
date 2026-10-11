@@ -1,0 +1,16 @@
+{
+  "name": "@zuninja/core",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Moteur ZUnivers Ninja : client API, règles du jeu et planificateur.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "^4.1.0"
+  }
+}

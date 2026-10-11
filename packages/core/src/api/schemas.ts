@@ -1,0 +1,222 @@
+import { z } from 'zod';
+
+/**
+ * Schémas des réponses de l'API publique ZUnivers.
+ *
+ * Volontairement tolérants : les champs inconnus sont conservés (`looseObject`) et les champs
+ * secondaires ont des valeurs par défaut, pour qu'un ajout côté API ne casse pas l'application.
+ * Un champ indispensable qui disparaît produit en revanche une erreur explicite.
+ */
+
+const num = z.number();
+const flag = z.boolean().default(false);
+
+export const PackSchema = z.looseObject({
+  id: z.string(),
+  name: z.string(),
+  slug: z.string().default(''),
+  year: z.number().nullish(),
+});
+
+export const ItemSchema = z.looseObject({
+  id: z.string(),
+  name: z.string(),
+  slug: z.string().default(''),
+  genre: z.string().default(''),
+  rarity: num,
+  identifier: num,
+  pack: PackSchema,
+  urls: z.array(z.string()).default([]),
+  scores: z.record(z.string(), num).default({}),
+  shinyLevels: z.record(z.string(), z.boolean()).default({}),
+  isRecyclable: flag,
+  isTradable: flag,
+  isCounting: flag,
+  isCraftable: flag,
+  isInvocable: flag,
+  isGoldable: flag,
+  isUpgradable: flag,
+});
+export type ApiItem = z.infer<typeof ItemSchema>;
+
+export const FusionSchema = z.looseObject({
+  item: ItemSchema,
+  items: z.array(ItemSchema),
+});
+export type ApiFusion = z.infer<typeof FusionSchema>;
+
+export const RecycleConfigSchema = z.array(
+  z.looseObject({
+    rarity: num,
+    shinyLevel: num,
+    recycleValue: num,
+    craftValue: num,
+  }),
+);
+export type ApiRecycleConfig = z.infer<typeof RecycleConfigSchema>;
+
+export const SettingsSchema = z.looseObject({
+  dailyReward: num.default(1000),
+  weeklyReward: num.default(1000),
+  dailyLoreDust: num.default(10),
+  gameFeatures: z.array(z.string()).default([]),
+  currentEventId: z.string().nullish(),
+});
+export type ApiSettings = z.infer<typeof SettingsSchema>;
+
+export const EventSchema = z.looseObject({
+  id: z.string(),
+  name: z.string(),
+  pack: PackSchema.nullish(),
+  items: z.array(ItemSchema).default([]),
+  balanceCost: num.default(0),
+  loreDustCost: num.default(0),
+  isOneTime: flag,
+  isActive: z.boolean().default(true),
+  invokeCount: num.default(10),
+  beginDate: z.string(),
+  endDate: z.string(),
+  imageUrl: z.string().nullish(),
+});
+export const EventsSchema = z.array(EventSchema);
+export type ApiEvent = z.infer<typeof EventSchema>;
+
+export const TowerSchema = z.looseObject({
+  id: z.string(),
+  index: num.default(0),
+  name: z.string(),
+  group: z.string().default(''),
+  imageUrl: z.string().nullish(),
+  pack: PackSchema,
+  towerFloors: z
+    .array(
+      z.looseObject({
+        index: num,
+        rate: num,
+        dropRates: z
+          .array(z.looseObject({ rarity: num, shinyLevel: num.default(0), rate: num }))
+          .default([]),
+      }),
+    )
+    .default([]),
+});
+export const TowersSchema = z.array(TowerSchema);
+export type ApiTower = z.infer<typeof TowerSchema>;
+
+export const TowerSeasonSchema = z.looseObject({
+  id: z.string(),
+  index: num.default(0),
+  beginDate: z.string(),
+  endDate: z.string(),
+  tower: TowerSchema,
+});
+export type ApiTowerSeason = z.infer<typeof TowerSeasonSchema>;
+
+export const UserSchema = z.looseObject({
+  user: z.looseObject({
+    id: z.string(),
+    discordId: z.string().nullish(),
+    discordUserName: z.string(),
+    discordGlobalName: z.string().nullish(),
+    discordAvatar: z.string().nullish(),
+    balance: num.default(0),
+    loreDust: num.default(0),
+    loreFragment: num.default(0),
+    upgradeDust: num.default(0),
+    ruleSetType: z.string().nullish(),
+  }),
+  inventoryCount: num.default(0),
+  inventoryUniqueCount: num.default(0),
+  inventoryUniqueGoldenCount: num.default(0),
+  itemCount: num.default(0),
+  tradeCountToday: num.default(0),
+  tradeLimit: num.default(2),
+  subscriptionBonusCount: num.default(0),
+  subscriptionBonusLimit: num.default(0),
+  isSubscribed: z.boolean().optional(),
+  currentLootStreak: num.default(0),
+  maxLootStreak: num.default(0),
+  userCorporation: z
+    .looseObject({
+      corporation: z.looseObject({ id: z.string(), name: z.string().default('') }).nullish(),
+    })
+    .nullish(),
+});
+export type ApiUser = z.infer<typeof UserSchema>;
+
+export const InventoryEntrySchema = z.looseObject({
+  id: z.string().optional(),
+  item: ItemSchema,
+  quantity: num,
+  shinyLevel: num.nullish(),
+  /** Ancien format de l'API, avant l'arrivée des cartes chromatiques. */
+  isGolden: z.boolean().nullish(),
+  upgradeLevel: num.nullish(),
+});
+export const InventorySchema = z.array(InventoryEntrySchema);
+export type ApiInventoryEntry = z.infer<typeof InventoryEntrySchema>;
+
+export const ChallengeSchema = z.looseObject({
+  id: z.string(),
+  beginDate: z.string().nullish(),
+  endDate: z.string().nullish(),
+  challenge: z.looseObject({
+    id: z.string(),
+    description: z.string().default(''),
+    type: z.string().default('UNKNOWN'),
+    score: num.default(0),
+    rewardLoreDust: num.default(0),
+  }),
+  progress: z.looseObject({ type: z.string().nullish(), current: num, max: num }).nullish(),
+  challengeLog: z.unknown().nullish(),
+});
+export const ChallengesSchema = z.array(ChallengeSchema);
+export type ApiChallenge = z.infer<typeof ChallengeSchema>;
+
+export const LootSchema = z.record(
+  z.string(),
+  z.array(
+    z.looseObject({
+      amount: num.default(0),
+      type: z.string(),
+      date: z.string().nullish(),
+    }),
+  ),
+);
+export type ApiLoot = z.infer<typeof LootSchema>;
+
+export const UserTowerSchema = z.looseObject({
+  towerStats: z
+    .array(
+      z.looseObject({
+        maxFloorIndex: num.default(0),
+        towerLogCount: num.default(0),
+        towerSeasonIndex: num.nullish(),
+        isCurrentTowerSeason: z.boolean().default(false),
+        towerSeasonBeginDate: z.string(),
+        towerSeasonEndDate: z.string(),
+        towerName: z.string().nullish(),
+      }),
+    )
+    .default([]),
+});
+export type ApiUserTower = z.infer<typeof UserTowerSchema>;
+
+export const EvolutionSchema = z.looseObject({
+  upgradeDust: num.nullish(),
+  evolutionUpgradeDustCost: z.array(num).default([]),
+  evolutionItems: z
+    .array(z.looseObject({ item: ItemSchema, isOwned: z.boolean().default(false) }))
+    .default([]),
+});
+export type ApiEvolution = z.infer<typeof EvolutionSchema>;
+
+export const CorporationSchema = z.looseObject({
+  id: z.string(),
+  name: z.string().default(''),
+  corporationBonuses: z
+    .array(z.looseObject({ type: z.string(), level: num.default(0) }))
+    .nullish()
+    .transform((v) => v ?? []),
+});
+export type ApiCorporation = z.infer<typeof CorporationSchema>;

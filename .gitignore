@@ -1,7 +1,10 @@
-/.idea
-/target
-/config
-/plugins
-
-/zuninja-plugin-example/.idea
-/zuninja-plugin-example/target
+node_modules/
+dist/
+coverage/
+data/
+.env
+*.log
+.idea/
+.vscode/
+.DS_Store
+*.tsbuildinfo
