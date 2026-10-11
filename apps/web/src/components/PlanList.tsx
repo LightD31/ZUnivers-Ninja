@@ -109,7 +109,17 @@ export function PlanList({ plan }: { plan: PlanResult }) {
               <div className="min-w-0 flex-1 space-y-2">
                 <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium leading-tight">{group.title}</p>
+                    <p className="font-medium leading-tight">
+                      {group.title}
+                      {repeat > 1 && (
+                        <span
+                          className="ml-2 text-lg leading-none font-bold text-zu-400 tabular-nums"
+                          title={`À taper ${repeat} fois d'affilée`}
+                        >
+                          ×{repeat}
+                        </span>
+                      )}
+                    </p>
                     {group.detail && <p className="mt-0.5 text-xs text-white/60">{group.detail}</p>}
                   </div>
                   <GainBadge group={group} />
@@ -118,14 +128,6 @@ export function PlanList({ plan }: { plan: PlanResult }) {
                   <code className="min-w-0 flex-1 overflow-x-auto py-1.5 font-mono text-[13px] whitespace-nowrap text-white/90 [scrollbar-width:thin]">
                     {group.command}
                   </code>
-                  {repeat > 1 && (
-                    <span
-                      className="shrink-0 rounded bg-zu-500 px-1.5 text-xs leading-5 font-bold text-white tabular-nums"
-                      title={`À taper ${repeat} fois d'affilée`}
-                    >
-                      ×{repeat}
-                    </span>
-                  )}
                   <CopyButton text={group.command} />
                 </div>
                 <Cards group={group} />
