@@ -12,7 +12,8 @@ import type { Config } from './config';
 import { logger } from './logger';
 import { PlanAbortedError, PlannerBusyError, PlannerPool } from './pool';
 
-export const VERSION = '2.1.0';
+/** Version publiée : tirée du tag de release et injectée au build de l'image Docker. */
+export const VERSION = process.env.APP_VERSION || 'dev';
 const USER_AGENT = `ZUnivers-Ninja/${VERSION} (+https://github.com/LightD31/ZUnivers-Ninja)`;
 const PLAN_CACHE_MS = 60_000;
 /** Marge laissée au-delà de la limite de recherche avant d'arrêter un thread. */

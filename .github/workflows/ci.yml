@@ -39,13 +39,14 @@ jobs:
           push: false
           load: true
           tags: zunivers-ninja:ci
+          build-args: APP_VERSION=0.0.0-ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Smoke test
         run: |
           docker run -d --name ninja -p 8080:8080 zunivers-ninja:ci
           for i in $(seq 1 30); do curl -sf http://localhost:8080/health && break; sleep 1; done
-          curl -sf http://localhost:8080/health
+          curl -sf http://localhost:8080/health | grep -q '"version":"0.0.0-ci"'
           curl -sf http://localhost:8080/ | grep -q 'ZUnivers Ninja'
           docker exec ninja test -f /app/planner-thread.js
           docker rm -f ninja
