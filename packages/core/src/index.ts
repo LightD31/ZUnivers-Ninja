@@ -35,6 +35,7 @@ export {
 } from './engine/planner';
 export {
   createPlan,
+  commandLine,
   replay,
   groupCommands,
   groupSteps,

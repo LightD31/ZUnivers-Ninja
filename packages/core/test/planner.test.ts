@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildContext,
   createPlan,
+  commandLine,
   replay,
   resolveOptions,
   search,
@@ -119,8 +120,8 @@ describe('cas synthétiques', () => {
     });
     // 11 doublons × 5 = 55 poudres → création de la carte manquante (50).
     expect(plan.commands).toEqual([
-      `/recyclage ${Array(11).fill('1001').join(' + ')}`,
-      '/création 1002',
+      `/recyclage carte:${Array(11).fill('1001').join(' + ')}`,
+      '/création carte:1002',
     ]);
     expect(plan.after.balances.loreDust).toBe(5);
     expect(plan.after.unique[0]).toBe(2);
@@ -133,7 +134,10 @@ describe('cas synthétiques', () => {
       player: makePlayer({ inventory: Object.fromEntries([owned(r3.id, 0, 6)]) }),
       now: TEST_NOW,
     });
-    expect(plan.commands).toEqual(['/constellation 3001 + 3001 + 3001', '/recyclage 3001 + 3001']);
+    expect(plan.commands).toEqual([
+      '/constellation carte:3001 + 3001 + 3001',
+      '/recyclage carte:3001 + 3001',
+    ]);
     expect(plan.groups[0]?.title).toBe('Constellations : 3 niveaux sur 1 carte');
   });
 
@@ -165,7 +169,7 @@ describe('cas synthétiques', () => {
       }),
       now: TEST_NOW,
     });
-    expect(plan.commands).toEqual(['/création 2002', '/fusion 5001']);
+    expect(plan.commands).toEqual(['/création carte:2002', '/fusion carte:5001']);
   });
 
   it('préfère plusieurs petites dépenses rentables à une grosse qui épuise le budget', () => {
@@ -269,6 +273,20 @@ describe('cas synthétiques', () => {
     expect(plan.gain.expected).toBeGreaterThan(0);
   });
 
+  it("nomme l'option des invocations pour qu'un copier-coller dans Discord la remplisse", () => {
+    expect(commandLine('invoke', 'chroma')).toBe('/im évènement:chroma');
+    expect(commandLine('invoke', '')).toBe('/im');
+    expect(commandLine('recycle', '1001 + 1002*')).toBe('/recyclage carte:1001 + 1002*');
+    expect(commandLine('enchant', '1023')).toBe('/enchantement carte:1023');
+    expect(commandLine('evolution', '1023')).toBe('/évolution carte:1023');
+    expect(commandLine('daily', '')).toBe('/journa');
+    // Invocation basique : pas d'option.
+    for (const c of createPlan({ catalog, player, now: NOW }).commands.filter((c) =>
+      c.startsWith('/im'),
+    ))
+      expect(c).toMatch(/^\/im( évènement:\S.*)?$/);
+  });
+
   it('respecte keepExtra pour les échanges', () => {
     const a = makeItem(1001, { upgradable: false, goldable: false });
     const catalogA = makeCatalog([a]);
@@ -279,7 +297,7 @@ describe('cas synthétiques', () => {
       now: TEST_NOW,
       options: { keepExtra: 2 },
     });
-    expect(plan.commands).toEqual(['/recyclage 1001 + 1001']);
+    expect(plan.commands).toEqual(['/recyclage carte:1001 + 1001']);
     const ctx = buildContext(catalogA, playerA, TEST_NOW, resolveOptions({ keepExtra: 2 }));
     const final = replay(
       ctx,
