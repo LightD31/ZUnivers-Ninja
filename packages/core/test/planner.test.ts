@@ -54,6 +54,7 @@ describe('plan sur un joueur réel (fixtures)', () => {
 
   it('reste rapide', () => {
     expect(plan.stats.durationMs).toBeLessThan(15_000);
+    expect(plan.stats.timedOut).toBe(false);
   });
 });
 
@@ -65,6 +66,21 @@ describe('recherche', () => {
     const greedy = search(ctx(1)).best.value;
     const beam = search(ctx(16)).best.value;
     expect(beam).toBeGreaterThanOrEqual(greedy - 1e-6);
+  });
+
+  it('finit le plan en glouton une fois la limite de temps atteinte', () => {
+    const limited = search(
+      buildContext(catalog, player, NOW, resolveOptions({ beamWidth: 64, timeLimitMs: 1e-6 })),
+    );
+    const greedy = search(
+      buildContext(catalog, player, NOW, resolveOptions({ beamWidth: 1, branching: 1 })),
+    );
+    expect(limited.timedOut).toBe(true);
+    expect(greedy.timedOut).toBe(false);
+    expect(limited.best.value).toBe(greedy.best.value);
+    expect(nodeSteps(limited.best).map((s) => s.action)).toEqual(
+      nodeSteps(greedy.best).map((s) => s.action),
+    );
   });
 
   it('chaque plan se rejoue et ne touche jamais aux exemplaires réservés', () => {

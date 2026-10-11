@@ -127,7 +127,14 @@ export interface PlanResult {
     floor: number;
   } | null;
   insights: Insights;
-  stats: { explored: number; durationMs: number; beamWidth: number; branching: number };
+  stats: {
+    explored: number;
+    durationMs: number;
+    beamWidth: number;
+    branching: number;
+    /** Limite de temps atteinte : la fin du plan a été cherchée en glouton. */
+    timedOut: boolean;
+  };
   /** Empreinte des commandes, pour ne notifier que les changements. */
   hash: string;
 }
@@ -517,7 +524,7 @@ export function createPlan({
 }: CreatePlanInput): PlanResult {
   const started = performance.now();
   const ctx = buildContext(catalog, player, now, resolveOptions(options));
-  const { best, explored } = search(ctx);
+  const { best, explored, timedOut } = search(ctx);
   const steps = nodeSteps(best);
   const finalState = replay(
     ctx,
@@ -594,6 +601,7 @@ export function createPlan({
       durationMs: Math.round(performance.now() - started),
       beamWidth: ctx.options.beamWidth,
       branching: ctx.options.branching,
+      timedOut,
     },
     hash: fnv1a(commands.join('\n')),
   };

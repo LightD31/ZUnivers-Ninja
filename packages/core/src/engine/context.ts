@@ -17,6 +17,11 @@ export interface PlannerOptions {
   branching: number;
   /** Nombre maximal d'actions de dépense dans un plan. */
   maxDepth: number;
+  /**
+   * Temps de recherche maximal (ms, 0 = illimité). Au-delà, la fin du plan est cherchée en
+   * glouton depuis le meilleur état du faisceau : le plan reste complet, juste moins optimisé.
+   */
+  timeLimitMs: number;
   /** Valeur (en points de collection) d'une unité de chaque monnaie conservée. */
   weights: Balances;
   /** Valeur d'un point de réputation d'Ascension (améliore les récompenses du Vortex). */
@@ -40,6 +45,7 @@ export const DEFAULT_OPTIONS: PlannerOptions = {
   beamWidth: 16,
   branching: 6,
   maxDepth: 400,
+  timeLimitMs: 0,
   weights: { balance: 0.002, loreDust: 0.01, loreFragment: 0.01, upgradeDust: 0.05 },
   reputationWeight: 0.001,
   keepExtra: 0,
@@ -67,6 +73,7 @@ export function resolveOptions(input: PlannerOptionsInput = {}): PlannerOptions 
     beamWidth: Math.max(1, Math.floor(input.beamWidth ?? DEFAULT_OPTIONS.beamWidth)),
     branching: Math.max(1, Math.floor(input.branching ?? DEFAULT_OPTIONS.branching)),
     keepExtra: Math.max(0, Math.floor(input.keepExtra ?? DEFAULT_OPTIONS.keepExtra)),
+    timeLimitMs: Math.max(0, input.timeLimitMs ?? DEFAULT_OPTIONS.timeLimitMs),
     weights: { ...DEFAULT_OPTIONS.weights, ...input.weights },
     allow: { ...DEFAULT_OPTIONS.allow, ...input.allow },
   };

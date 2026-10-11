@@ -18,7 +18,7 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm test && pnpm build
 
-# --- Exécution : un seul fichier JS + l'interface statique -------------------
+# --- Exécution : le serveur JS (+ thread du planificateur) et l'interface ----
 FROM ${NODE_IMAGE}
 LABEL org.opencontainers.image.title="ZUnivers Ninja" \
       org.opencontainers.image.description="Conseiller ZUnivers : interface web, API et notifications Discord" \
@@ -29,7 +29,7 @@ ENV NODE_ENV=production \
     STATE_FILE=/data/state.json \
     WEB_DIR=/app/web
 WORKDIR /app
-COPY --from=build /src/apps/worker/dist/index.js ./index.js
+COPY --from=build /src/apps/worker/dist/ ./
 COPY --from=build /src/apps/web/dist ./web
 RUN mkdir -p /data && chown node:node /data
 USER node

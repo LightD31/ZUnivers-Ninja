@@ -59,20 +59,23 @@ utilise un miroir :
 
 Toutes les variables sont facultatives, et documentées dans [`.env.example`](.env.example).
 
-| Variable                   | Défaut         | Rôle                                                                                                |
-| -------------------------- | -------------- | --------------------------------------------------------------------------------------------------- |
-| `ZU_USERS`                 | —              | Pseudos Discord à conseiller automatiquement, séparés par des virgules. Vide = interface web seule. |
-| `RULESET`                  | `NORMAL`       | Mode de jeu : `NORMAL` ou `HARDCORE`.                                                               |
-| `CRON`                     | `*/30 * * * *` | Fréquence des conseils automatiques.                                                                |
-| `TZ`                       | `Europe/Paris` | Fuseau du cron.                                                                                     |
-| `WEBHOOK_URL`              | —              | Webhook Discord où envoyer les conseils.                                                            |
-| `DISCORD_MENTION`          | `false`        | Mentionne le joueur dans le message.                                                                |
-| `JSON_WEBHOOK_URL`         | —              | Reçoit le plan complet en JSON (remplace l'ancien système de plugins).                              |
-| `WEB_URL`                  | —              | URL publique de l'interface, utilisée pour les liens dans Discord.                                  |
-| `BEAM_WIDTH` / `BRANCHING` | `16` / `6`     | Effort de recherche du planificateur.                                                               |
-| `KEEP_EXTRA`               | `0`            | Exemplaires gardés en plus pour les échanges.                                                       |
-| `DRY_RUN`                  | `false`        | Calcule sans rien envoyer.                                                                          |
-| `PORT`                     | `8080`         | Port HTTP.                                                                                          |
+| Variable                     | Défaut         | Rôle                                                                                                  |
+| ---------------------------- | -------------- | ----------------------------------------------------------------------------------------------------- |
+| `ZU_USERS`                   | —              | Pseudos Discord à conseiller automatiquement, séparés par des virgules. Vide = interface web seule.   |
+| `RULESET`                    | `NORMAL`       | Mode de jeu : `NORMAL` ou `HARDCORE`.                                                                 |
+| `CRON`                       | `*/30 * * * *` | Fréquence des conseils automatiques.                                                                  |
+| `TZ`                         | `Europe/Paris` | Fuseau du cron.                                                                                       |
+| `WEBHOOK_URL`                | —              | Webhook Discord où envoyer les conseils.                                                              |
+| `DISCORD_MENTION`            | `false`        | Mentionne le joueur dans le message.                                                                  |
+| `JSON_WEBHOOK_URL`           | —              | Reçoit le plan complet en JSON (remplace l'ancien système de plugins).                                |
+| `WEB_URL`                    | —              | URL publique de l'interface, utilisée pour les liens dans Discord.                                    |
+| `BEAM_WIDTH` / `BRANCHING`   | `16` / `6`     | Effort de recherche du planificateur.                                                                 |
+| `PLANNER_THREADS`            | `2`            | Threads de calcul : nombre de plans calculés en parallèle.                                            |
+| `PLANNER_QUEUE_LIMIT`        | `4`            | Calculs en attente au-delà desquels l'API répond `503`.                                               |
+| `PLANNER_TIME_LIMIT_SECONDS` | `20`           | Temps de recherche maximal par plan, ensuite la fin du plan est calculée en glouton (`0` = illimité). |
+| `KEEP_EXTRA`                 | `0`            | Exemplaires gardés en plus pour les échanges.                                                         |
+| `DRY_RUN`                    | `false`        | Calcule sans rien envoyer.                                                                            |
+| `PORT`                       | `8080`         | Port HTTP.                                                                                            |
 
 ### API
 
@@ -92,6 +95,11 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
 Les deux routes renvoient un `ETag` (empreinte des commandes). Une requête avec `If-None-Match`
 reçoit `304 Not Modified` tant que le plan n'a pas changé : un bot peut donc interroger souvent
 sans rien recalculer de son côté.
+
+Les calculs tournent dans des threads séparés : le serveur reste réactif pendant un calcul lourd.
+Les requêtes identiques simultanées partagent le même calcul, et un client qui se déconnecte
+l'annule. Quand tous les threads sont occupés et la file d'attente pleine, les deux routes
+répondent `503` avec un en-tête `Retry-After`.
 
 ### Brancher un bot Discord (ex : michel-discord-bot)
 
@@ -151,6 +159,8 @@ Le bot interroge Ninja et poste lui-même dans son salon. Dans ce cas, laisse `Z
    invocation, ascension, évolution). À chaque étape, les meilleurs états sont étendus avec leurs
    actions les plus prometteuses. Un état vaut :
    `points de collection + points espérés des tirages + Σ monnaies × poids`.
+   Passé `PLANNER_TIME_LIMIT_SECONDS`, la recherche continue en glouton depuis le meilleur état :
+   le plan reste complet, et l'interface signale qu'il a été écourté.
 5. **Validation.** Le plan retenu est rejoué depuis l'état de départ. Une action impossible ou une
    monnaie négative fait échouer le plan.
 
