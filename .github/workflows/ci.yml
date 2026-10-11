@@ -29,6 +29,9 @@ jobs:
 
   docker:
     name: Docker image
+    # Seulement sur les PR : leur CI construit déjà l'arbre fusionné avec main, et la publication
+    # (workflow Release, sur un tag) reconstruit l'image. Sur main, ce serait un second build inutile.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
