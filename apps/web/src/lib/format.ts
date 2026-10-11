@@ -3,7 +3,9 @@ const nf1 = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
 
 export const fmt = (n: number) => nf.format(Math.round(n));
 export const fmt1 = (n: number) => nf1.format(n);
-export const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${fmt(Math.abs(n))}`;
+const sign = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '');
+export const signed = (n: number) => `${sign(n)}${fmt(Math.abs(n))}`;
+export const signed1 = (n: number) => `${sign(n)}${fmt1(Math.abs(n))}`;
 export const pct = (part: number, total: number) =>
   total > 0 ? Math.min(100, (part / total) * 100) : 0;
 
