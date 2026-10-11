@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { boosterOptions, invocationEV, normalizePlayer, type GameEvent } from '../src';
+import {
+  boosterOptions,
+  invocationEV,
+  nodeSteps,
+  normalizePlayer,
+  search,
+  type GameEvent,
+} from '../src';
 import { initialState } from '../src/engine/state';
 import { PITY_CARDS } from '../src/rules/constants';
 import { pityStep } from '../src/rules/random';
@@ -93,5 +100,29 @@ describe('cartes mises en avant par un évènement', () => {
     // Seules les cartes mises en avant manquent : l'évènement les donne à coup sûr en 4 ★.
     const onlyFeaturedMissing = evs(ownedAll(others));
     expect(onlyFeaturedMissing.event).toBeGreaterThan(onlyFeaturedMissing.basic);
+  });
+});
+
+describe('choix du pack', () => {
+  // 300 cartes 1 ★ jamais vues : au début, chaque carte tirée est nouvelle. La classique en donne
+  // 10 pour 1 000 ZUMonnaie, la chroma 10 pour 2 000 : plus de valeur par invocation pour la
+  // chroma (variantes chromas), plus par ZUMonnaie pour la classique.
+  const items = Array.from({ length: 300 }, (_, i) => makeItem(1001 + i));
+  const catalog = makeCatalog(items);
+  const player = makePlayer({
+    balances: { balance: 600_000, loreDust: 0, loreFragment: 0, upgradeDust: 0 },
+  });
+
+  it('compare les packs par ZUMonnaie et dépense tout le solde', () => {
+    const ctx = makeContext(catalog, player, { strategy: 'collectionneur' });
+    const actions = nodeSteps(search(ctx).best).map((s) => s.action);
+    const invokes = actions.flatMap((a) => (a.kind === 'invoke' ? [a.booster] : []));
+    expect(invokes[0]).toBe('basic');
+    // 600 invocations classiques : bien au-delà de la profondeur de recherche une par une.
+    const spent = invokes.reduce(
+      (sum, key) => sum + (boosterOptions(ctx).find((o) => o.key === key)!.cost.balance ?? 0),
+      0,
+    );
+    expect(spent).toBe(600_000);
   });
 });
