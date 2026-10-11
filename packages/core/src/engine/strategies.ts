@@ -53,10 +53,11 @@ export const STRATEGIES: Record<StrategyId, Strategy> = {
     id: 'vortex',
     label: 'Vortex',
     description:
-      "Monte dans la tour d'Ascension : toutes les ascensions disponibles, la poudre leur est réservée.",
-    // Réputation × 50, poudre × 10 : la poudre ne part plus dans de petites créations quand des
-    // ascensions restent à faire.
-    options: { reputationWeight: 0.05, weights: { loreDust: 0.1 } },
+      "Monte dans la tour d'Ascension : la poudre va aux ascensions avant les petites créations.",
+    // Réputation × 50, poudre × 5. Simulé sur des joueurs réels : × 5 fait ~90 % des ascensions
+    // qu'Équilibré laisse de côté pour quelques points ; × 10 les fait toutes mais garde des
+    // dizaines de milliers de poudres.
+    options: { reputationWeight: 0.05, weights: { loreDust: 0.05 } },
   },
   collectionneur: {
     id: 'collectionneur',
