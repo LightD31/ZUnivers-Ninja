@@ -83,6 +83,12 @@ export const BOOSTERS: Record<BoosterKind, BoosterSpec> = {
 
 export const CARDS_PER_INVOCATION = 10;
 
+/**
+ * Bienveillance : après 209 cartes invoquées sans 4 ★, la 210ᵉ est une 4 ★, puis le compteur
+ * repart à 210. Commune à tous les packs, classique ou d'évènement (source : annonce ZUnivers).
+ */
+export const PITY_CARDS = 210;
+
 /** Bonus de corporation : multiplicateur par niveau (récompense = Σ niveaux × multiplicateur). */
 export const CORPORATION_BONUS_MULTIPLIER: Record<string, number> = {
   LOOT: 10,

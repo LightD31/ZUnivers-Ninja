@@ -112,6 +112,7 @@ export function makePlayer(overrides: Partial<Player> = {}): Player {
     tower: null,
     evolution: null,
     tradesLeft: 2,
+    invokeBeforePity: null,
     stats: { inventoryCount: 0, uniqueCount: 0, uniqueGoldenCount: 0 },
     ...overrides,
   };

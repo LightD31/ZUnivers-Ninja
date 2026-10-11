@@ -14,6 +14,7 @@ import {
   TowersSchema,
   UserSchema,
   UserTowerSchema,
+  UserOverviewSchema,
 } from './schemas';
 
 export type RuleSet = 'NORMAL' | 'HARDCORE';
@@ -157,6 +158,8 @@ export function createClient(options: ClientOptions = {}) {
     loot: (name: string) => get(`/public/loot/${enc(name)}?year=0`, LootSchema),
     userTower: (name: string) => get(`/public/tower/${enc(name)}`, UserTowerSchema),
     evolution: (name: string) => getOptional(`/public/evolution/${enc(name)}`, EvolutionSchema),
+    overview: (name: string) =>
+      getOptional(`/public/user/${enc(name)}/overview`, UserOverviewSchema),
     corporation: (id: string) => getOptional(`/public/corporation/${enc(id)}`, CorporationSchema),
   };
 }

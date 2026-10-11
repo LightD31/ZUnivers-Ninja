@@ -3,6 +3,7 @@ import type {
   ApiCorporation,
   ApiEvent,
   ApiEvolution,
+  ApiUserOverview,
   ApiFusion,
   ApiInventoryEntry,
   ApiItem,
@@ -252,6 +253,8 @@ export interface RawPlayer {
   tower: ApiUserTower;
   evolution: ApiEvolution | null;
   corporation: ApiCorporation | null;
+  /** Facultatif : absent des anciens instantanés. */
+  overview?: ApiUserOverview | null;
 }
 
 const FINAL_EVOLUTION_SCORE = 600;
@@ -308,6 +311,7 @@ export function normalizePlayer(raw: RawPlayer, ruleSet = 'NORMAL'): Player {
           }
         : null,
     tradesLeft: Math.max(0, u.tradeLimit - u.tradeCountToday),
+    invokeBeforePity: raw.overview?.invokeBeforePity ?? null,
     stats: {
       inventoryCount: u.inventoryCount,
       uniqueCount: u.inventoryUniqueCount,

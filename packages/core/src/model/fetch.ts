@@ -19,16 +19,17 @@ export async function fetchRawCatalog(client: ZuClient): Promise<RawCatalog> {
 export async function fetchRawPlayer(client: ZuClient, name: string): Promise<RawPlayer> {
   // `user` en premier : renvoie une ZuNotFoundError claire si le pseudo n'existe pas.
   const user = await client.user(name);
-  const [inventory, challenges, loot, tower, evolution] = await Promise.all([
+  const [inventory, challenges, loot, tower, evolution, overview] = await Promise.all([
     client.inventory(name),
     client.challenges(name),
     client.loot(name),
     client.userTower(name),
     client.evolution(name),
+    client.overview(name),
   ]);
   const corporationId = user.userCorporation?.corporation?.id;
   const corporation = corporationId ? await client.corporation(corporationId) : null;
-  return { user, inventory, challenges, loot, tower, evolution, corporation };
+  return { user, inventory, challenges, loot, tower, evolution, corporation, overview };
 }
 
 export async function fetchCatalog(client: ZuClient): Promise<Catalog> {
