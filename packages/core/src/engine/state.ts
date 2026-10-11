@@ -39,6 +39,10 @@ export interface State {
   eventInvocations: Record<string, number>;
   /** Cartes nouvelles attendues des invocations simulées, par réserve de tirage. */
   expectedNew: Record<string, number>;
+  /** Cartes nouvelles attendues de toutes les actions aléatoires simulées (invocations, ascensions). */
+  expectedNewCards: number;
+  /** Cartes du catalogue possédées, chaque brillance comptant à part. */
+  owned: number;
   /** Points de collection certains (cartes + constellations). */
   points: number;
   /** Points espérés des actions aléatoires (invocations, ascensions). */
@@ -59,11 +63,17 @@ export function cardPoints(ctx: Context, card: OwnedCard): number {
   return (card.copies > 0 ? score : 0) + card.constellation * score * CONSTELLATION_POINTS_FACTOR;
 }
 
+const isOwned = (ctx: Context, card: OwnedCard) => card.copies > 0 && !!ctx.items[card.itemId];
+
 export function initialState(ctx: Context): State {
   const { player, catalog, now } = ctx;
   const cards = OverlayMap.from(Object.entries(player.inventory));
   let points = 0;
-  for (const card of Object.values(player.inventory)) points += cardPoints(ctx, card);
+  let owned = 0;
+  for (const card of Object.values(player.inventory)) {
+    points += cardPoints(ctx, card);
+    if (isOwned(ctx, card)) owned++;
+  }
 
   const today = gameClock(now).date;
   const todayLoot = player.loot.find((d) => d.date === today);
@@ -102,6 +112,8 @@ export function initialState(ctx: Context): State {
     evolutionIndex,
     eventInvocations: {},
     expectedNew: {},
+    expectedNewCards: 0,
+    owned,
     points,
     ev: 0,
   };
@@ -120,6 +132,7 @@ export function getCard(state: State, itemId: string, shiny: Shiny): OwnedCard {
 export function putCard(ctx: Context, state: State, card: OwnedCard): void {
   const previous = getCard(state, card.itemId, card.shiny);
   state.points += cardPoints(ctx, card) - cardPoints(ctx, previous);
+  state.owned += Number(isOwned(ctx, card)) - Number(isOwned(ctx, previous));
   state.cards.set(cardKey(card.itemId, card.shiny), card);
 }
 
@@ -158,9 +171,14 @@ export function progressChallenges(state: State, action: ChallengeAction, amount
   });
 }
 
-/** Valeur d'un état pour le planificateur : points + espérance + monnaies pondérées. */
+/**
+ * Valeur d'un état pour le planificateur : points + espérance (réduite selon `evFactor`)
+ * + bonus des cartes nouvelles + monnaies pondérées.
+ */
 export function stateValue(ctx: Context, state: State): number {
-  let value = state.points + state.ev;
-  for (const c of CURRENCIES) value += state.balances[c] * ctx.options.weights[c];
+  const { evFactor, newCardBonus, weights } = ctx.options;
+  let value = state.points + state.ev * evFactor;
+  if (newCardBonus > 0) value += newCardBonus * (state.owned + state.expectedNewCards * evFactor);
+  for (const c of CURRENCIES) value += state.balances[c] * weights[c];
   return value;
 }

@@ -9,8 +9,11 @@ import {
   type RarityConfig,
   type Shiny,
 } from '../model/types';
+import { DEFAULT_STRATEGY, STRATEGIES, isStrategy, type StrategyId } from './strategies';
 
 export interface PlannerOptions {
+  /** Stratégie dont les options sont issues (préréglage, avant les options explicites). */
+  strategy: StrategyId;
   /** Largeur du faisceau (1 = glouton). */
   beamWidth: number;
   /** Nombre d'actions candidates explorées depuis chaque état. */
@@ -26,6 +29,10 @@ export interface PlannerOptions {
   weights: Balances;
   /** Valeur d'un point de réputation d'Ascension (améliore les récompenses du Vortex). */
   reputationWeight: number;
+  /** Part de l'espérance des actions aléatoires (invocations, ascensions) prise en compte, de 0 à 1. */
+  evFactor: number;
+  /** Points ajoutés pour chaque carte (et brillance) jamais possédée qui entre dans la collection. */
+  newCardBonus: number;
   /** Exemplaires supplémentaires à garder pour les échanges. */
   keepExtra: number;
   /** Actions autorisées. */
@@ -42,12 +49,15 @@ export interface PlannerOptions {
 }
 
 export const DEFAULT_OPTIONS: PlannerOptions = {
+  strategy: DEFAULT_STRATEGY,
   beamWidth: 16,
   branching: 6,
   maxDepth: 400,
   timeLimitMs: 0,
   weights: { balance: 0.002, loreDust: 0.01, loreFragment: 0.01, upgradeDust: 0.05 },
   reputationWeight: 0.001,
+  evFactor: 1,
+  newCardBonus: 0,
   keepExtra: 0,
   allow: {
     recycle: true,
@@ -66,16 +76,37 @@ export type PlannerOptionsInput = Partial<Omit<PlannerOptions, 'weights' | 'allo
   allow?: Partial<PlannerOptions['allow']>;
 };
 
+const finite = (value: number | undefined, fallback: number) =>
+  value !== undefined && Number.isFinite(value) ? value : fallback;
+
+/**
+ * Options complètes : valeurs par défaut, puis préréglage de la stratégie choisie, puis options
+ * explicites (qui l'emportent toujours sur le préréglage).
+ */
 export function resolveOptions(input: PlannerOptionsInput = {}): PlannerOptions {
-  return {
+  const strategy = isStrategy(input.strategy) ? input.strategy : DEFAULT_STRATEGY;
+  const preset = STRATEGIES[strategy].options;
+  const base: PlannerOptions = {
     ...DEFAULT_OPTIONS,
+    ...preset,
+    strategy,
+    weights: { ...DEFAULT_OPTIONS.weights, ...preset.weights },
+    allow: { ...DEFAULT_OPTIONS.allow, ...preset.allow },
+  };
+  return {
+    ...base,
     ...input,
-    beamWidth: Math.max(1, Math.floor(input.beamWidth ?? DEFAULT_OPTIONS.beamWidth)),
-    branching: Math.max(1, Math.floor(input.branching ?? DEFAULT_OPTIONS.branching)),
-    keepExtra: Math.max(0, Math.floor(input.keepExtra ?? DEFAULT_OPTIONS.keepExtra)),
-    timeLimitMs: Math.max(0, input.timeLimitMs ?? DEFAULT_OPTIONS.timeLimitMs),
-    weights: { ...DEFAULT_OPTIONS.weights, ...input.weights },
-    allow: { ...DEFAULT_OPTIONS.allow, ...input.allow },
+    strategy,
+    beamWidth: Math.max(1, Math.floor(finite(input.beamWidth, base.beamWidth))),
+    branching: Math.max(1, Math.floor(finite(input.branching, base.branching))),
+    maxDepth: Math.max(0, Math.floor(finite(input.maxDepth, base.maxDepth))),
+    keepExtra: Math.max(0, Math.floor(finite(input.keepExtra, base.keepExtra))),
+    timeLimitMs: Math.max(0, finite(input.timeLimitMs, base.timeLimitMs)),
+    reputationWeight: Math.max(0, finite(input.reputationWeight, base.reputationWeight)),
+    evFactor: Math.min(1, Math.max(0, finite(input.evFactor, base.evFactor))),
+    newCardBonus: Math.max(0, finite(input.newCardBonus, base.newCardBonus)),
+    weights: { ...base.weights, ...input.weights },
+    allow: { ...base.allow, ...input.allow },
   };
 }
 

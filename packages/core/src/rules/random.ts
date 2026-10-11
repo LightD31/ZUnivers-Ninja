@@ -145,16 +145,17 @@ export function boosterOptions(ctx: Context): BoosterOption[] {
   return options;
 }
 
-/** Espérance (en points) d'une invocation, et cartes nouvelles attendues par seau. */
+/** Espérance (en points) d'une invocation, et cartes nouvelles attendues (au total et par seau). */
 export function invocationEV(
   ctx: Context,
   state: State,
   option: BoosterOption,
-): { ev: number; expectedNew: Record<string, number> } {
+): { ev: number; newCards: number; expectedNew: Record<string, number> } {
   const pool = getPool(ctx, option.packId, true);
   const poolKey = `${option.packId ?? 'classic'}|true`;
   const expectedNew: Record<string, number> = {};
   let perCard = 0;
+  let newCards = 0;
   option.spec.rarity.forEach((pRarity, i) => {
     const rarity = i + 1;
     const pGolden = option.spec.golden[i] ?? 0;
@@ -176,22 +177,27 @@ export function invocationEV(
       );
       perCard += p * value;
       expectedNew[key] = (expectedNew[key] ?? 0) + option.cards * p * pNew;
+      newCards += option.cards * p * pNew;
     }
   });
-  return { ev: perCard * option.cards, expectedNew };
+  return { ev: perCard * option.cards, newCards, expectedNew };
 }
 
-/** Espérance (en points) d'une tentative d'ascension à l'étage courant. */
-export function ascensionEV(ctx: Context, state: State): { ev: number; successRate: number } {
+/** Espérance (en points) d'une tentative d'ascension à l'étage courant, et cartes nouvelles attendues. */
+export function ascensionEV(
+  ctx: Context,
+  state: State,
+): { ev: number; successRate: number; newCards: number } {
   const season = ctx.catalog.season;
-  if (!season) return { ev: 0, successRate: 0 };
+  if (!season) return { ev: 0, successRate: 0, newCards: 0 };
   const floor = season.floors[Math.floor(state.towerFloor)];
-  if (!floor) return { ev: 0, successRate: 0 };
+  if (!floor) return { ev: 0, successRate: 0, newCards: 0 };
   const pool = getPool(ctx, season.packId, false);
   const poolKey = `${season.packId}|false`;
   let reward = 0;
+  let pNewReward = 0;
   for (const drop of floor.drops) {
-    const { value } = cardEV(
+    const { value, pNew } = cardEV(
       state,
       poolKey,
       pool.get(bucketKey(poolKey, drop.rarity, drop.shiny)),
@@ -199,6 +205,7 @@ export function ascensionEV(ctx: Context, state: State): { ev: number; successRa
       drop.shiny,
     );
     reward += drop.rate * value;
+    pNewReward += drop.rate * pNew;
   }
   const floorIndex = Math.floor(state.towerFloor);
   const refund = ASCENSION_FAIL_REFUND * ctx.options.weights.loreDust;
@@ -207,5 +214,9 @@ export function ascensionEV(ctx: Context, state: State): { ev: number; successRa
     floorIndex === season.floors.length - 1 ? REPUTATION_TOP_FLOOR : REPUTATION_SUCCESS;
   const success = reward + successRep * rep;
   const failure = refund + REPUTATION_ATTEMPT * rep;
-  return { ev: floor.rate * success + (1 - floor.rate) * failure, successRate: floor.rate };
+  return {
+    ev: floor.rate * success + (1 - floor.rate) * failure,
+    successRate: floor.rate,
+    newCards: floor.rate * pNewReward,
+  };
 }

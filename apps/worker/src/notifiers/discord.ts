@@ -101,9 +101,12 @@ export function buildDiscordMessage(
           fields,
           ...(plan.player.avatar ? { thumbnail: { url: plan.player.avatar } } : {}),
           footer: {
-            text: plan.season
-              ? `Vortex : ${plan.season.name} · forge « ${plan.season.group} » jusqu'au ${plan.season.end.split('-').reverse().join('/')}`
-              : 'ZUnivers Ninja',
+            text: [
+              `Stratégie : ${plan.strategy.label}`,
+              plan.season
+                ? `Vortex : ${plan.season.name} · forge « ${plan.season.group} » jusqu'au ${plan.season.end.split('-').reverse().join('/')}`
+                : 'ZUnivers Ninja',
+            ].join(' · '),
           },
           timestamp: plan.generatedAt,
         },

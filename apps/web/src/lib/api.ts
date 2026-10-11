@@ -19,6 +19,7 @@ async function fetchFromServer(
 ): Promise<PlanResult> {
   const params = new URLSearchParams({
     ruleset: settings.ruleSet,
+    strategy: settings.strategy,
     beamWidth: String(settings.beamWidth),
     branching: String(settings.branching),
     keepExtra: String(settings.keepExtra),

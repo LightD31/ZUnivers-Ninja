@@ -27,13 +27,18 @@ async function main() {
     );
   if (config.jsonWebhook) notifiers.push(jsonNotifier(config.jsonWebhook));
 
-  const tickOptions = { users: config.users, ruleSet: config.ruleSet, dryRun: config.dryRun };
+  const tickOptions = {
+    users: config.users,
+    strategies: config.strategies,
+    ruleSet: config.ruleSet,
+    dryRun: config.dryRun,
+  };
 
   if (once) {
     if (config.users.length === 0) throw new Error('Aucun joueur configuré (variable ZU_USERS).');
     const results = await runTick(service, store, notifiers, tickOptions);
     for (const r of results) {
-      console.log(`\n=== ${r.user} ===`);
+      console.log(`\n=== ${r.user}${r.plan ? ` (${r.plan.strategy.label})` : ''} ===`);
       if (r.error) console.log(`Erreur : ${r.error}`);
       if (r.plan) {
         console.log(r.plan.commands.join('\n') || '(rien à faire)');
@@ -49,6 +54,7 @@ async function main() {
 
   const app = createApp(service, store, {
     ruleSet: config.ruleSet,
+    strategy: config.planner.strategy,
     users: config.users,
     webDir: config.webDir,
     webUrl: config.webUrl,

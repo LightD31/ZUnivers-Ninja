@@ -219,10 +219,11 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       if (!option || !canAfford(s0, option.cost)) return null;
       if (option.oneTime && option.eventId && (s0.eventInvocations[option.eventId] ?? 0) > 0)
         return null;
-      const { ev, expectedNew } = invocationEV(ctx, s0, option);
+      const { ev, newCards, expectedNew } = invocationEV(ctx, s0, option);
       const s = fork(s0);
       pay(s, option.cost);
       s.ev += ev;
+      s.expectedNewCards += newCards;
       s.expectedNew = { ...s.expectedNew };
       for (const [k, v] of Object.entries(expectedNew))
         s.expectedNew[k] = (s.expectedNew[k] ?? 0) + v;
@@ -242,12 +243,13 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       if (!allow.ascension || !season || !ctx.features.has(FEATURE.tower)) return null;
       if (s0.ascensionsLeft <= 0 || s0.balances.loreDust < ASCENSION_COST) return null;
       if (Math.floor(s0.towerFloor) >= season.floors.length) return null;
-      const { ev, successRate } = ascensionEV(ctx, s0);
+      const { ev, successRate, newCards } = ascensionEV(ctx, s0);
       const s = fork(s0);
       s.balances.loreDust -= ASCENSION_COST;
       s.ascensionsLeft -= 1;
       s.towerFloor += successRate;
       s.ev += ev;
+      s.expectedNewCards += newCards;
       progressChallenges(s, 'ascension', 1);
       return {
         state: s,
