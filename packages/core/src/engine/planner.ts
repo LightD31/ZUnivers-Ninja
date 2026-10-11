@@ -140,6 +140,8 @@ interface Candidate {
   gain: number;
   /** Coût pondéré, pour l'efficacité. */
   cost: number;
+  /** Coût en monnaies. */
+  price: Partial<Balances>;
   key: string;
 }
 
@@ -180,7 +182,13 @@ export function candidates(ctx: Context, state: State): Candidate[] {
   const evFactor = ctx.options.evFactor;
   const push = (actions: Action[], gain: number, cost: Partial<Balances>) => {
     if (gain <= EPSILON || !affordable(state, cost)) return;
-    out.push({ actions, gain, cost: weighted(ctx, cost), key: actions.map(actionKey).join('>') });
+    out.push({
+      actions,
+      gain,
+      cost: weighted(ctx, cost),
+      price: cost,
+      key: actions.map(actionKey).join('>'),
+    });
   };
   const { allow } = ctx.options;
   const lists = forgeLists(ctx);
@@ -341,9 +349,18 @@ export function candidates(ctx: Context, state: State): Candidate[] {
   return out;
 }
 
-/** Garde les meilleurs candidats, moitié par gain absolu, moitié par efficacité. */
-function selectCandidates(all: Candidate[], branching: number): Candidate[] {
-  const byGain = [...all].sort((a, b) => b.gain - a.gain || a.key.localeCompare(b.key));
+/**
+ * Garde les meilleurs candidats, moitié par gain absolu, moitié par efficacité. Le gain absolu
+ * déduit la valeur d'opportunité des monnaies dépensées (`shadow`).
+ */
+function selectCandidates(all: Candidate[], branching: number, shadow?: Balances): Candidate[] {
+  const net = new Map<Candidate, number>();
+  for (const c of all) {
+    let gain = c.gain;
+    if (shadow) for (const cur of CURRENCIES) gain -= (c.price[cur] ?? 0) * shadow[cur];
+    net.set(c, gain);
+  }
+  const byGain = [...all].sort((a, b) => net.get(b)! - net.get(a)! || a.key.localeCompare(b.key));
   const byEfficiency = [...all].sort(
     (a, b) => b.gain / (b.cost + 1) - a.gain / (a.cost + 1) || a.key.localeCompare(b.key),
   );
@@ -359,6 +376,41 @@ function selectCandidates(all: Candidate[], branching: number): Candidate[] {
     chosen.set(c.key, c);
   }
   return [...chosen.values()];
+}
+
+/**
+ * Valeur d'opportunité d'une unité de chaque monnaie, au-delà de son poids : le gain par unité de
+ * la dernière dépense nécessaire pour épuiser le solde, en prenant les dépenses les plus
+ * rentables d'abord (prix marginal d'un sac à dos fractionnaire). Zéro quand le solde suffit à
+ * tout acheter.
+ *
+ * Avec des poids faibles, une grosse dépense peu rentable rapporte plus de valeur immédiate que
+ * plusieurs petites très rentables : sans ce prix, le faisceau la préfère et élimine les plans
+ * qui auraient mieux utilisé le même budget.
+ */
+export function shadowPrices(ctx: Context, state: State): Balances {
+  const all = candidates(ctx, state);
+  const prices = {} as Balances;
+  for (const currency of CURRENCIES) {
+    const uses: { amount: number; perUnit: number }[] = [];
+    for (const c of all) {
+      const amount = c.price[currency] ?? 0;
+      // Seules les dépenses dans cette seule monnaie donnent un prix lisible.
+      if (amount <= 0 || Object.keys(c.price).length !== 1) continue;
+      const perUnit = c.gain / amount + ctx.options.weights[currency];
+      if (perUnit > 0) uses.push({ amount, perUnit });
+    }
+    uses.sort((a, b) => b.perUnit - a.perUnit);
+    let budget = state.balances[currency];
+    let marginal = 0;
+    for (const use of uses) {
+      if (budget <= 0) break;
+      marginal = use.perUnit;
+      budget -= use.amount;
+    }
+    prices[currency] = budget > 0 ? 0 : Math.max(0, marginal - ctx.options.weights[currency]);
+  }
+  return prices;
 }
 
 export interface SearchResult {
@@ -389,6 +441,15 @@ export function search(ctx: Context): SearchResult {
   };
   const root = closure(ctx, start, 'all');
 
+  // Le faisceau classe les plans en valorisant les monnaies restantes à leur prix d'opportunité ;
+  // le meilleur plan reste choisi sur la vraie valeur.
+  const shadow = shadowPrices(ctx, root.state);
+  const rank = (node: SearchNode) => {
+    let r = node.value;
+    for (const c of CURRENCIES) r += node.state.balances[c] * shadow[c];
+    return r;
+  };
+
   let beam = [root];
   let best = root;
   let explored = 1;
@@ -404,7 +465,11 @@ export function search(ctx: Context): SearchResult {
     for (const node of beam) {
       // On essaie les candidats dans l'ordre jusqu'à obtenir `branching` enfants qui progressent.
       let improving = 0;
-      for (const candidate of selectCandidates(candidates(ctx, node.state), branching * 3)) {
+      for (const candidate of selectCandidates(
+        candidates(ctx, node.state),
+        branching * 3,
+        shadow,
+      )) {
         if (improving >= branching) break;
         let child: SearchNode | null = node;
         const touched = new Set<string>();
@@ -426,12 +491,13 @@ export function search(ctx: Context): SearchResult {
       }
     }
     if (children.size === 0) break;
-    beam = [...children.values()]
-      .sort(
-        (a, b) => b.value - a.value || a.signature.join('|').localeCompare(b.signature.join('|')),
-      )
-      .slice(0, beamWidth);
-    if (beam[0]!.value > best.value + EPSILON) best = beam[0]!;
+    const ranked = [...children.values()].map((node) => ({ node, rank: rank(node) }));
+    ranked.sort(
+      (a, b) =>
+        b.rank - a.rank || a.node.signature.join('|').localeCompare(b.node.signature.join('|')),
+    );
+    beam = ranked.slice(0, beamWidth).map((r) => r.node);
+    for (const { node } of ranked) if (node.value > best.value + EPSILON) best = node;
   }
 
   return { root, best, explored, timedOut };

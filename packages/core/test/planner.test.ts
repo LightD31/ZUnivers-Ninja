@@ -167,6 +167,48 @@ describe('cas synthétiques', () => {
     expect(plan.commands).toEqual(['/création 2002', '/fusion 5001']);
   });
 
+  it('préfère plusieurs petites dépenses rentables à une grosse qui épuise le budget', () => {
+    // Fusion : +300 points pour 4 000 poudres. Enchantements : +60 points pour 400 poudres chacun.
+    const plain = { recyclable: false, upgradable: false } as const;
+    const cheap = Array.from({ length: 10 }, (_, i) => makeItem(1001 + i, plain));
+    const a = makeItem(4001, { ...plain, goldable: false });
+    const b = makeItem(4002, { ...plain, goldable: false });
+    const result = makeItem(5001, {
+      ...plain,
+      rarity: 5,
+      isFusion: true,
+      craftable: false,
+      goldable: false,
+    });
+    const input = {
+      catalog: makeCatalog([...cheap, a, b, result], {
+        fusions: [
+          {
+            resultId: result.id,
+            inputs: [
+              { itemId: a.id, quantity: 1 },
+              { itemId: b.id, quantity: 1 },
+            ],
+          },
+        ],
+      }),
+      player: makePlayer({
+        balances: { balance: 0, loreDust: 4000, loreFragment: 0, upgradeDust: 0 },
+        inventory: Object.fromEntries([
+          ...cheap.map((i) => owned(i.id, 0, 2)),
+          owned(a.id, 0, 1),
+          owned(b.id, 0, 1),
+        ]),
+      }),
+      now: TEST_NOW,
+    };
+    for (const beamWidth of [1, 16]) {
+      const plan = createPlan({ ...input, options: { beamWidth } });
+      expect(plan.commands.some((c) => c.startsWith('/fusion'))).toBe(false);
+      expect(plan.gain.points).toBe(600);
+    }
+  });
+
   it("n'invoque pas quand l'invocation n'apporte rien", () => {
     const a = makeItem(1001, {
       recyclable: false,
