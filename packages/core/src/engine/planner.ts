@@ -1,5 +1,5 @@
-import { ASCENSION_COST, FEATURE } from '../rules/constants';
-import { ascensionEV, boosterOptions, invocationEV } from '../rules/random';
+import { ASCENSION_COST, CONSTELLATION_UPGRADE_DUST, FEATURE } from '../rules/constants';
+import { ascensionEV, boosterOptions, expectedDraws, invocationEV } from '../rules/random';
 import { reserveBeforeConstellation, reserveFor, reserveTotal } from '../rules/reserve';
 import {
   CURRENCIES,
@@ -7,6 +7,7 @@ import {
   type Balances,
   type Currency,
   type Item,
+  type OwnedCard,
   type Shiny,
 } from '../model/types';
 import { goalCardMet } from './achievements';
@@ -54,6 +55,12 @@ const EPSILON = 1e-9;
 const INVOKE_STEPS = 50;
 /** En deçà de ce nombre d'invocations du meilleur pack, tous les packs restent proposés. */
 const INVOKE_TAIL = 4;
+/** Éclats d'étoile manquants au plus pour proposer les constellations qui débloquent l'évolution. */
+const EVOLUTION_REACH = 10;
+/** Profondeurs entre deux calculs du prix d'opportunité des monnaies. */
+const SHADOW_REFRESH = 20;
+/** Exemplaires créés ou enchantés au plus pour atteindre le niveau de constellation suivant. */
+const CHAIN_MAX = 4;
 /** Cartes manquantes au plus pour proposer de terminer un succès de collection d'un coup. */
 const ACHIEVEMENT_MISSING_MAX = 8;
 
@@ -177,6 +184,10 @@ interface Candidate {
   /** Coût en monnaies. */
   price: Partial<Balances>;
   key: string;
+  /** Cartes qui entrent dans la collection (espérance des invocations simulées, succès). */
+  obtains?: [Item, Shiny][];
+  /** Succès dont les points sont déjà comptés dans `gain` (candidat qui le termine). */
+  completes?: number;
 }
 
 function weighted(ctx: Context, cost: Partial<Balances>): number {
@@ -203,21 +214,20 @@ function addCost(a: Partial<Balances>, currency: Currency, amount: number): Part
   return { ...a, [currency]: (a[currency] ?? 0) + amount };
 }
 
-const forgeCache = new WeakMap<Context, { craft: Item[]; enchant: Item[] }>();
+const forgeCache = new WeakMap<Context, Item[]>();
 
-function forgeLists(ctx: Context) {
-  let lists = forgeCache.get(ctx);
-  if (!lists) {
-    lists = {
-      craft: ctx.itemList.filter((i) => craftCost(ctx, i) !== undefined),
-      enchant: ctx.itemList.filter((i) => enchantCost(ctx, i) !== undefined),
-    };
-    forgeCache.set(ctx, lists);
+/** Cartes qu'on peut créer ou enchanter en ce moment. */
+function forgeList(ctx: Context): Item[] {
+  let list = forgeCache.get(ctx);
+  if (!list) {
+    list = ctx.itemList.filter(
+      (i) => craftCost(ctx, i) !== undefined || enchantCost(ctx, i) !== undefined,
+    );
+    forgeCache.set(ctx, list);
   }
-  return lists;
+  return list;
 }
 
-/** Actions de dépense prometteuses depuis un état. */
 /** Actions possibles dans ce mode de jeu et voulues par les options (comme `applyAction`). */
 function allowed(ctx: Context) {
   // Une action désactivée dans ce mode de jeu (pas de constellations en Hardcore, par exemple)
@@ -240,6 +250,7 @@ function candidate(
   actions: Action[],
   gain: number,
   cost: Partial<Balances>,
+  obtains?: [Item, Shiny][],
 ): Candidate {
   return {
     actions,
@@ -247,7 +258,192 @@ function candidate(
     cost: weighted(ctx, cost),
     price: cost,
     key: actions.map(actionKey).join('>'),
+    ...(obtains && obtains.length > 0 ? { obtains } : {}),
   };
+}
+
+/**
+ * Gain d'un candidat de forge selon l'état, en plus de ce que donnent ses cartes (mis en cache) :
+ * - après des invocations simulées, une carte qu'elles comptaient déjà comme probable rapporte
+ *   d'autant moins (voir `settleExpectedNew`). Sans ça, le faisceau explorait des créations
+ *   estimées rentables qui ne rapportaient plus rien, et s'arrêtait avec des monnaies à dépenser ;
+ * - une carte qui termine un succès de collection rapporte aussi ses points. Sans ça, la dernière
+ *   carte d'un succès (une fusion ★★★★★, par exemple) semblait trop chère pour être explorée.
+ */
+function adjusted(
+  ctx: Context,
+  state: State,
+  c: Candidate,
+  /** Valeur des tirages espérés par carte et brillance, `null` sans invocation simulée. */
+  drawn: Map<Item, number>[] | null,
+  near: Set<number>,
+): Candidate {
+  if (!c.obtains) return c;
+  let delta = 0;
+  if (drawn) {
+    for (const [item, shiny] of c.obtains) {
+      let lost = drawn[shiny]!.get(item);
+      if (lost === undefined) {
+        lost = 0;
+        for (const draw of expectedDraws(ctx, state, item, shiny))
+          lost += draw.points + draw.drawn * ctx.options.newCardBonus;
+        drawn[shiny]!.set(item, lost);
+      }
+      delta -= lost * ctx.options.evFactor;
+    }
+  }
+  if (near.size > 0) {
+    let progress: Map<number, number> | null = null;
+    for (const [item, shiny] of c.obtains) {
+      const goals = ctx.achievementsByItem.get(item.id);
+      if (!goals) continue;
+      const get = (s: Shiny) => state.cards.get(cardKey(item.id, s));
+      for (const goal of goals) {
+        if (!near.has(goal.index) || goal.index === c.completes) continue;
+        if (goal.shiny !== null && goal.shiny !== shiny) continue;
+        if (goalCardMet(get, item.rarity, goal.shiny, false)) continue;
+        progress ??= new Map();
+        progress.set(goal.index, (progress.get(goal.index) ?? 0) + 1);
+      }
+    }
+    for (const [index, count] of progress ?? []) {
+      const goal = ctx.achievements[index]!;
+      if (state.achievements[index]! + count >= goal.max)
+        delta += goal.score + goal.rewardLoreDust * ctx.options.weights.loreDust;
+    }
+  }
+  return delta !== 0 ? { ...c, gain: c.gain + delta } : c;
+}
+
+/**
+ * Succès de collection qu'un candidat peut terminer : ceux à quelques cartes près (un candidat en
+ * obtient peu à la fois).
+ */
+function nearAchievements(ctx: Context, state: State): Set<number> {
+  const near = new Set<number>();
+  ctx.achievements.forEach((goal, index) => {
+    const missing = goal.max - state.achievements[index]!;
+    if (goal.cards && !goal.constellation && missing > 0 && missing <= ACHIEVEMENT_MISSING_MAX)
+      near.add(index);
+  });
+  return near;
+}
+
+/** Candidats de forge d'une carte, par état de la carte : ils ne dépendent que de lui. */
+const itemCandidateCache = new WeakMap<Context, Map<string, Candidate[]>>();
+
+/**
+ * Création et enchantement, seuls ou suivis de la constellation qu'ils rendent possible. Une
+ * chaîne se juge d'un bloc : la première dorée d'une carte rapporte peu face à son prix, mais
+ * elle ouvre ses niveaux de constellation dorée, parmi les dépenses les plus rentables du jeu.
+ * Étape par étape, le faisceau ne l'explorait pas et dépensait la poudre en cartes ★★★★.
+ * Mis en cache par état de la carte : après une forge, seules quelques cartes changent.
+ */
+function itemCandidates(
+  ctx: Context,
+  state: State,
+  item: Item,
+  allow: ReturnType<typeof allowed>,
+): Candidate[] {
+  const normal = getCard(state, item.id, 0);
+  const golden = getCard(state, item.id, 1);
+  // Exemplaires que la constellation ne consomme pas (au moins 1), 0 quand elle est impossible.
+  const reserved = [normal, golden].map((card, shiny) =>
+    allow.constellation && item.upgradable && card.constellation < item.rarity
+      ? reserveBeforeConstellation(reserveFor(ctx, state, item.id, shiny as Shiny))
+      : 0,
+  ) as [number, number];
+  const key = `${item.id}|${normal.copies}|${normal.constellation}|${golden.copies}|${golden.constellation}|${reserved.join('|')}`;
+  let cache = itemCandidateCache.get(ctx);
+  if (!cache) itemCandidateCache.set(ctx, (cache = new Map()));
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  const out: Candidate[] = [];
+  const w = ctx.options.weights;
+  const bonus = ctx.options.newCardBonus;
+  // Une carte de succès est gardée même à gain négatif : la terminer peut rapporter le succès.
+  const achievement = ctx.achievementsByItem.has(item.id);
+  const push = (
+    actions: Action[],
+    gain: number,
+    cost: Partial<Balances>,
+    obtains: [Item, Shiny][] = [],
+  ) => {
+    if (gain > EPSILON || (achievement && obtains.length > 0))
+      out.push(candidate(ctx, actions, gain, cost, obtains));
+  };
+  const craft = allow.craft ? craftCost(ctx, item) : undefined;
+  const enchant = allow.enchant ? enchantCost(ctx, item) : undefined;
+  const currency = forgeCurrency(item);
+  const [normalScore, goldenScore] = [item.scores[0] + bonus, item.scores[1] + bonus];
+  const crafts = (n: number): Action[] =>
+    Array.from({ length: n }, () => ({ kind: 'craft', itemId: item.id }));
+  /** Exemplaires à ajouter pour monter un niveau de constellation (0 si impossible). */
+  const toNextLevel = (card: OwnedCard, reserved: number) => {
+    const needed = reserved + 1 - card.copies;
+    return reserved > 0 && needed <= CHAIN_MAX ? Math.max(0, needed) : 0;
+  };
+
+  if (craft !== undefined) {
+    const obtains: [Item, Shiny][] = normal.copies === 0 ? [[item, 0]] : [];
+    if (normal.copies === 0)
+      push(crafts(1), normalScore - craft * w[currency], { [currency]: craft }, obtains);
+    const needed = toNextLevel(normal, reserved[0]);
+    if (needed > 0)
+      push(
+        [...crafts(needed), { kind: 'constellation', itemId: item.id, shiny: 0 }],
+        (normal.copies === 0 ? normalScore : 0) +
+          item.scores[0] * 2 +
+          w.upgradeDust -
+          needed * craft * w[currency],
+        { [currency]: needed * craft },
+        obtains,
+      );
+  }
+
+  if (enchant !== undefined) {
+    // Dorées à obtenir : la première, ou de quoi monter un niveau de constellation dorée.
+    const targets: { goldens: number; actions: Action[]; gain: number }[] = [];
+    if (golden.copies === 0) targets.push({ goldens: 1, actions: [], gain: goldenScore });
+    const goldens = toNextLevel(golden, reserved[1]);
+    if (goldens > 0)
+      targets.push({
+        goldens,
+        actions: [{ kind: 'constellation', itemId: item.id, shiny: 1 }],
+        gain: (golden.copies === 0 ? goldenScore : 0) + item.scores[1] * 2 + w.upgradeDust,
+      });
+    for (const target of targets) {
+      // Exemplaires normaux à enchanter : ceux possédés, complétés par des créations. Enchanter
+      // le dernier le retire de la collection ; en créer un de plus l'y garde.
+      const least = Math.max(0, target.goldens - normal.copies);
+      for (const created of new Set([least, least + 1])) {
+        if (created > 0 && craft === undefined) continue;
+        const left = normal.copies + created - target.goldens;
+        const normalDelta = (Number(left > 0) - Number(normal.copies > 0)) * normalScore;
+        const cost = created * (craft ?? 0) + target.goldens * enchant;
+        push(
+          [
+            ...crafts(created),
+            ...Array.from({ length: target.goldens }, (): Action => ({
+              kind: 'enchant',
+              itemId: item.id,
+            })),
+            ...target.actions,
+          ],
+          target.gain + normalDelta - cost * w[currency],
+          { [currency]: cost },
+          [
+            ...(golden.copies === 0 ? [[item, 1] as [Item, Shiny]] : []),
+            ...(normalDelta > 0 ? [[item, 0] as [Item, Shiny]] : []),
+          ],
+        );
+      }
+    }
+  }
+
+  cache.set(key, out);
+  return out;
 }
 
 /** Candidats de forge par contenu d'inventaire (une invocation ne change aucune carte). */
@@ -268,96 +464,23 @@ function forgeCandidates(ctx: Context, state: State): Candidate[] {
   const out: Candidate[] = [];
   const w = ctx.options.weights;
   const bonus = ctx.options.newCardBonus;
-  const push = (actions: Action[], gain: number, cost: Partial<Balances>) => {
-    if (gain > EPSILON) out.push(candidate(ctx, actions, gain, cost));
+  // Gardés même à gain négatif quand ils peuvent terminer un succès (voir `adjusted`).
+  const push = (
+    actions: Action[],
+    gain: number,
+    cost: Partial<Balances>,
+    obtains: [Item, Shiny][],
+    completes?: number,
+  ) => {
+    const achievement =
+      ctx.achievements.length > 0 && obtains.some(([i]) => ctx.achievementsByItem.has(i.id));
+    if (gain <= EPSILON && !achievement) return;
+    const c = candidate(ctx, actions, gain, cost, obtains);
+    out.push(completes === undefined ? c : { ...c, completes });
   };
   const allow = allowed(ctx);
-  const lists = forgeLists(ctx);
 
-  if (allow.craft) {
-    for (const item of lists.craft) {
-      const cost = craftCost(ctx, item)!;
-      const currency = forgeCurrency(item);
-      const price = { [currency]: cost };
-      const normal = getCard(state, item.id, 0);
-      if (normal.copies === 0) {
-        push(
-          [{ kind: 'craft', itemId: item.id }],
-          item.scores[0] + bonus - cost * w[currency],
-          price,
-        );
-        continue;
-      }
-      const reserve = reserveFor(ctx, state, item.id, 0);
-      if (
-        allow.constellation &&
-        item.upgradable &&
-        normal.constellation < item.rarity &&
-        // Un exemplaire de plus rend la constellation possible.
-        normal.copies === reserveBeforeConstellation(reserve)
-      ) {
-        push(
-          [
-            { kind: 'craft', itemId: item.id },
-            { kind: 'constellation', itemId: item.id, shiny: 0 },
-          ],
-          item.scores[0] * 2 + w.upgradeDust - cost * w[currency],
-          price,
-        );
-      }
-      const enchant = enchantCost(ctx, item);
-      if (
-        allow.enchant &&
-        enchant !== undefined &&
-        normal.copies === 1 &&
-        getCard(state, item.id, 1).copies === 0
-      ) {
-        push(
-          [
-            { kind: 'craft', itemId: item.id },
-            { kind: 'enchant', itemId: item.id },
-          ],
-          item.scores[1] + bonus - (cost + enchant) * w[currency],
-          { [currency]: cost + enchant },
-        );
-      }
-    }
-  }
-
-  if (allow.enchant) {
-    for (const item of lists.enchant) {
-      const normal = getCard(state, item.id, 0);
-      if (normal.copies < 1) continue;
-      const cost = enchantCost(ctx, item)!;
-      const currency = forgeCurrency(item);
-      // Enchanter le dernier exemplaire normal le retire de la collection.
-      const lostNormal = normal.copies === 1 ? item.scores[0] + bonus : 0;
-      const golden = getCard(state, item.id, 1);
-      if (golden.copies === 0) {
-        push(
-          [{ kind: 'enchant', itemId: item.id }],
-          item.scores[1] + bonus - lostNormal - cost * w[currency],
-          {
-            [currency]: cost,
-          },
-        );
-      } else if (
-        allow.constellation &&
-        item.upgradable &&
-        golden.constellation < item.rarity &&
-        golden.copies === reserveBeforeConstellation(reserveFor(ctx, state, item.id, 1))
-      ) {
-        push(
-          [
-            { kind: 'enchant', itemId: item.id },
-            { kind: 'constellation', itemId: item.id, shiny: 1 },
-          ],
-          item.scores[1] * 2 + w.upgradeDust - lostNormal - cost * w[currency],
-          { [currency]: cost },
-        );
-      }
-    }
-  }
+  for (const item of forgeList(ctx)) out.push(...itemCandidates(ctx, state, item, allow));
 
   // Compléter une fusion en forgeant les composants manquants.
   if (allow.fusion && allow.craft) {
@@ -366,6 +489,7 @@ function forgeCandidates(ctx: Context, state: State): Candidate[] {
       const result = ctx.items[fusion.resultId];
       if (!result || getCard(state, result.id, 0).copies > 0) continue;
       const actions: Action[] = [];
+      const obtains: [Item, Shiny][] = [[result, 0]];
       let cost: Partial<Balances> = {};
       let gain = result.scores[0] + bonus;
       let feasible = true;
@@ -379,13 +503,16 @@ function forgeCandidates(ctx: Context, state: State): Candidate[] {
           feasible = false;
           break;
         }
-        if (copies === 0) gain += item.scores[0] + bonus;
+        if (copies === 0) {
+          gain += item.scores[0] + bonus;
+          obtains.push([item, 0]);
+        }
         cost = addCost(cost, forgeCurrency(item), unit * missing);
         for (let i = 0; i < missing; i++) actions.push({ kind: 'craft', itemId: item.id });
       }
       if (!feasible || actions.length === 0) continue;
       actions.push({ kind: 'fusion', itemId: result.id, shiny: 0 });
-      push(actions, gain - weighted(ctx, cost), cost);
+      push(actions, gain - weighted(ctx, cost), cost, obtains);
     }
   }
 
@@ -396,6 +523,7 @@ function forgeCandidates(ctx: Context, state: State): Candidate[] {
     if (!goal.cards || goal.constellation || missing <= 0 || missing > ACHIEVEMENT_MISSING_MAX)
       return;
     const actions: Action[] = [];
+    const obtains: [Item, Shiny][] = [];
     let cost: Partial<Balances> = {};
     let gain = goal.score + goal.rewardLoreDust * w.loreDust;
     for (const { itemId, shiny } of goal.cards) {
@@ -414,32 +542,47 @@ function forgeCandidates(ctx: Context, state: State): Candidate[] {
           cost = addCost(cost, forgeCurrency(item), craft);
         }
         actions.push({ kind: 'enchant', itemId });
+        obtains.push([item, 1]);
         cost = addCost(cost, forgeCurrency(item), enchant);
         gain += item.scores[1] + bonus - (normal === 1 ? item.scores[0] + bonus : 0);
       } else {
         const craft = craftCost(ctx, item);
         if (!allow.craft || craft === undefined) return;
         actions.push({ kind: 'craft', itemId });
+        obtains.push([item, 0]);
         cost = addCost(cost, forgeCurrency(item), craft);
         gain += item.scores[0] + bonus;
       }
     }
-    if (actions.length > 0) push(actions, gain - weighted(ctx, cost), cost);
+    if (actions.length > 0) push(actions, gain - weighted(ctx, cost), cost, obtains, index);
   });
 
   cache.set(writes, out);
   return out;
 }
 
-export function candidates(ctx: Context, state: State): Candidate[] {
+/**
+ * Actions de dépense prometteuses depuis un état. `affordableOnly: false` garde aussi celles que
+ * le solde ne permet pas (pour savoir quelle monnaie manque, voir `shadowPrices`).
+ */
+export function candidates(ctx: Context, state: State, affordableOnly = true): Candidate[] {
+  const payable = (cost: Partial<Balances>) => !affordableOnly || affordable(state, cost);
   // Création, enchantement, fusions à compléter : ne dépendent que des cartes, mis en cache.
-  const out: Candidate[] = forgeCandidates(ctx, state).filter((c) => affordable(state, c.price));
+  const out: Candidate[] = [];
+  const drawn =
+    Object.keys(state.expectedNew).length > 0 ? [new Map(), new Map(), new Map()] : null;
+  const near = nearAchievements(ctx, state);
+  for (const c of forgeCandidates(ctx, state)) {
+    if (!payable(c.price)) continue;
+    const estimated = adjusted(ctx, state, c, drawn, near);
+    if (estimated.gain > EPSILON) out.push(estimated);
+  }
   const w = ctx.options.weights;
   // Bonus des cartes nouvelles et part de l'espérance retenue : mêmes termes que `stateValue`.
   const bonus = ctx.options.newCardBonus;
   const evFactor = ctx.options.evFactor;
   const push = (actions: Action[], gain: number, cost: Partial<Balances>) => {
-    if (gain <= EPSILON || !affordable(state, cost)) return;
+    if (gain <= EPSILON || !payable(cost)) return;
     out.push(candidate(ctx, actions, gain, cost));
   };
   const allow = allowed(ctx);
@@ -453,7 +596,7 @@ export function candidates(ctx: Context, state: State): Candidate[] {
       const gain = (ev + newCards * bonus) * evFactor - weighted(ctx, option.cost);
       const action: Action = { kind: 'invoke', booster: option.key };
       if (option.oneTime) push([action], gain, option.cost);
-      else if (gain > EPSILON && affordable(state, option.cost))
+      else if (gain > EPSILON && payable(option.cost))
         repeatable.push(candidate(ctx, [action], gain, option.cost));
     }
     // Packs répétables : seul le plus rentable par monnaie dépensée est proposé. Le faisceau
@@ -492,11 +635,45 @@ export function candidates(ctx: Context, state: State): Candidate[] {
     const next = evolution.steps[state.evolutionIndex + 1];
     const cost = evolution.costs[state.evolutionIndex];
     if (current && next && cost !== undefined) {
-      push(
-        [{ kind: 'evolution', fromItemId: current.itemId, toItemId: next.itemId }],
-        next.score - current.score - cost * w.upgradeDust,
-        { upgradeDust: cost },
-      );
+      const action: Action = {
+        kind: 'evolution',
+        fromItemId: current.itemId,
+        toItemId: next.itemId,
+      };
+      const gain = next.score - current.score - cost * w.upgradeDust;
+      push([action], gain, { upgradeDust: cost });
+      // Évolution à quelques éclats près : les constellations les plus rentables qui les donnent,
+      // puis l'évolution. Une à une, ces constellations ne valaient pas plus que d'autres
+      // dépenses, et un plan pouvait finir à deux éclats d'une évolution de plusieurs centaines
+      // de points.
+      const missing = Math.ceil((cost - state.balances.upgradeDust) / CONSTELLATION_UPGRADE_DUST);
+      if (gain > EPSILON && missing > 0 && missing <= EVOLUTION_REACH) {
+        const chains: Candidate[] = [];
+        const items = new Set<string>();
+        const levels = out
+          .filter((c) => c.actions.at(-1)?.kind === 'constellation' && !c.price.upgradeDust)
+          .sort(
+            (a, b) => b.gain / (b.cost + 1) - a.gain / (a.cost + 1) || (a.key < b.key ? -1 : 1),
+          );
+        for (const c of levels) {
+          const last = c.actions.at(-1)!;
+          if (last.kind !== 'constellation' || items.has(last.itemId)) continue;
+          items.add(last.itemId);
+          chains.push(c);
+          if (chains.length === missing) break;
+        }
+        if (chains.length === missing) {
+          let price: Partial<Balances> = {};
+          for (const c of chains)
+            for (const cur of CURRENCIES)
+              if (c.price[cur]) price = addCost(price, cur, c.price[cur]);
+          push(
+            [...chains.flatMap((c) => c.actions), action],
+            chains.reduce((sum, c) => sum + c.gain, 0) + gain,
+            price,
+          );
+        }
+      }
     }
   }
 
@@ -508,24 +685,25 @@ export function candidates(ctx: Context, state: State): Candidate[] {
  * déduit la valeur d'opportunité des monnaies dépensées (`shadow`).
  */
 function selectCandidates(all: Candidate[], branching: number, shadow?: Balances): Candidate[] {
-  const net = new Map<Candidate, number>();
-  for (const c of all) {
-    let gain = c.gain;
-    if (shadow) for (const cur of CURRENCIES) gain -= (c.price[cur] ?? 0) * shadow[cur];
-    net.set(c, gain);
-  }
-  const byGain = [...all].sort((a, b) => net.get(b)! - net.get(a)! || a.key.localeCompare(b.key));
-  const byEfficiency = [...all].sort(
-    (a, b) => b.gain / (b.cost + 1) - a.gain / (a.cost + 1) || a.key.localeCompare(b.key),
-  );
+  // Clés de tri calculées une fois : des centaines de candidats par état, triés deux fois.
+  const scored = all.map((c) => {
+    let net = c.gain;
+    if (shadow) for (const cur of CURRENCIES) net -= (c.price[cur] ?? 0) * shadow[cur];
+    return { c, net, efficiency: c.gain / (c.cost + 1) };
+  });
+  // Égalités départagées par la clé, en ordre de code (indépendant de la langue) : déterministe.
+  const byKey = (a: (typeof scored)[number], b: (typeof scored)[number]) =>
+    a.c.key < b.c.key ? -1 : a.c.key > b.c.key ? 1 : 0;
+  const byGain = [...scored].sort((a, b) => b.net - a.net || byKey(a, b));
+  const byEfficiency = [...scored].sort((a, b) => b.efficiency - a.efficiency || byKey(a, b));
   const chosen = new Map<string, Candidate>();
   const half = Math.ceil(branching / 2);
-  for (const c of byGain.slice(0, half)) chosen.set(c.key, c);
-  for (const c of byEfficiency) {
+  for (const { c } of byGain.slice(0, half)) chosen.set(c.key, c);
+  for (const { c } of byEfficiency) {
     if (chosen.size >= branching) break;
     chosen.set(c.key, c);
   }
-  for (const c of byGain) {
+  for (const { c } of byGain) {
     if (chosen.size >= branching) break;
     chosen.set(c.key, c);
   }
@@ -534,37 +712,101 @@ function selectCandidates(all: Candidate[], branching: number, shadow?: Balances
 
 /**
  * Valeur d'opportunité d'une unité de chaque monnaie, au-delà de son poids : le gain par unité de
- * la dernière dépense nécessaire pour épuiser le solde, en prenant les dépenses les plus
- * rentables d'abord (prix marginal d'un sac à dos fractionnaire). Zéro quand le solde suffit à
- * tout acheter.
+ * la meilleure dépense que le solde ne permet plus, quand on dépense en prenant toujours la plus
+ * rentable (prix marginal d'un sac à dos). Zéro quand le solde suffit à tout acheter.
  *
  * Avec des poids faibles, une grosse dépense peu rentable rapporte plus de valeur immédiate que
  * plusieurs petites très rentables : sans ce prix, le faisceau la préfère et élimine les plans
  * qui auraient mieux utilisé le même budget.
+ *
+ * Les dépenses sont simulées une à une : une carte offre plusieurs niveaux de constellation, et
+ * une dépense en ouvre d'autres. En ne comptant que les dépenses possibles au départ, le prix de
+ * la poudre était souvent nul alors qu'elle venait à manquer.
  */
 export function shadowPrices(ctx: Context, state: State): Balances {
-  const all = candidates(ctx, state);
-  const prices = {} as Balances;
-  for (const currency of CURRENCIES) {
-    const uses: { amount: number; perUnit: number }[] = [];
-    for (const c of all) {
-      const amount = c.price[currency] ?? 0;
-      // Seules les dépenses dans cette seule monnaie donnent un prix lisible.
-      if (amount <= 0 || Object.keys(c.price).length !== 1) continue;
-      const perUnit = c.gain / amount + ctx.options.weights[currency];
-      if (perUnit > 0) uses.push({ amount, perUnit });
+  const start = { state, value: stateValue(ctx, state), steps: null, signature: [], depth: 0 };
+  return rollout(ctx, start).prices;
+}
+
+/**
+ * Dépenses gloutonnes, la plus rentable par unité d'abord, jusqu'à ce que chaque monnaie manque :
+ * donne le prix d'opportunité des monnaies (`shadowPrices`) et un plan complet, comparé à celui du
+ * faisceau.
+ */
+function rollout(ctx: Context, start: SearchNode): { prices: Balances; node: SearchNode } {
+  const prices: Balances = { balance: 0, loreDust: 0, loreFragment: 0, upgradeDust: 0 };
+  const open = new Set<Currency>(CURRENCIES);
+  let node = start;
+  for (let step = 0; step < ctx.options.maxDepth && open.size > 0; step++) {
+    // Dépense la plus rentable par unité, dans une seule monnaie (seules à donner un prix lisible).
+    let best: { candidate: Candidate; currency: Currency; perUnit: number } | null = null;
+    for (const c of candidates(ctx, node.state, false)) {
+      const spent = CURRENCIES.filter((cur) => (c.price[cur] ?? 0) > 0);
+      if (spent.length !== 1 || !open.has(spent[0]!)) continue;
+      const perUnit = c.gain / c.price[spent[0]!]!;
+      if (
+        !best ||
+        perUnit > best.perUnit ||
+        (perUnit === best.perUnit && c.key < best.candidate.key)
+      )
+        best = { candidate: c, currency: spent[0]!, perUnit };
     }
-    uses.sort((a, b) => b.perUnit - a.perUnit);
-    let budget = state.balances[currency];
-    let marginal = 0;
-    for (const use of uses) {
-      if (budget <= 0) break;
-      marginal = use.perUnit;
-      budget -= use.amount;
+    if (!best) break;
+    if (!affordable(node.state, best.candidate.price)) {
+      prices[best.currency] = best.perUnit;
+      open.delete(best.currency);
+      continue;
     }
-    prices[currency] = budget > 0 ? 0 : Math.max(0, marginal - ctx.options.weights[currency]);
+    let next: SearchNode | null = node;
+    const touched = new Set<string>();
+    for (const action of best.candidate.actions) {
+      next = tryApply(ctx, next, action, false, touched);
+      if (!next) break;
+    }
+    if (!next) {
+      open.delete(best.currency);
+      continue;
+    }
+    node = closure(ctx, next, touched);
   }
-  return prices;
+  return { prices, node };
+}
+
+/** Candidats essayés au plus par étape pour terminer un plan. */
+const FINISH_TRIES = 24;
+
+/**
+ * Termine un plan avec les dépenses qui rapportent encore, la plus rentable d'abord. Le faisceau
+ * classe les plans avec le prix d'opportunité des monnaies : une dépense qui rapporte tout juste
+ * ce prix (une évolution, par exemple) lui est indifférente et pouvait rester de côté.
+ */
+function finish(ctx: Context, start: SearchNode): SearchNode {
+  let node = start;
+  for (let step = 0; step < ctx.options.maxDepth; step++) {
+    const sorted = candidates(ctx, node.state).sort(
+      (a, b) =>
+        b.gain / (b.cost + 1) - a.gain / (a.cost + 1) ||
+        (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+    );
+    let next: SearchNode | null = null;
+    for (const c of sorted.slice(0, FINISH_TRIES)) {
+      let child: SearchNode | null = node;
+      const touched = new Set<string>();
+      for (const action of c.actions) {
+        child = tryApply(ctx, child, action, false, touched);
+        if (!child) break;
+      }
+      if (!child) continue;
+      child = closure(ctx, child, touched);
+      if (child.value > node.value + EPSILON) {
+        next = child;
+        break;
+      }
+    }
+    if (!next) break;
+    node = next;
+  }
+  return node;
 }
 
 export interface SearchResult {
@@ -634,8 +876,12 @@ function beamSearch(ctx: Context): SearchResult {
   const root = closure(ctx, start, 'all');
 
   // Le faisceau classe les plans en valorisant les monnaies restantes à leur prix d'opportunité ;
-  // le meilleur plan reste choisi sur la vraie valeur.
-  const shadow = shadowPrices(ctx, root.state);
+  // le meilleur plan reste choisi sur la vraie valeur. Le prix est recalculé en chemin : les
+  // dépenses déjà faites changent ce que vaut la suite (des invocations rendent inutile la
+  // création des cartes qu'elles donneront), et un prix devenu trop haut faisait préférer les plus
+  // petites dépenses, une à une, jusqu'à la profondeur maximale.
+  const greedy = rollout(ctx, root);
+  let shadow = greedy.prices;
   const rank = (node: SearchNode) => {
     let r = node.value;
     for (const c of CURRENCIES) r += node.state.balances[c] * shadow[c];
@@ -647,6 +893,7 @@ function beamSearch(ctx: Context): SearchResult {
   let explored = 1;
 
   for (let depth = 1; depth <= maxDepth; depth++) {
+    if (depth % SHADOW_REFRESH === 0 && !timedOut) shadow = shadowPrices(ctx, beam[0]!.state);
     if (!timedOut && performance.now() > deadline) {
       timedOut = true;
       beamWidth = 1;
@@ -683,14 +930,15 @@ function beamSearch(ctx: Context): SearchResult {
       }
     }
     if (children.size === 0) break;
-    const ranked = [...children.values()].map((node) => ({ node, rank: rank(node) }));
-    ranked.sort(
-      (a, b) =>
-        b.rank - a.rank || a.node.signature.join('|').localeCompare(b.node.signature.join('|')),
-    );
+    const ranked = [...children].map(([key, node]) => ({ key, node, rank: rank(node) }));
+    ranked.sort((a, b) => b.rank - a.rank || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
     beam = ranked.slice(0, beamWidth).map((r) => r.node);
     for (const { node } of ranked) if (node.value > best.value + EPSILON) best = node;
   }
+  // Fin des plans, et filet de sécurité : le plan glouton du calcul des prix, s'il fait mieux.
+  best = finish(ctx, best);
+  const fallback = finish(ctx, greedy.node);
+  if (fallback.value > best.value + EPSILON) best = fallback;
 
   return { root, best, explored, timedOut };
 }

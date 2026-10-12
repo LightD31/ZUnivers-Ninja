@@ -98,11 +98,20 @@ describe('stratégies sur un joueur réel (fixtures)', () => {
   });
 
   it('Vortex tente plus d’ascensions quand la poudre manque', () => {
-    // Avec la poudre du joueur, Équilibré fait déjà toutes ses ascensions : on la retire pour
-    // qu'elles soient en concurrence avec les créations et enchantements.
-    const poor = { ...player, balances: { ...player.balances, loreDust: 0 } };
+    // Avec la poudre du joueur (et celle de ses recyclages), Équilibré fait déjà toutes ses
+    // ascensions : on la limite pour qu'elles soient en concurrence avec les créations et
+    // enchantements.
+    const poor = { ...player, balances: { ...player.balances, loreDust: 500 } };
     const ascensions = (strategy: StrategyId) =>
-      count(createPlan({ catalog, player: poor, now: NOW, options: { strategy } }), 'ascension');
+      count(
+        createPlan({
+          catalog,
+          player: poor,
+          now: NOW,
+          options: { strategy, allow: { recycle: false } },
+        }),
+        'ascension',
+      );
     expect(ascensions('vortex')).toBeGreaterThan(ascensions('equilibre'));
   }, 30_000);
 

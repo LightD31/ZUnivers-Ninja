@@ -51,8 +51,11 @@ export interface PlannerOptions {
 
 export const DEFAULT_OPTIONS: PlannerOptions = {
   strategy: DEFAULT_STRATEGY,
-  beamWidth: 16,
-  branching: 6,
+  // Mesuré sur 162 joueurs réels : 8 × 4 fait à 0,03 % près les plans de 16 × 6, et 64 × 12 les
+  // mêmes, en deux fois moins de temps. Les chaînes d'actions et le prix d'opportunité des monnaies
+  // font l'essentiel, plus la largeur du faisceau.
+  beamWidth: 8,
+  branching: 4,
   maxDepth: 400,
   timeLimitMs: 0,
   weights: { balance: 0.002, loreDust: 0.01, loreFragment: 0.01, upgradeDust: 0.05 },

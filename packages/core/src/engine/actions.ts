@@ -5,9 +5,9 @@ import {
   SUBSCRIPTION_LOOT_BONUS,
   WEEKLY_EVERY_DAILIES,
 } from '../rules/constants';
-import { ascensionEV, boosterOptions, invocationEV } from '../rules/random';
+import { ascensionEV, boosterOptions, invocationEV, settleExpectedNew } from '../rules/random';
 import { reserveBeforeConstellation, reserveFor, reserveTotal } from '../rules/reserve';
-import type { Balances, Shiny } from '../model/types';
+import type { Balances, Item, Shiny } from '../model/types';
 import {
   canRecycle,
   craftCost,
@@ -98,6 +98,12 @@ function lootReward(ctx: Context, base: number): Partial<Balances> {
 
 type Result = Omit<Applied, 'balanceDelta'> | null;
 
+/** Ajoute un exemplaire obtenu à coup sûr, en soldant les tirages espérés de cette carte. */
+function obtain(ctx: Context, s: State, item: Item, shiny: Shiny): void {
+  if (getCard(s, item.id, shiny).copies === 0) settleExpectedNew(ctx, s, item, shiny);
+  addCopies(ctx, s, item.id, shiny, 1);
+}
+
 function applyInner(ctx: Context, s0: State, action: Action): Result {
   const { allow } = ctx.options;
   switch (action.kind) {
@@ -159,7 +165,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       if (!canAfford(s0, price)) return null;
       const s = fork(s0);
       pay(s, price);
-      addCopies(ctx, s, item.id, 0, 1);
+      obtain(ctx, s, item, 0);
       progressChallenges(s, 'craft', 1);
       return { state: s, touched: [item.id] };
     }
@@ -175,7 +181,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       pay(s, price);
       const lastNormal = getCard(s0, item.id, 0).copies === 1;
       addCopies(ctx, s, item.id, 0, -1);
-      addCopies(ctx, s, item.id, 1, 1);
+      obtain(ctx, s, item, 1);
       progressChallenges(s, 'enchant', 1);
       return {
         state: s,
@@ -199,7 +205,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       const s = fork(s0);
       for (const input of fusion.inputs)
         addCopies(ctx, s, input.itemId, action.shiny, -input.quantity);
-      addCopies(ctx, s, result.id, action.shiny, 1);
+      obtain(ctx, s, result, action.shiny);
       progressChallenges(s, 'fusion', 1);
       progressAchievements(ctx, s, 'fusion', 1);
       return { state: s, touched: [result.id, ...fusion.inputs.map((i) => i.itemId)] };
@@ -281,7 +287,9 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       s.balances.upgradeDust -= cost;
       const current = evolution.steps[index]!;
       if (getCard(s, current.itemId, 0).copies > 0) addCopies(ctx, s, current.itemId, 0, -1);
-      addCopies(ctx, s, next.itemId, 0, 1);
+      const nextItem = ctx.items[next.itemId];
+      if (nextItem) obtain(ctx, s, nextItem, 0);
+      else addCopies(ctx, s, next.itemId, 0, 1);
       s.evolutionIndex = index + 1;
       progressChallenges(s, 'evolution', 1);
       return { state: s, touched: [] };

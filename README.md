@@ -74,7 +74,7 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
 | `DISCORD_MENTION`            | `false`        | Mentionne le joueur dans le message.                                                                                                                                               |
 | `JSON_WEBHOOK_URL`           | —              | Reçoit le plan complet en JSON (remplace l'ancien système de plugins).                                                                                                             |
 | `WEB_URL`                    | —              | URL publique de l'interface, utilisée pour les liens dans Discord.                                                                                                                 |
-| `BEAM_WIDTH` / `BRANCHING`   | `16` / `6`     | Effort de recherche du planificateur.                                                                                                                                              |
+| `BEAM_WIDTH` / `BRANCHING`   | `8` / `4`      | Effort de recherche du planificateur.                                                                                                                                              |
 | `PLANNER_THREADS`            | `2`            | Threads de calcul : nombre de plans calculés en parallèle.                                                                                                                         |
 | `PLANNER_QUEUE_LIMIT`        | `4`            | Calculs en attente au-delà desquels l'API répond `503`.                                                                                                                            |
 | `PLANNER_TIME_LIMIT_SECONDS` | `20`           | Temps de recherche maximal par plan, ensuite la fin du plan est calculée en glouton (`0` = illimité).                                                                              |
@@ -193,10 +193,19 @@ Les réglages explicites l'emportent toujours sur la stratégie : avec
    `points de collection + points de succès + points espérés des tirages + Σ monnaies × poids`.
    Selon la stratégie, les points espérés ne comptent pas (Prudent) ou chaque carte nouvelle rapporte
    un bonus (Collectionneur).
+   Une dépense peut être une chaîne d'actions jugée d'un bloc : créer une carte pour l'enchanter et
+   monter sa constellation dorée, ou enchanter deux fois une carte pour sa première dorée et son
+   premier niveau. Étape par étape, la première action rapporte trop peu pour être explorée, alors
+   que la chaîne compte parmi les dépenses les plus rentables du jeu. De même, les quelques
+   constellations qui manquent pour une évolution sont proposées avec elle, et la carte qui termine
+   un succès compte ses points.
    Pour comparer les plans en cours, le faisceau compte aussi les monnaies restantes à leur valeur
-   d'opportunité : ce que rapporteraient les meilleures dépenses possibles avec elles. Sans ça, une
-   grosse dépense peu rentable (une fusion qui vide la poudre) éliminerait des plans qui
-   utilisent mieux le même budget. Le plan final reste choisi sur la valeur ci-dessus.
+   d'opportunité : ce que rapporte la dernière dépense qu'elles permettent quand on dépense en
+   prenant toujours la plus rentable. Sans ça, une grosse dépense peu rentable (une fusion qui vide
+   la poudre) éliminerait des plans qui utilisent mieux le même budget. Cette valeur est recalculée
+   en chemin : les dépenses déjà faites changent ce que vaut la suite. Le plan final reste choisi
+   sur la valeur ci-dessus, puis complété par les dépenses qui rapportent encore. Le plan glouton
+   qui sert au calcul de la valeur d'opportunité est gardé s'il fait mieux.
    Un succès rapporte beaucoup de points d'un coup, ce qui peut aussi attirer tout le faisceau vers
    un mauvais plan : la recherche est donc faite avec et sans les succès, et le meilleur des deux
    plans est gardé. Tenir compte des succès ne donne ainsi jamais un plan moins bon.
@@ -222,6 +231,10 @@ Pour les invocations, deux règles du jeu s'ajoutent :
 - **Bienveillance** : après 209 cartes invoquées sans 4 ★, la 210ᵉ est une 4 ★. Le compteur du
   joueur (`invokeBeforePity`) est suivi en probabilité d'une invocation à l'autre. Les conseils
   indiquent combien de cartes restent avant la prochaine 4 ★ garantie.
+
+Une carte forgée après des invocations ne compte pas deux fois : les invocations la comptaient déjà
+comme nouvelle avec une certaine probabilité, et cette part de leur espérance redevient un doublon.
+L'ordre des invocations et des créations ne change donc pas la valeur d'un plan.
 
 ## Développement
 

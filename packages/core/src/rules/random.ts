@@ -319,6 +319,71 @@ export function invocationEV(
   return { ev, newCards, expectedNew, pity };
 }
 
+/** Seaux d'invocation contenant chaque carte (par brillance) : ne dépend que du catalogue. */
+const membershipCache = new WeakMap<Context, Map<string, { key: string; bucket: PoolBucket }[]>>();
+
+function bucketsOf(ctx: Context, item: Item, shiny: Shiny) {
+  let cache = membershipCache.get(ctx);
+  if (!cache) membershipCache.set(ctx, (cache = new Map()));
+  const id = `${item.id}|${shiny}`;
+  let list = cache.get(id);
+  if (!list) {
+    list = [];
+    const seen = new Set<string>();
+    for (const option of boosterOptions(ctx)) {
+      const featured = option.featured?.has(item.rarity);
+      const poolKey = featured ? option.key : `${option.packId ?? 'classic'}|true`;
+      const key = bucketKey(poolKey, item.rarity, shiny);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const bucket = featured
+        ? featuredPool(ctx, option)?.get(key)
+        : getPool(ctx, option.packId, true).get(key);
+      if (bucket?.items.includes(item)) list.push({ key, bucket });
+    }
+    cache.set(id, list);
+  }
+  return list;
+}
+
+/**
+ * Tirages espérés déjà attribués à une carte non possédée, par seau : chaque carte non possédée
+ * d'un seau a la même chance d'avoir été tirée par les invocations simulées
+ * (`attendues / non possédées`), et elle comptait alors pour ses points au lieu d'un doublon.
+ */
+export function expectedDraws(
+  ctx: Context,
+  state: State,
+  item: Item,
+  shiny: Shiny,
+): { key: string; drawn: number; points: number }[] {
+  const draws: { key: string; drawn: number; points: number }[] = [];
+  for (const { key, bucket } of bucketsOf(ctx, item, shiny)) {
+    const expected = state.expectedNew[key] ?? 0;
+    if (expected <= 0) continue;
+    const { unowned } = unownedIn(state, key, bucket, shiny);
+    if (unowned <= 0) continue;
+    const drawn = Math.min(1, expected / unowned);
+    draws.push({ key, drawn, points: drawn * (item.scores[shiny] - bucket.dupValue) });
+  }
+  return draws;
+}
+
+/**
+ * Une carte obtenue à coup sûr (création, enchantement, fusion, évolution) après des invocations
+ * simulées : leur espérance la comptait déjà comme nouvelle avec une certaine probabilité. Sans
+ * correction, elle rapportait deux fois (tirage espéré puis forge), et un plan qui invoque avant
+ * de forger les mêmes cartes paraissait meilleur que le même plan dans l'autre ordre. Son tirage
+ * espéré redevient un doublon. À appeler avant que la carte n'entre dans la collection.
+ */
+export function settleExpectedNew(ctx: Context, state: State, item: Item, shiny: Shiny): void {
+  for (const { key, drawn, points } of expectedDraws(ctx, state, item, shiny)) {
+    state.ev -= points;
+    state.expectedNewCards -= drawn;
+    state.expectedNew = { ...state.expectedNew, [key]: state.expectedNew[key]! - drawn };
+  }
+}
+
 /** Espérance (en points) d'une tentative d'ascension à l'étage courant, et cartes nouvelles attendues. */
 export function ascensionEV(
   ctx: Context,
