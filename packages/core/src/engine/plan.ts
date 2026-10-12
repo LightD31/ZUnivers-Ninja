@@ -34,7 +34,7 @@ import {
   type Context,
   type PlannerOptionsInput,
 } from './context';
-import { nodeSteps, search, type Step } from './planner';
+import { nodeSteps, regroup, search, type Step } from './planner';
 import { getCard, initialState, stateValue, type State } from './state';
 import { STRATEGIES, type StrategyId } from './strategies';
 
@@ -341,7 +341,7 @@ export function groupSteps(steps: PlanStep[]): StepGroup[] {
   let i = 0;
   while (i < steps.length) {
     const step = steps[i]!;
-    if (!COMBINABLE.has(step.kind) || step.kind === 'recycle') {
+    if (!COMBINABLE.has(step.kind)) {
       groups.push({ ...step, size: 1 });
       i++;
       continue;
@@ -619,7 +619,8 @@ export function createPlan({
   const started = performance.now();
   const ctx = buildContext(catalog, player, now, resolveOptions(options));
   const { best, explored, timedOut } = search(ctx);
-  const steps = sortInvocations(nodeSteps(best));
+  // Commandes regroupées : les créations à la suite, puis les enchantements… (voir `regroup`).
+  const steps = sortInvocations(regroup(ctx, nodeSteps(best)));
   // Succès débloqués à chaque étape, pour les signaler sur la commande qui les obtient.
   const unlocked: string[][] = [];
   const finalState = replay(
