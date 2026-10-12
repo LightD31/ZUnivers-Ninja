@@ -40,7 +40,10 @@ export interface State {
   eventInvocations: Record<string, number>;
   /** Cartes nouvelles attendues des invocations simulées, par réserve de tirage. */
   expectedNew: Record<string, number>;
-  /** Cartes nouvelles attendues de toutes les actions aléatoires simulées (invocations, ascensions). */
+  /**
+   * Cartes attendues des actions aléatoires simulées (invocations, ascensions) que le joueur n'avait
+   * pas au début du plan : une carte retirée de la collection puis retirée ne compte pas.
+   */
   expectedNewCards: number;
   /**
    * Bienveillance : probabilité que la carte 4 ★ garantie soit la d-ième prochaine carte invoquée

@@ -4,6 +4,7 @@ import {
   STRATEGIES,
   STRATEGY_IDS,
   buildContext,
+  cardKey,
   createPlan,
   nodeSteps,
   replay,
@@ -98,17 +99,48 @@ describe('stratégies sur un joueur réel (fixtures)', () => {
   });
 
   it('Vortex tente plus d’ascensions quand la poudre manque', () => {
-    // Avec la poudre du joueur, Équilibré fait déjà toutes ses ascensions : on la retire pour
-    // qu'elles soient en concurrence avec les créations et enchantements.
-    const poor = { ...player, balances: { ...player.balances, loreDust: 0 } };
+    // Avec la poudre du joueur (et celle de ses recyclages), Équilibré fait déjà toutes ses
+    // ascensions : on la limite pour qu'elles soient en concurrence avec les créations et
+    // enchantements.
+    const poor = { ...player, balances: { ...player.balances, loreDust: 500 } };
     const ascensions = (strategy: StrategyId) =>
-      count(createPlan({ catalog, player: poor, now: NOW, options: { strategy } }), 'ascension');
+      count(
+        createPlan({
+          catalog,
+          player: poor,
+          now: NOW,
+          options: { strategy, allow: { recycle: false } },
+        }),
+        'ascension',
+      );
     expect(ascensions('vortex')).toBeGreaterThan(ascensions('equilibre'));
   }, 30_000);
 
   it('Collectionneur obtient plus de cartes différentes', () => {
     expect(unique(plans.collectionneur)).toBeGreaterThan(unique(equilibre));
   });
+
+  it('Collectionneur ne retire aucune carte de la collection', () => {
+    // Équilibré enchante le dernier exemplaire normal de cartes pour leurs constellations dorées.
+    // L'évolution remplace sa carte par la suivante, sans en retirer une de la collection.
+    const evolution = new Set(player.evolution?.steps.map((s) => s.itemId) ?? []);
+    const lost = (strategy: StrategyId) => {
+      const ctx = buildContext(catalog, player, NOW, resolveOptions({ strategy }));
+      const final = replay(
+        ctx,
+        nodeSteps(search(ctx).best).map((s) => s.action),
+      );
+      return Object.values(player.inventory).filter(
+        (c) =>
+          c.copies > 0 &&
+          catalog.items[c.itemId] &&
+          !evolution.has(c.itemId) &&
+          (final.cards.get(cardKey(c.itemId, c.shiny))?.copies ?? 0) === 0,
+      ).length;
+    };
+    expect(lost('equilibre')).toBeGreaterThan(0);
+    expect(lost('collectionneur')).toBe(0);
+  }, 60_000);
 
   it('Échangeur recycle moins', () => {
     expect(recycled(plans.echangeur)).toBeLessThan(recycled(equilibre));

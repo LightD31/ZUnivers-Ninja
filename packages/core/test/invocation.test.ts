@@ -8,7 +8,8 @@ import {
   sortInvocations,
   type GameEvent,
 } from '../src';
-import { initialState } from '../src/engine/state';
+import { applyAction } from '../src/engine/actions';
+import { initialState, stateValue } from '../src/engine/state';
 import { PITY_CARDS } from '../src/rules/constants';
 import { pityStep } from '../src/rules/random';
 import { makeCatalog, makeContext, makeItem, makePlayer, owned } from './factory';
@@ -158,5 +159,53 @@ describe('ordre des invocations', () => {
       'chroma',
       'basic',
     ]);
+  });
+});
+
+describe('cartes obtenues après des invocations', () => {
+  it('ne compte pas deux fois une carte que les invocations donnaient déjà', () => {
+    // Avant, une carte créée après des invocations rapportait aussi la part de l'espérance qui la
+    // comptait comme nouvelle : invoquer avant de créer paraissait plus rentable.
+    const items = Array.from({ length: 50 }, (_, i) => makeItem(1001 + i));
+    const ctx = makeContext(
+      makeCatalog(items),
+      makePlayer({
+        balances: { balance: 20_000, loreDust: 1000, loreFragment: 0, upgradeDust: 0 },
+      }),
+    );
+    const gain = (actions: Action[]) => {
+      let state = initialState(ctx);
+      for (const action of actions) state = applyAction(ctx, state, action)!.state;
+      return stateValue(ctx, state) - stateValue(ctx, initialState(ctx));
+    };
+    const invocations: Action[] = Array(10).fill({ kind: 'invoke', booster: 'basic' });
+    const craft: Action = { kind: 'craft', itemId: items[0]!.id };
+    expect(gain([...invocations, craft])).toBeCloseTo(gain([craft, ...invocations]), 6);
+  });
+});
+
+describe('bonus des cartes nouvelles', () => {
+  it('ne compte pas comme nouvelle une carte retirée de la collection pendant le plan', () => {
+    // Enchanter le dernier exemplaire normal retire la carte : les invocations peuvent la redonner
+    // (ses points comptent), mais ce n'est pas une carte jamais possédée.
+    const items = Array.from({ length: 50 }, (_, i) => makeItem(1001 + i));
+    const card = items[0]!;
+    const ctx = makeContext(
+      makeCatalog(items),
+      makePlayer({
+        balances: { balance: 0, loreDust: 1000, loreFragment: 0, upgradeDust: 0 },
+        inventory: Object.fromEntries([owned(card.id, 0, 1)]),
+      }),
+      { strategy: 'collectionneur' },
+    );
+    const basic = boosterOptions(ctx).find((o) => o.key === 'basic')!;
+    const before = initialState(ctx);
+    const after = applyAction(ctx, before, { kind: 'enchant', itemId: card.id })!.state;
+    expect(after.owned).toBe(before.owned);
+    // La dorée obtenue n'est plus à tirer ; la normale perdue ne redevient pas « nouvelle ».
+    expect(invocationEV(ctx, after, basic).newCards).toBeLessThan(
+      invocationEV(ctx, before, basic).newCards,
+    );
+    expect(invocationEV(ctx, after, basic).ev).toBeGreaterThan(0);
   });
 });

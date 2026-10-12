@@ -1,7 +1,7 @@
 import type { Context } from '../engine/context';
 import { recycleGain } from '../engine/context';
 import { getCard, type State } from '../engine/state';
-import { CURRENCIES, type Balances, type Item, type Shiny } from '../model/types';
+import { CURRENCIES, cardKey, type Balances, type Item, type Shiny } from '../model/types';
 import {
   ASCENSION_FAIL_REFUND,
   BOOSTERS,
@@ -84,20 +84,33 @@ function buildPool(ctx: Context, key: string, items: Item[]): Pool {
  * des centaines d'invocations s'enchaînent sans changer l'inventaire, et ce parcours de tout le
  * seau dominait le temps de calcul.
  */
-const unownedCache = new WeakMap<object, Map<string, { unowned: number; score: number }>>();
+const unownedCache = new WeakMap<
+  object,
+  Map<string, { unowned: number; score: number; fresh: number }>
+>();
 
-function unownedIn(state: State, key: string, bucket: PoolBucket, shiny: Shiny) {
+/** La carte était-elle dans la collection au début du plan ? */
+const ownedAtStart = (ctx: Context, item: Item, shiny: Shiny) =>
+  (ctx.player.inventory[cardKey(item.id, shiny)]?.copies ?? 0) > 0;
+
+/**
+ * Cartes non possédées d'un seau, leurs points, et combien d'entre elles le joueur n'avait pas au
+ * début du plan (`fresh`) : une carte retirée de la collection pendant le plan (dernier exemplaire
+ * normal enchanté) puis retirée n'est pas une carte jamais possédée.
+ */
+function unownedIn(ctx: Context, state: State, key: string, bucket: PoolBucket, shiny: Shiny) {
   const { layer, writes } = state.cards.snapshot();
   let cache = unownedCache.get(layer);
   if (!cache) unownedCache.set(layer, (cache = new Map()));
   const cacheKey = `${writes}|${key}`;
   let entry = cache.get(cacheKey);
   if (!entry) {
-    entry = { unowned: 0, score: 0 };
+    entry = { unowned: 0, score: 0, fresh: 0 };
     for (const item of bucket.items) {
       if (getCard(state, item.id, shiny).copies === 0) {
         entry.unowned++;
         entry.score += item.scores[shiny];
+        if (!ownedAtStart(ctx, item, shiny)) entry.fresh++;
       }
     }
     cache.set(cacheKey, entry);
@@ -105,21 +118,31 @@ function unownedIn(state: State, key: string, bucket: PoolBucket, shiny: Shiny) 
   return entry;
 }
 
-/** Espérance de valeur d'une carte tirée dans un seau, et probabilité qu'elle soit nouvelle. */
+/**
+ * Espérance de valeur d'une carte tirée dans un seau, probabilité qu'elle soit nouvelle, et qu'elle
+ * soit en plus une carte que le joueur n'avait pas au début du plan (`pFresh`, pour le bonus des
+ * cartes nouvelles).
+ */
 function cardEV(
+  ctx: Context,
   state: State,
   poolKey: string,
   bucket: PoolBucket | undefined,
   rarity: number,
   shiny: Shiny,
-): { value: number; pNew: number; key: string } {
+): { value: number; pNew: number; pFresh: number; key: string } {
   const key = bucketKey(poolKey, rarity, shiny);
-  if (!bucket || bucket.items.length === 0) return { value: 0, pNew: 0, key };
-  const { unowned, score: unownedScore } = unownedIn(state, key, bucket, shiny);
+  if (!bucket || bucket.items.length === 0) return { value: 0, pNew: 0, pFresh: 0, key };
+  const { unowned, score: unownedScore, fresh } = unownedIn(ctx, state, key, bucket, shiny);
   const effective = Math.max(0, unowned - (state.expectedNew[key] ?? 0));
   const pNew = effective / bucket.items.length;
   const avgNewScore = unowned > 0 ? unownedScore / unowned : 0;
-  return { value: pNew * avgNewScore + (1 - pNew) * bucket.dupValue, pNew, key };
+  return {
+    value: pNew * avgNewScore + (1 - pNew) * bucket.dupValue,
+    pNew,
+    pFresh: unowned > 0 ? (pNew * fresh) / unowned : 0,
+    key,
+  };
 }
 
 export interface BoosterOption {
@@ -249,8 +272,8 @@ export function pityStep(
 }
 
 /**
- * Espérance (en points) d'une invocation, cartes nouvelles attendues (au total et par seau), et
- * bienveillance après l'invocation. Une 4 ★ garantie remplace un tirage ordinaire : son gain est
+ * Espérance (en points) d'une invocation, cartes nouvelles attendues (par seau, et au total celles
+ * que le joueur n'avait pas au début du plan), et bienveillance après l'invocation. Une 4 ★ garantie remplace un tirage ordinaire : son gain est
  * la valeur d'un tirage 4 ★ moins celle d'un tirage moyen, pondérée par la probabilité qu'elle
  * tombe pendant cette invocation.
  */
@@ -269,10 +292,10 @@ export function invocationEV(
   const featured = featuredPool(ctx, option);
   const expectedNew: Record<string, number> = {};
   let perCard = 0;
-  let perCardNew = 0;
+  let perCardFresh = 0;
   // Tirage d'une carte 4 ★ (pour la bienveillance) : valeur, cartes nouvelles par seau.
   let r4Value = 0;
-  let r4New = 0;
+  let r4Fresh = 0;
   const r4Buckets: [string, number][] = [];
   option.spec.rarity.forEach((pRarity, i) => {
     const rarity = i + 1;
@@ -289,34 +312,100 @@ export function invocationEV(
       const featuredBucket = option.featured?.has(rarity)
         ? featured?.get(bucketKey(option.key, rarity, shiny))
         : undefined;
-      const { value, pNew, key } = featuredBucket
-        ? cardEV(state, option.key, featuredBucket, rarity, shiny)
-        : cardEV(state, poolKey, pool.get(bucketKey(poolKey, rarity, shiny)), rarity, shiny);
+      const { value, pNew, pFresh, key } = featuredBucket
+        ? cardEV(ctx, state, option.key, featuredBucket, rarity, shiny)
+        : cardEV(ctx, state, poolKey, pool.get(bucketKey(poolKey, rarity, shiny)), rarity, shiny);
       const p = pRarity * pShiny;
       perCard += p * value;
-      perCardNew += p * pNew;
+      perCardFresh += p * pFresh;
       expectedNew[key] = (expectedNew[key] ?? 0) + option.cards * p * pNew;
       if (rarity === 4) {
         r4Value += pShiny * value;
-        r4New += pShiny * pNew;
+        r4Fresh += pShiny * pFresh;
         r4Buckets.push([key, pShiny * pNew]);
       }
     }
   });
   let ev = perCard * option.cards;
-  let newCards = perCardNew * option.cards;
+  let newCards = perCardFresh * option.cards;
   let pity = state.pity;
   if (pity) {
     const step = pityStep(pity, option.cards, option.spec.rarity[3] ?? 0);
     pity = step.next;
     if (step.triggers > 0) {
       ev += step.triggers * (r4Value - perCard);
-      newCards += step.triggers * (r4New - perCardNew);
+      newCards += step.triggers * (r4Fresh - perCardFresh);
       for (const [key, pNew] of r4Buckets)
         expectedNew[key] = (expectedNew[key] ?? 0) + step.triggers * pNew;
     }
   }
   return { ev, newCards, expectedNew, pity };
+}
+
+/** Seaux d'invocation contenant chaque carte (par brillance) : ne dépend que du catalogue. */
+const membershipCache = new WeakMap<Context, Map<string, { key: string; bucket: PoolBucket }[]>>();
+
+function bucketsOf(ctx: Context, item: Item, shiny: Shiny) {
+  let cache = membershipCache.get(ctx);
+  if (!cache) membershipCache.set(ctx, (cache = new Map()));
+  const id = `${item.id}|${shiny}`;
+  let list = cache.get(id);
+  if (!list) {
+    list = [];
+    const seen = new Set<string>();
+    for (const option of boosterOptions(ctx)) {
+      const featured = option.featured?.has(item.rarity);
+      const poolKey = featured ? option.key : `${option.packId ?? 'classic'}|true`;
+      const key = bucketKey(poolKey, item.rarity, shiny);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const bucket = featured
+        ? featuredPool(ctx, option)?.get(key)
+        : getPool(ctx, option.packId, true).get(key);
+      if (bucket?.items.includes(item)) list.push({ key, bucket });
+    }
+    cache.set(id, list);
+  }
+  return list;
+}
+
+/**
+ * Tirages espérés déjà attribués à une carte non possédée, par seau : chaque carte non possédée
+ * d'un seau a la même chance d'avoir été tirée par les invocations simulées
+ * (`attendues / non possédées`), et elle comptait alors pour ses points au lieu d'un doublon.
+ */
+export function expectedDraws(
+  ctx: Context,
+  state: State,
+  item: Item,
+  shiny: Shiny,
+): { key: string; drawn: number; points: number; fresh: boolean }[] {
+  const draws: { key: string; drawn: number; points: number; fresh: boolean }[] = [];
+  const fresh = !ownedAtStart(ctx, item, shiny);
+  for (const { key, bucket } of bucketsOf(ctx, item, shiny)) {
+    const expected = state.expectedNew[key] ?? 0;
+    if (expected <= 0) continue;
+    const { unowned } = unownedIn(ctx, state, key, bucket, shiny);
+    if (unowned <= 0) continue;
+    const drawn = Math.min(1, expected / unowned);
+    draws.push({ key, drawn, points: drawn * (item.scores[shiny] - bucket.dupValue), fresh });
+  }
+  return draws;
+}
+
+/**
+ * Une carte obtenue à coup sûr (création, enchantement, fusion, évolution) après des invocations
+ * simulées : leur espérance la comptait déjà comme nouvelle avec une certaine probabilité. Sans
+ * correction, elle rapportait deux fois (tirage espéré puis forge), et un plan qui invoque avant
+ * de forger les mêmes cartes paraissait meilleur que le même plan dans l'autre ordre. Son tirage
+ * espéré redevient un doublon. À appeler avant que la carte n'entre dans la collection.
+ */
+export function settleExpectedNew(ctx: Context, state: State, item: Item, shiny: Shiny): void {
+  for (const { key, drawn, points, fresh } of expectedDraws(ctx, state, item, shiny)) {
+    state.ev -= points;
+    if (fresh) state.expectedNewCards -= drawn;
+    state.expectedNew = { ...state.expectedNew, [key]: state.expectedNew[key]! - drawn };
+  }
 }
 
 /** Espérance (en points) d'une tentative d'ascension à l'étage courant, et cartes nouvelles attendues. */
@@ -331,9 +420,10 @@ export function ascensionEV(
   const pool = getPool(ctx, season.packId, false);
   const poolKey = `${season.packId}|false`;
   let reward = 0;
-  let pNewReward = 0;
+  let pFreshReward = 0;
   for (const drop of floor.drops) {
-    const { value, pNew } = cardEV(
+    const { value, pFresh } = cardEV(
+      ctx,
       state,
       poolKey,
       pool.get(bucketKey(poolKey, drop.rarity, drop.shiny)),
@@ -341,7 +431,7 @@ export function ascensionEV(
       drop.shiny,
     );
     reward += drop.rate * value;
-    pNewReward += drop.rate * pNew;
+    pFreshReward += drop.rate * pFresh;
   }
   const floorIndex = Math.floor(state.towerFloor);
   const refund = ASCENSION_FAIL_REFUND * ctx.options.weights.loreDust;
@@ -353,6 +443,6 @@ export function ascensionEV(
   return {
     ev: floor.rate * success + (1 - floor.rate) * failure,
     successRate: floor.rate,
-    newCards: floor.rate * pNewReward,
+    newCards: floor.rate * pFreshReward,
   };
 }

@@ -214,6 +214,31 @@ describe('cas synthétiques', () => {
     }
   });
 
+  it('crée une carte pour l’enchanter quand elle ouvre une constellation dorée', () => {
+    // Dorées ★★ possédées, dernier exemplaire normal déjà enchanté : création (100) +
+    // enchantement (800) + constellation dorée = 160 points pour 900 poudres. Une création seule
+    // ne rapporte que 5 points, et le faisceau dépensait la poudre en constellations ★★★★ :
+    // 160 points pour 2 000 poudres.
+    const golden = Array.from({ length: 5 }, (_, i) => makeItem(2001 + i, { recyclable: false }));
+    const big = Array.from({ length: 2 }, (_, i) =>
+      makeItem(4001 + i, { recyclable: false, goldable: false }),
+    );
+    const plan = createPlan({
+      catalog: makeCatalog([...golden, ...big]),
+      player: makePlayer({
+        balances: { balance: 0, loreDust: 4500, loreFragment: 0, upgradeDust: 0 },
+        inventory: Object.fromEntries([
+          ...golden.map((i) => owned(i.id, 1, 1)),
+          ...big.map((i) => owned(i.id, 0, 1)),
+        ]),
+      }),
+      now: TEST_NOW,
+    });
+    expect(plan.gain.points).toBe(800);
+    expect(plan.steps.filter((s) => s.kind === 'constellation')).toHaveLength(5);
+    expect(plan.steps.some((s) => s.cards.some((c) => c.rarity === 4))).toBe(false);
+  });
+
   it('ignore les constellations quand le mode de jeu n’en a pas (régression Hardcore)', () => {
     // Le Hardcore n'annonce pas UPGRADE. Les paires « enchantement + constellation » proposées
     // quand même échouaient, gonflaient la valeur de la poudre et occupaient toutes les places
