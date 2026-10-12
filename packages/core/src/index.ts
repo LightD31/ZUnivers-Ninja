@@ -31,6 +31,7 @@ export {
   type GoalCard,
 } from './engine/achievements';
 export { applyAction, actionKey, type Action, type ActionKind } from './engine/actions';
+export { COMMAND_MAX_LENGTH, commandLine } from './engine/commands';
 export {
   search,
   candidates,
@@ -41,7 +42,6 @@ export {
 } from './engine/planner';
 export {
   createPlan,
-  commandLine,
   replay,
   groupCommands,
   groupSteps,

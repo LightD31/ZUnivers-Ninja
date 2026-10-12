@@ -13,6 +13,7 @@ import {
 import { goalCardMet } from './achievements';
 import { actionKey, applyAction, type Action, type Applied, type RecycleEntry } from './actions';
 import { canRecycle, craftCost, enchantCost, forgeCurrency, type Context } from './context';
+import { CARD_SEPARATOR, COMMAND_MAX_LENGTH, cardToken, commandPrefix } from './commands';
 import { getCard, initialState, stateValue, type State } from './state';
 
 export interface Step {
@@ -113,29 +114,31 @@ function fusionsTouching(ctx: Context, touched: Set<string> | 'all') {
 }
 
 /**
- * Cartes au plus par commande /recyclage. Le bot du jeu ne confirmait pas une commande de 562
- * cartes (« Je ne suis pas sûre d'avoir pris en compte ton action ») et rien n'était recyclé ;
- * une commande de 100 cartes passe (vérifié en jeu le 12/10/2026).
+ * Découpe un recyclage en commandes d'au plus `COMMAND_MAX_LENGTH` caractères, dans l'ordre : le
+ * jeu n'exécute pas une commande plus longue, et rien n'est recyclé.
  */
-export const RECYCLE_MAX_CARDS = 100;
-
-/** Découpe un recyclage en commandes de `RECYCLE_MAX_CARDS` cartes au plus, dans l'ordre. */
-function recycleChunks(cards: RecycleEntry[]): RecycleEntry[][] {
+function recycleChunks(ctx: Context, cards: RecycleEntry[]): RecycleEntry[][] {
+  const separator = CARD_SEPARATOR.length;
+  // Chaque carte compte avec un séparateur ; le premier est en trop, d'où la marge d'un séparateur.
+  const budget = COMMAND_MAX_LENGTH - commandPrefix('recycle').length + separator;
   const chunks: RecycleEntry[][] = [];
   let chunk: RecycleEntry[] = [];
-  let size = 0;
+  let used = 0;
   for (const entry of cards) {
+    const width = cardToken(ctx.items[entry.itemId]?.identifier ?? 0, entry.shiny).length;
     let left = entry.count;
     while (left > 0) {
-      const count = Math.min(left, RECYCLE_MAX_CARDS - size);
-      chunk.push({ ...entry, count });
-      size += count;
-      left -= count;
-      if (size === RECYCLE_MAX_CARDS) {
+      const room = Math.floor((budget - used) / (width + separator));
+      if (room === 0 && chunk.length > 0) {
         chunks.push(chunk);
         chunk = [];
-        size = 0;
+        used = 0;
+        continue;
       }
+      const count = Math.max(1, Math.min(left, room));
+      chunk.push({ ...entry, count });
+      used += count * (width + separator);
+      left -= count;
     }
   }
   if (chunk.length > 0) chunks.push(chunk);
@@ -196,7 +199,7 @@ export function closure(
         if (surplus > 0) cards.push({ itemId, shiny, count: surplus });
       }
     }
-    for (const chunk of recycleChunks(cards))
+    for (const chunk of recycleChunks(ctx, cards))
       node = tryApply(ctx, node, { kind: 'recycle', cards: chunk }, true, next) ?? node;
 
     if (next.size === 0) break;
