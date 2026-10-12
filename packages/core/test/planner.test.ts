@@ -3,6 +3,7 @@ import {
   buildContext,
   createPlan,
   commandLine,
+  COMMAND_MAX_LENGTH,
   replay,
   resolveOptions,
   search,
@@ -11,7 +12,6 @@ import {
 } from '../src';
 import { reserveFor, reserveTotal } from '../src/rules/reserve';
 import { getCard } from '../src/engine/state';
-import { RECYCLE_MAX_CARDS } from '../src/engine/planner';
 import { makeCatalog, makeItem, makePlayer, owned, TEST_NOW } from './factory';
 import { fixtureCatalog, fixturePlayer, NOW } from './helpers';
 
@@ -128,25 +128,43 @@ describe('cas synthétiques', () => {
     expect(plan.after.unique[0]).toBe(2);
   });
 
-  it('découpe un gros recyclage en commandes de 100 cartes au plus', () => {
-    // Le bot du jeu ne confirmait pas une commande de 562 cartes, et rien n'était recyclé.
+  it('découpe un gros recyclage en commandes que le jeu accepte', () => {
+    // Le bot du jeu n'exécutait pas une commande de 3 962 caractères (562 cartes).
     const plain = { upgradable: false, goldable: false } as const;
     const a = makeItem(1001, plain);
     const b = makeItem(1002, plain);
     const plan = createPlan({
       catalog: makeCatalog([a, b]),
       player: makePlayer({
-        inventory: Object.fromEntries([owned(a.id, 0, 151), owned(b.id, 0, 101)]),
+        inventory: Object.fromEntries([owned(a.id, 0, 301), owned(b.id, 0, 101)]),
       }),
       now: TEST_NOW,
     });
     const recycles = plan.commands.filter((c) => c.startsWith('/recyclage'));
-    const sizes = recycles.map((c) => c.slice('/recyclage carte:'.length).split(' + ').length);
-    expect(sizes).toEqual([RECYCLE_MAX_CARDS, RECYCLE_MAX_CARDS, 50]);
-    expect(recycles[1]).toBe(
-      `/recyclage carte:${[...Array(50).fill('1001'), ...Array(50).fill('1002')].join(' + ')}`,
-    );
-    expect(plan.after.balances.loreDust).toBe(250 * 5);
+    const cards = recycles.map((c) => c.slice('/recyclage carte:'.length).split(' + '));
+    expect(recycles).toHaveLength(2);
+    for (const c of recycles) expect(c.length).toBeLessThanOrEqual(COMMAND_MAX_LENGTH);
+    // La première commande est pleine : une carte de plus (« + 1001 ») la rendrait trop longue.
+    expect(recycles[0]!.length + ' + 1001'.length).toBeGreaterThan(COMMAND_MAX_LENGTH);
+    expect(cards.flat()).toHaveLength(400);
+    expect(new Set(cards[1])).toEqual(new Set(['1001', '1002']));
+    expect(plan.after.balances.loreDust).toBe(400 * 5);
+  });
+
+  it('coupe une longue suite de créations en commandes que le jeu accepte', () => {
+    const plain = { upgradable: false, goldable: false, recyclable: false } as const;
+    const items = Array.from({ length: 300 }, (_, i) => makeItem(1001 + i, plain));
+    const plan = createPlan({
+      catalog: makeCatalog(items),
+      player: makePlayer({
+        balances: { balance: 0, loreDust: 300 * 50, loreFragment: 0, upgradeDust: 0 },
+      }),
+      now: TEST_NOW,
+    });
+    const crafts = plan.groups.filter((g) => g.kind === 'craft');
+    expect(crafts.length).toBeGreaterThan(1);
+    for (const g of crafts) expect(g.command.length).toBeLessThanOrEqual(COMMAND_MAX_LENGTH);
+    expect(crafts.reduce((n, g) => n + g.size, 0)).toBe(300);
   });
 
   it('privilégie la constellation au recyclage', () => {

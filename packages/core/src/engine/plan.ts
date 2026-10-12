@@ -19,6 +19,13 @@ import {
 } from '../model/types';
 import { applyAction, type Action, type ActionKind } from './actions';
 import {
+  CARD_SEPARATOR,
+  COMMAND_MAX_LENGTH,
+  cardToken,
+  commandLine,
+  commandPrefix,
+} from './commands';
+import {
   buildContext,
   craftCost,
   enchantCost,
@@ -159,19 +166,6 @@ export interface PlanResult {
   hash: string;
 }
 
-const COMMAND: Record<ActionKind, string> = {
-  daily: 'journa',
-  weekly: 'bonus',
-  recycle: 'recyclage',
-  craft: 'création',
-  enchant: 'enchantement',
-  fusion: 'fusion',
-  constellation: 'constellation',
-  invoke: 'im',
-  ascension: 'as',
-  evolution: 'évolution',
-};
-
 const TITLE: Record<ActionKind, string> = {
   daily: 'Récompense journalière',
   weekly: 'Bonus hebdomadaire',
@@ -202,36 +196,10 @@ function card(ctx: Context, itemId: string, shiny: Shiny, count = 1): PlanCard {
   };
 }
 
-/**
- * Référence d'une carte dans une commande : numéro + suffixe de brillance (`+` dorée, `*` chroma).
- * Les quantités sont écrites en répétant la carte, pour éviter toute ambiguïté avec `*`.
- */
+/** Cartes d'une commande, chacune répétée selon sa quantité (`1001 + 1001 + 1002+`). */
 function cardRef(c: PlanCard, kind?: ActionKind): string {
-  // /enchantement prend la carte normale à transformer.
-  const ref = `${c.identifier}${kind === 'enchant' ? '' : SHINY_SUFFIX[c.shiny]}`;
-  return Array.from({ length: Math.max(1, c.count) }, () => ref).join(' + ');
-}
-
-/**
- * Option nommée de chaque commande Discord : collée telle quelle (`/im évènement:chroma`,
- * `/recyclage carte:1001 + 1002`), une commande remplit directement son option. `/journa`,
- * `/bonus` et `/as` n'en ont pas.
- */
-const OPTION: Partial<Record<ActionKind, string>> = {
-  invoke: 'évènement',
-  recycle: 'carte',
-  craft: 'carte',
-  enchant: 'carte',
-  fusion: 'carte',
-  constellation: 'carte',
-  evolution: 'carte',
-};
-
-/** Ligne de commande Discord (`/commande option:valeur`), ou `/commande` seule sans argument. */
-export function commandLine(kind: ActionKind, args: string): string {
-  if (!args) return `/${COMMAND[kind]}`;
-  const option = OPTION[kind];
-  return `/${COMMAND[kind]} ${option ? `${option}:` : ''}${args}`;
+  const ref = cardToken(c.identifier, c.shiny, kind);
+  return Array.from({ length: Math.max(1, c.count) }, () => ref).join(CARD_SEPARATOR);
 }
 
 function describe(ctx: Context, step: Step, achievements: string[]): PlanStep {
@@ -261,7 +229,7 @@ function describe(ctx: Context, step: Step, achievements: string[]): PlanStep {
   switch (action.kind) {
     case 'recycle': {
       const cards = action.cards.map((c) => card(ctx, c.itemId, c.shiny, c.count));
-      return make(cards, cards.map((c) => cardRef(c)).join(' + '));
+      return make(cards, cards.map((c) => cardRef(c)).join(CARD_SEPARATOR));
     }
     case 'craft':
     case 'enchant': {
@@ -365,7 +333,8 @@ export function sortInvocations(steps: Step[]): Step[] {
 
 /**
  * Regroupe les actions consécutives combinables (création, enchantement, constellation) en une
- * seule commande, comme l'ancien ZUnivers Ninja (`/création carte:1001 + 1002`).
+ * seule commande, comme l'ancien ZUnivers Ninja (`/création carte:1001 + 1002`). Une commande
+ * qui dépasserait `COMMAND_MAX_LENGTH` caractères est coupée : le jeu ne l'exécuterait pas.
  */
 export function groupSteps(steps: PlanStep[]): StepGroup[] {
   const groups: StepGroup[] = [];
@@ -383,8 +352,23 @@ export function groupSteps(steps: PlanStep[]): StepGroup[] {
     let size = 0;
     let auto = true;
     const achievements: string[] = [];
+    // Longueur de la commande : début, cartes, et un séparateur entre deux cartes.
+    const prefix = commandPrefix(step.kind).length;
+    let tokens = 0;
+    let chars = 0;
     while (i < steps.length && steps[i]!.kind === step.kind) {
       const current = steps[i]!;
+      let addTokens = 0;
+      let addChars = 0;
+      for (const c of current.cards) {
+        const n = Math.max(1, c.count);
+        addTokens += n;
+        addChars += n * cardToken(c.identifier, c.shiny, step.kind).length;
+      }
+      const length = prefix + chars + addChars + CARD_SEPARATOR.length * (tokens + addTokens - 1);
+      if (size > 0 && length > COMMAND_MAX_LENGTH) break;
+      tokens += addTokens;
+      chars += addChars;
       for (const c of current.cards) {
         const key = `${c.itemId}:${c.shiny}`;
         const existing = counts.get(key);
@@ -403,7 +387,7 @@ export function groupSteps(steps: PlanStep[]): StepGroup[] {
       command:
         size === 1
           ? step.command
-          : commandLine(step.kind, cards.map((c) => cardRef(c, step.kind)).join(' + ')),
+          : commandLine(step.kind, cards.map((c) => cardRef(c, step.kind)).join(CARD_SEPARATOR)),
       title: groupTitle(step.kind, cards, size, step.title),
       detail: size === 1 ? step.detail : null,
       cards,
