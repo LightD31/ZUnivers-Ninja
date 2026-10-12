@@ -11,6 +11,7 @@ import {
 } from '../src';
 import { reserveFor, reserveTotal } from '../src/rules/reserve';
 import { getCard } from '../src/engine/state';
+import { RECYCLE_MAX_CARDS } from '../src/engine/planner';
 import { makeCatalog, makeItem, makePlayer, owned, TEST_NOW } from './factory';
 import { fixtureCatalog, fixturePlayer, NOW } from './helpers';
 
@@ -125,6 +126,27 @@ describe('cas synthétiques', () => {
     ]);
     expect(plan.after.balances.loreDust).toBe(5);
     expect(plan.after.unique[0]).toBe(2);
+  });
+
+  it('découpe un gros recyclage en commandes de 100 cartes au plus', () => {
+    // Le bot du jeu ne confirmait pas une commande de 562 cartes, et rien n'était recyclé.
+    const plain = { upgradable: false, goldable: false } as const;
+    const a = makeItem(1001, plain);
+    const b = makeItem(1002, plain);
+    const plan = createPlan({
+      catalog: makeCatalog([a, b]),
+      player: makePlayer({
+        inventory: Object.fromEntries([owned(a.id, 0, 151), owned(b.id, 0, 101)]),
+      }),
+      now: TEST_NOW,
+    });
+    const recycles = plan.commands.filter((c) => c.startsWith('/recyclage'));
+    const sizes = recycles.map((c) => c.slice('/recyclage carte:'.length).split(' + ').length);
+    expect(sizes).toEqual([RECYCLE_MAX_CARDS, RECYCLE_MAX_CARDS, 50]);
+    expect(recycles[1]).toBe(
+      `/recyclage carte:${[...Array(50).fill('1001'), ...Array(50).fill('1002')].join(' + ')}`,
+    );
+    expect(plan.after.balances.loreDust).toBe(250 * 5);
   });
 
   it('privilégie la constellation au recyclage', () => {

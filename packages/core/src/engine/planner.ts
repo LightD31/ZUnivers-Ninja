@@ -106,6 +106,36 @@ function fusionsTouching(ctx: Context, touched: Set<string> | 'all') {
 }
 
 /**
+ * Cartes au plus par commande /recyclage. Le bot du jeu ne confirmait pas une commande de 562
+ * cartes (« Je ne suis pas sûre d'avoir pris en compte ton action ») et rien n'était recyclé ;
+ * une commande de 100 cartes passe (vérifié en jeu le 12/10/2026).
+ */
+export const RECYCLE_MAX_CARDS = 100;
+
+/** Découpe un recyclage en commandes de `RECYCLE_MAX_CARDS` cartes au plus, dans l'ordre. */
+function recycleChunks(cards: RecycleEntry[]): RecycleEntry[][] {
+  const chunks: RecycleEntry[][] = [];
+  let chunk: RecycleEntry[] = [];
+  let size = 0;
+  for (const entry of cards) {
+    let left = entry.count;
+    while (left > 0) {
+      const count = Math.min(left, RECYCLE_MAX_CARDS - size);
+      chunk.push({ ...entry, count });
+      size += count;
+      left -= count;
+      if (size === RECYCLE_MAX_CARDS) {
+        chunks.push(chunk);
+        chunk = [];
+        size = 0;
+      }
+    }
+  }
+  if (chunk.length > 0) chunks.push(chunk);
+  return chunks;
+}
+
+/**
  * Applique toutes les actions sans regret jusqu'à stabilité : récompenses quotidiennes, fusions
  * possibles sans toucher au dernier exemplaire, constellations avec les doublons, puis recyclage
  * du surplus réel.
@@ -159,8 +189,8 @@ export function closure(
         if (surplus > 0) cards.push({ itemId, shiny, count: surplus });
       }
     }
-    if (cards.length > 0)
-      node = tryApply(ctx, node, { kind: 'recycle', cards }, true, next) ?? node;
+    for (const chunk of recycleChunks(cards))
+      node = tryApply(ctx, node, { kind: 'recycle', cards: chunk }, true, next) ?? node;
 
     if (next.size === 0) break;
     touched = next;
