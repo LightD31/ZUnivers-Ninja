@@ -286,7 +286,7 @@ function adjusted(
       if (lost === undefined) {
         lost = 0;
         for (const draw of expectedDraws(ctx, state, item, shiny))
-          lost += draw.points + draw.drawn * ctx.options.newCardBonus;
+          lost += draw.points + (draw.fresh ? draw.drawn * ctx.options.newCardBonus : 0);
         drawn[shiny]!.set(item, lost);
       }
       delta -= lost * ctx.options.evFactor;

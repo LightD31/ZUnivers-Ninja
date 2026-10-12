@@ -32,7 +32,11 @@ export interface PlannerOptions {
   reputationWeight: number;
   /** Part de l'espérance des actions aléatoires (invocations, ascensions) prise en compte, de 0 à 1. */
   evFactor: number;
-  /** Points ajoutés pour chaque carte (et brillance) jamais possédée qui entre dans la collection. */
+  /**
+   * Points ajoutés pour chaque carte (et brillance) de la collection, à coup sûr ou en espérance :
+   * une carte perdue (dernier exemplaire normal enchanté) les retire, et une carte tirée ne les
+   * rapporte que si le joueur ne l'avait pas au début du plan.
+   */
   newCardBonus: number;
   /** Exemplaires supplémentaires à garder pour les échanges. */
   keepExtra: number;

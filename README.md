@@ -157,14 +157,14 @@ Une stratégie est un préréglage du planificateur. Choisis-la sous la recherch
 `?strategy=` dans l'API ou dans le lien de l'interface (`/?u=pseudo&strategy=prudent`), ou par
 joueur dans `ZU_USERS`.
 
-| Stratégie      | `strategy`       | Pour qui                                         | Ce qui change                                                                    |
-| -------------- | ---------------- | ------------------------------------------------ | -------------------------------------------------------------------------------- |
-| Équilibré      | `equilibre`      | Le plus de points, tirages compris (par défaut)  | —                                                                                |
-| Prudent        | `prudent`        | Ne veut que des points garantis                  | Aucune invocation ni ascension, la ZUMonnaie est gardée                          |
-| Épargne        | `epargne`        | Garde des monnaies pour un évènement ou un pack  | Poudres × 15, ZUMonnaie × 50 : seules les grosses dépenses passent               |
-| Vortex         | `vortex`         | Veut monter dans la tour d'Ascension             | Réputation × 50, poudre × 5 : la poudre va aux `/as` avant les petites créations |
-| Collectionneur | `collectionneur` | Veut des cartes nouvelles plutôt que des étoiles | +25 points par carte jamais possédée                                             |
-| Échangeur      | `echangeur`      | Échange avec d'autres joueurs                    | Garde 2 doublons de chaque carte                                                 |
+| Stratégie      | `strategy`       | Pour qui                                        | Ce qui change                                                                         |
+| -------------- | ---------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Équilibré      | `equilibre`      | Le plus de points, tirages compris (par défaut) | —                                                                                     |
+| Prudent        | `prudent`        | Ne veut que des points garantis                 | Aucune invocation ni ascension, la ZUMonnaie est gardée                               |
+| Épargne        | `epargne`        | Garde des monnaies pour un évènement ou un pack | Poudres × 15, ZUMonnaie × 50 : seules les grosses dépenses passent                    |
+| Vortex         | `vortex`         | Veut monter dans la tour d'Ascension            | Réputation × 50, poudre × 5 : la poudre va aux `/as` avant les petites créations      |
+| Collectionneur | `collectionneur` | Veut le plus de cartes différentes possible     | +1 000 points par carte de la collection : aucune carte perdue, les nouvelles d'abord |
+| Échangeur      | `echangeur`      | Échange avec d'autres joueurs                   | Garde 2 doublons de chaque carte                                                      |
 
 Les réglages explicites l'emportent toujours sur la stratégie : avec
 `?strategy=epargne&wBalance=0.002`, la ZUMonnaie garde sa valeur par défaut. Côté serveur,
@@ -191,8 +191,9 @@ Les réglages explicites l'emportent toujours sur la stratégie : avec
    invocation, ascension, évolution). À chaque étape, les meilleurs états sont étendus avec leurs
    actions les plus prometteuses. Un état vaut :
    `points de collection + points de succès + points espérés des tirages + Σ monnaies × poids`.
-   Selon la stratégie, les points espérés ne comptent pas (Prudent) ou chaque carte nouvelle rapporte
-   un bonus (Collectionneur).
+   Selon la stratégie, les points espérés ne comptent pas (Prudent) ou chaque carte de la collection
+   rapporte un bonus (Collectionneur) : en perdre une le retire, et une carte espérée d'un tirage ne
+   le rapporte que si elle manquait au début du plan.
    Une dépense peut être une chaîne d'actions jugée d'un bloc : créer une carte pour l'enchanter et
    monter sa constellation dorée, ou enchanter deux fois une carte pour sa première dorée et son
    premier niveau. Étape par étape, la première action rapporte trop peu pour être explorée, alors

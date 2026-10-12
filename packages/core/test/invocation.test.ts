@@ -183,3 +183,29 @@ describe('cartes obtenues après des invocations', () => {
     expect(gain([...invocations, craft])).toBeCloseTo(gain([craft, ...invocations]), 6);
   });
 });
+
+describe('bonus des cartes nouvelles', () => {
+  it('ne compte pas comme nouvelle une carte retirée de la collection pendant le plan', () => {
+    // Enchanter le dernier exemplaire normal retire la carte : les invocations peuvent la redonner
+    // (ses points comptent), mais ce n'est pas une carte jamais possédée.
+    const items = Array.from({ length: 50 }, (_, i) => makeItem(1001 + i));
+    const card = items[0]!;
+    const ctx = makeContext(
+      makeCatalog(items),
+      makePlayer({
+        balances: { balance: 0, loreDust: 1000, loreFragment: 0, upgradeDust: 0 },
+        inventory: Object.fromEntries([owned(card.id, 0, 1)]),
+      }),
+      { strategy: 'collectionneur' },
+    );
+    const basic = boosterOptions(ctx).find((o) => o.key === 'basic')!;
+    const before = initialState(ctx);
+    const after = applyAction(ctx, before, { kind: 'enchant', itemId: card.id })!.state;
+    expect(after.owned).toBe(before.owned);
+    // La dorée obtenue n'est plus à tirer ; la normale perdue ne redevient pas « nouvelle ».
+    expect(invocationEV(ctx, after, basic).newCards).toBeLessThan(
+      invocationEV(ctx, before, basic).newCards,
+    );
+    expect(invocationEV(ctx, after, basic).ev).toBeGreaterThan(0);
+  });
+});

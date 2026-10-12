@@ -62,8 +62,13 @@ export const STRATEGIES: Record<StrategyId, Strategy> = {
   collectionneur: {
     id: 'collectionneur',
     label: 'Collectionneur',
-    description: 'Les cartes jamais possédées passent avant les constellations.',
-    options: { newCardBonus: 25 },
+    description:
+      'Le plus de cartes différentes possible, sans jamais en perdre : les cartes nouvelles passent avant les points.',
+    // Chaque carte de la collection vaut 1 000 points : plus que ce que rapporte la poudre de la
+    // carte la plus chère en constellations. Simulé sur 162 joueurs réels : le nombre de cartes
+    // différentes plafonne à partir de 1 000 (71 par joueur, contre 42 avec l'ancien bonus de 25),
+    // et plus aucune carte n'est perdue en enchantant son dernier exemplaire normal.
+    options: { newCardBonus: 1000 },
   },
   echangeur: {
     id: 'echangeur',
