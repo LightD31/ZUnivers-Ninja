@@ -1,4 +1,4 @@
-import type { ActionKind, Currency, Shiny } from '@zuninja/core';
+import type { ActionKind, Currency, PlanCard, Shiny } from '@zuninja/core';
 import {
   CalendarCheck,
   Dices,
@@ -77,3 +77,10 @@ export const CURRENCY_DOT: Record<Currency, string> = {
   loreFragment: 'bg-fuchsia-400',
   upgradeDust: 'bg-violet-400',
 };
+
+/** Fiche de la carte sur ZUnivers, sur sa version chroma quand c'est elle, ou `null` si inconnue. */
+export function zuniversCardUrl(card: Pick<PlanCard, 'slug' | 'shiny'>): string | null {
+  if (!card.slug) return null;
+  const mode = card.shiny === 2 ? '?mode=chroma' : '';
+  return `https://zunivers.zerator.com/carte/${encodeURIComponent(card.slug)}${mode}`;
+}

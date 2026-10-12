@@ -46,6 +46,8 @@ export interface PlanCard {
   shiny: Shiny;
   count: number;
   image: string | null;
+  /** Identifiant de la fiche de la carte sur zunivers.zerator.com (`/carte/<slug>`), vide si inconnu. */
+  slug: string;
 }
 
 export interface PlanStep {
@@ -193,6 +195,7 @@ function card(ctx: Context, itemId: string, shiny: Shiny, count = 1): PlanCard {
     shiny,
     count,
     image: item?.urls[urlIndex] ?? item?.urls[0] ?? null,
+    slug: item?.slug ?? '',
   };
 }
 
