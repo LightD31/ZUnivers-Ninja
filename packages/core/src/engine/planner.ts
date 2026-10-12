@@ -58,6 +58,12 @@ const INVOKE_STEPS = 50;
 const INVOKE_TAIL = 4;
 /** Éclats d'étoile manquants au plus pour proposer les constellations qui débloquent l'évolution. */
 const EVOLUTION_REACH = 10;
+/**
+ * Part du gain du plan qu'il peut perdre au plus quand ses commandes sont regroupées (voir
+ * `regroup`), et au moins ce nombre de points : seule l'espérance des tirages bouge.
+ */
+const REGROUP_TOLERANCE = 0.001;
+const REGROUP_TOLERANCE_POINTS = 0.5;
 /** Profondeurs entre deux calculs du prix d'opportunité des monnaies. */
 const SHADOW_REFRESH = 20;
 /** Exemplaires créés ou enchantés au plus pour atteindre le niveau de constellation suivant. */
@@ -869,6 +875,58 @@ export function search(ctx: Context): SearchResult {
     explored: aware.explored + blind.explored,
     timedOut: aware.timedOut || blind.timedOut,
   };
+}
+
+/** Actions qui se regroupent sur une même ligne de commande : elles gagnent à se suivre. */
+const GROUPED = new Set<Action['kind']>(['recycle', 'craft', 'enchant', 'constellation']);
+
+/**
+ * Réordonne un plan pour regrouper ses commandes : les créations à la suite, puis les
+ * enchantements, puis les constellations… au lieu de « enchanter X, constellation de X, enchanter
+ * Y… », une commande par action. Chaque action est rejouée à sa nouvelle place : on prend la plus
+ * ancienne action restante du même type que la précédente si elle est possible, sinon la plus
+ * ancienne action restante possible. Les mêmes actions donnent les mêmes cartes et monnaies ; seule
+ * l'espérance des tirages dépend un peu de l'ordre. Le plan réordonné est gardé s'il ne perd pas
+ * plus de `REGROUP_TOLERANCE` de son gain, sinon l'ordre de la recherche est gardé.
+ */
+export function regroup(ctx: Context, steps: Step[]): Step[] {
+  const original = rebuild(ctx, steps);
+  const start = initialState(ctx);
+  let node: SearchNode = {
+    state: start,
+    value: stateValue(ctx, start),
+    steps: null,
+    signature: [],
+    depth: 0,
+  };
+  const done = steps.map(() => false);
+  let first = 0;
+  let kind: Action['kind'] | null = null;
+  for (let placed = 0; placed < steps.length; placed++) {
+    let index = -1;
+    let next: SearchNode | null = null;
+    const place = (sameKind: boolean) => {
+      for (let i = first; i < steps.length; i++) {
+        const step = steps[i]!;
+        if (done[i] || (sameKind && step.action.kind !== kind)) continue;
+        next = tryApply(ctx, node, step.action, step.auto);
+        if (next) return i;
+      }
+      return -1;
+    };
+    if (kind && GROUPED.has(kind)) index = place(true);
+    if (index < 0) index = place(false);
+    if (index < 0 || !next) return steps;
+    done[index] = true;
+    node = next;
+    kind = steps[index]!.action.kind;
+    while (first < steps.length && done[first]) first++;
+  }
+  if (!original) return steps;
+  const gain = Math.abs(original.value - stateValue(ctx, start));
+  const tolerance = Math.max(REGROUP_TOLERANCE_POINTS, REGROUP_TOLERANCE * gain);
+  if (node.value < original.value - tolerance) return steps;
+  return nodeSteps(node);
 }
 
 /** Rejoue des étapes dans ce contexte : mêmes actions, gains recalculés. */

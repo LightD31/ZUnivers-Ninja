@@ -12,6 +12,7 @@ import {
 } from '../src';
 import { reserveFor, reserveTotal } from '../src/rules/reserve';
 import { getCard } from '../src/engine/state';
+import { regroup, type Step } from '../src/engine/planner';
 import { makeCatalog, makeItem, makePlayer, owned, TEST_NOW } from './factory';
 import { fixtureCatalog, fixturePlayer, NOW } from './helpers';
 
@@ -107,6 +108,31 @@ describe('recherche', () => {
       );
       if (!transformed) expect(after.copies).toBeGreaterThanOrEqual(1);
     }
+  });
+});
+
+describe('regroupement des commandes', () => {
+  it('ne change ni les cartes ni les monnaies du plan, et réduit les changements de commande', () => {
+    const ctx = buildContext(catalog, player, NOW, resolveOptions({}));
+    const steps = nodeSteps(search(ctx).best);
+    const regrouped = regroup(ctx, steps);
+    const final = (list: Step[]) =>
+      replay(
+        ctx,
+        list.map((s) => s.action),
+      );
+    const cards = (state: ReturnType<typeof final>) =>
+      [...state.cards.entries().values()]
+        .filter((c) => c.copies > 0 || c.constellation > 0)
+        .map((c) => `${c.itemId}:${c.shiny}:${c.copies}:${c.constellation}`)
+        .sort();
+    const [before, after] = [final(steps), final(regrouped)];
+    expect(after.points).toBe(before.points);
+    expect(after.balances).toEqual(before.balances);
+    expect(cards(after)).toEqual(cards(before));
+    const runs = (list: Step[]) =>
+      list.filter((s, i) => i === 0 || s.action.kind !== list[i - 1]!.action.kind).length;
+    expect(runs(regrouped)).toBeLessThan(runs(steps));
   });
 });
 
@@ -277,6 +303,26 @@ describe('cas synthétiques', () => {
     expect(plan.gain.points).toBe(800);
     expect(plan.steps.filter((s) => s.kind === 'constellation')).toHaveLength(5);
     expect(plan.steps.some((s) => s.cards.some((c) => c.rarity === 4))).toBe(false);
+  });
+
+  it('regroupe les commandes : créations, puis enchantements, puis constellations', () => {
+    // Cinq chaînes « créer, enchanter, constellation dorée » : la recherche les enchaîne carte par
+    // carte, soit quinze commandes. Le plan les regroupe en trois.
+    const golden = Array.from({ length: 5 }, (_, i) => makeItem(2001 + i, { recyclable: false }));
+    const plan = createPlan({
+      catalog: makeCatalog(golden),
+      player: makePlayer({
+        balances: { balance: 0, loreDust: 4500, loreFragment: 0, upgradeDust: 0 },
+        inventory: Object.fromEntries(golden.map((i) => owned(i.id, 1, 1))),
+      }),
+      now: TEST_NOW,
+    });
+    expect(plan.commands.map((c) => c.split(':')[0])).toEqual([
+      '/création carte',
+      '/enchantement carte',
+      '/constellation carte',
+    ]);
+    expect(plan.gain.points).toBe(800);
   });
 
   it('ignore les constellations quand le mode de jeu n’en a pas (régression Hardcore)', () => {
