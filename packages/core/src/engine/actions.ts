@@ -113,7 +113,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       earn(s, lootReward(ctx, ctx.catalog.settings.dailyReward));
       s.dailyDone = true;
       s.dailiesSinceWeekly += 1;
-      progressChallenges(s, 'loot', 1);
+      progressChallenges(ctx, s, 'loot', 1);
       return { state: s, touched: [] };
     }
 
@@ -124,7 +124,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       earn(s, lootReward(ctx, ctx.catalog.settings.weeklyReward));
       s.weeklyDone = true;
       s.dailiesSinceWeekly = 0;
-      progressChallenges(s, 'weekly', 1);
+      progressChallenges(ctx, s, 'weekly', 1);
       return { state: s, touched: [] };
     }
 
@@ -146,7 +146,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
           recycled += v * entry.count;
         }
       }
-      progressChallenges(s, 'recycle', recycled);
+      progressChallenges(ctx, s, 'recycle', recycled);
       progressAchievements(
         ctx,
         s,
@@ -166,7 +166,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       const s = fork(s0);
       pay(s, price);
       obtain(ctx, s, item, 0);
-      progressChallenges(s, 'craft', 1);
+      progressChallenges(ctx, s, 'craft', 1);
       return { state: s, touched: [item.id] };
     }
 
@@ -182,7 +182,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       const lastNormal = getCard(s0, item.id, 0).copies === 1;
       addCopies(ctx, s, item.id, 0, -1);
       obtain(ctx, s, item, 1);
-      progressChallenges(s, 'enchant', 1);
+      progressChallenges(ctx, s, 'enchant', 1);
       return {
         state: s,
         touched: [item.id],
@@ -206,7 +206,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       for (const input of fusion.inputs)
         addCopies(ctx, s, input.itemId, action.shiny, -input.quantity);
       obtain(ctx, s, result, action.shiny);
-      progressChallenges(s, 'fusion', 1);
+      progressChallenges(ctx, s, 'fusion', 1);
       progressAchievements(ctx, s, 'fusion', 1);
       return { state: s, touched: [result.id, ...fusion.inputs.map((i) => i.itemId)] };
     }
@@ -223,7 +223,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       const s = fork(s0);
       putCard(ctx, s, { ...card, copies: card.copies - 1, constellation: card.constellation + 1 });
       s.balances.upgradeDust += CONSTELLATION_UPGRADE_DUST;
-      progressChallenges(s, 'constellation', 1);
+      progressChallenges(ctx, s, 'constellation', 1);
       return { state: s, touched: [item.id] };
     }
 
@@ -248,8 +248,8 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
           [option.eventId]: (s.eventInvocations[option.eventId] ?? 0) + 1,
         };
       }
-      progressChallenges(s, 'invoke', 1);
-      progressChallenges(s, 'invokeItems', option.cards);
+      progressChallenges(ctx, s, 'invoke', 1);
+      progressChallenges(ctx, s, 'invokeItems', option.cards);
       return { state: s, touched: [], ev };
     }
 
@@ -265,7 +265,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       s.towerFloor += successRate;
       s.ev += ev;
       s.expectedNewCards += newCards;
-      progressChallenges(s, 'ascension', 1);
+      progressChallenges(ctx, s, 'ascension', 1);
       progressAchievements(ctx, s, 'ascension', 1);
       return {
         state: s,
@@ -291,7 +291,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       if (nextItem) obtain(ctx, s, nextItem, 0);
       else addCopies(ctx, s, next.itemId, 0, 1);
       s.evolutionIndex = index + 1;
-      progressChallenges(s, 'evolution', 1);
+      progressChallenges(ctx, s, 'evolution', 1);
       return { state: s, touched: [] };
     }
   }

@@ -3,6 +3,7 @@ import {
   AchievementEntriesSchema,
   applyAction,
   buildContext,
+  challengeActionFor,
   createClient,
   createPlan,
   fetchAchievements,
@@ -150,6 +151,33 @@ describe('objectifs des succès', () => {
     expect(goals([achievement('Gratter 100 Rayou Official', 48, 100)])).toEqual([]);
   });
 
+  it('ne compte pas une carte possédée seulement en Constellation', () => {
+    const r3 = [3001, 3002].map((n) => makeItem(n));
+    const ctx = (current: number) =>
+      makeContext(
+        makeCatalog(r3),
+        makePlayer({
+          inventory: Object.fromEntries([owned(r3[0]!.id, 1, 0, 3)]),
+          achievements: [
+            achievement('Obtenir toutes les cartes ★★★ dorées classiques', current, 2),
+          ],
+        }),
+      ).achievements;
+    expect(ctx(0)).toHaveLength(1);
+    expect(ctx(1)).toEqual([]);
+  });
+
+  it('admet les cartes classiques hors catalogue quand le joueur les a déjà', () => {
+    // 3 cartes ★ trouvées, 4 comptées par l'API : la 4e (une carte de boss) est déjà possédée.
+    const [all1] = goals([achievement('Obtenir toutes les cartes ★ classiques', 3, 4)]);
+    expect(all1?.cards).toHaveLength(3);
+    expect([all1?.current, all1?.max]).toEqual([3, 4]);
+    // Sans elle, le succès est hors de portée du plan.
+    expect(goals([achievement('Obtenir toutes les cartes ★ classiques', 2, 4)])).toEqual([]);
+    // Un pack doit correspondre exactement.
+    expect(goals([achievement('Obtenir toutes les cartes du pack ZLAN 2024', 2, 3)])).toEqual([]);
+  });
+
   it('reconnaît les compteurs de recyclages, de fusions et l’ascension en cours', () => {
     const season: Season = {
       id: 's',
@@ -169,6 +197,8 @@ describe('objectifs des succès', () => {
           achievement('Faire une fusion de cartes avec la commande /fusion', 0, 1),
           achievement("Participer à l'Ascension du ZEvent 2026", 0, 1),
           achievement("Participer à l'Ascension de la ZLAN 2026", 0, 1),
+          achievement('Compléter 100 défis', 99, 100),
+          achievement("Compléter tous les défis d'une semaine", 0, 1),
         ],
       }),
     );
@@ -176,6 +206,8 @@ describe('objectifs des succès', () => {
       ['recycle', 120, 1000],
       ['fusion', 0, 1],
       ['ascension', 0, 1],
+      ['challenge', 99, 100],
+      ['weekChallenges', 0, 1],
     ]);
   });
 });
@@ -223,6 +255,43 @@ describe('progression simulée', () => {
     })!;
     expect(applied.state.achievements).toEqual([10, 14]);
     expect(applied.state.achievementPoints).toBe(20);
+  });
+
+  it('compte les défis terminés, y compris « Compléter 2 défis »', () => {
+    const challenge = (id: string, type: string, current: number, max: number) => ({
+      id,
+      type,
+      description: id,
+      rewardLoreDust: 0,
+      score: 0,
+      current,
+      max,
+      action: challengeActionFor(type, id),
+    });
+    const ctx = makeContext(
+      makeCatalog([]),
+      makePlayer({
+        // 7 /journa depuis le dernier /bonus : le /bonus est disponible.
+        loot: ['05', '06', '07', '08', '09', '10', '11'].map((day) => ({
+          date: `2026-10-${day}`,
+          daily: 1,
+          weekly: 0,
+        })),
+        challenges: [
+          challenge('Faire un /bonus', 'WEEKLY', 0, 1),
+          challenge('Compléter 2 défis', 'META_CHALLENGE', 1, 2),
+        ],
+        achievements: [
+          achievement('Compléter 100 défis', 98, 100, 200),
+          achievement("Compléter tous les défis d'une semaine", 0, 1, 30),
+        ],
+      }),
+    );
+    const applied = applyAction(ctx, initialState(ctx), { kind: 'weekly' })!;
+    // Le /bonus termine son défi, qui termine « Compléter 2 défis » : deux défis, une semaine.
+    expect(applied.state.challenges.map((c) => c.current)).toEqual([1, 2]);
+    expect(applied.state.achievements).toEqual([100, 1]);
+    expect(applied.state.achievementPoints).toBe(230);
   });
 });
 

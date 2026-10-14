@@ -27,7 +27,7 @@ La v2 est une réécriture complète : TypeScript, aucune base de données, une 
   - invocations et ascensions, estimées en espérance à partir des vrais taux de drop ;
   - défis de la semaine ;
   - succès : collections (toutes les cartes d'une rareté, d'un pack, toutes les constellations…)
-    et compteurs (recyclages, fusions, ascension du Vortex en cours).
+    et compteurs (recyclages, fusions, défis terminés, ascension du Vortex en cours).
 - **Interface web** :
   - le plan pas à pas, avec la commande prête à copier et les visuels des cartes ;
   - l'évolution des monnaies et de la collection, les défis, les succès et l'état du Vortex ;
@@ -177,6 +177,9 @@ Les réglages explicites l'emportent toujours sur la stratégie : avec
    une ligne distincte de l'inventaire : elle ne compte jamais comme un exemplaire utilisable.
    L'API ne décrit un succès que par son texte : le planificateur en déduit les cartes visées, et
    ne garde le succès que si ces cartes redonnent exactement la progression affichée par l'API.
+   Seuls les exemplaires comptent (une carte Constellation seule ne vaut pas possession). Les
+   collections classiques comptent aussi des cartes absentes du catalogue public (les cartes de
+   boss) : le succès n'est visé que si le joueur les possède déjà.
 2. **Réserve.** Pour chaque carte, le planificateur calcule les exemplaires à protéger :
    - 1 exemplaire gardé ;
    - ceux nécessaires aux fusions encore à faire ;
