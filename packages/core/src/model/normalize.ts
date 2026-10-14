@@ -193,6 +193,8 @@ export function challengeActionFor(type: string, description: string): Challenge
       return 'loot';
     case 'WEEKLY':
       return 'weekly';
+    case 'META_CHALLENGE':
+      return 'challenge';
     default:
       return null;
   }

@@ -161,6 +161,8 @@ export type ChallengeAction =
   | 'invokeItems'
   | 'ascension'
   | 'evolution'
+  /** Défis « Compléter N défis » : progressent quand un autre défi est terminé. */
+  | 'challenge'
   | null;
 
 export interface Challenge {

@@ -232,15 +232,30 @@ export function earn(state: State, gain: Partial<Balances>): void {
 }
 
 /** Fait progresser les défis liés à une action et encaisse leurs récompenses. */
-export function progressChallenges(state: State, action: ChallengeAction, amount: number): void {
+export function progressChallenges(
+  ctx: Context,
+  state: State,
+  action: ChallengeAction,
+  amount: number,
+): void {
   if (amount <= 0 || !state.challenges.some((c) => c.action === action && c.current < c.max))
     return;
+  let completed = 0;
   state.challenges = state.challenges.map((c) => {
     if (c.action !== action || c.current >= c.max) return c;
     const current = Math.min(c.max, c.current + amount);
-    if (current >= c.max) state.balances.loreDust += c.reward;
+    if (current >= c.max) {
+      state.balances.loreDust += c.reward;
+      completed++;
+    }
     return { ...c, current };
   });
+  if (completed === 0) return;
+  // Un défi terminé fait progresser les défis « Compléter N défis » et les succès de défis.
+  progressAchievements(ctx, state, 'challenge', completed);
+  if (state.challenges.every((c) => c.current >= c.max))
+    progressAchievements(ctx, state, 'weekChallenges', 1);
+  progressChallenges(ctx, state, 'challenge', completed);
 }
 
 /**
