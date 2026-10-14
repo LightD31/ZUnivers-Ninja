@@ -214,10 +214,10 @@ export function normalizeChallenge(raw: ApiChallenge): Challenge {
   };
 }
 
-/** Succès pas encore obtenus (sans date d'obtention). */
+/** Succès à obtenir : jamais obtenus, ou retirés depuis (une carte a rejoint leur collection). */
 export function normalizeAchievements(raw: ApiAchievementEntry[]): Achievement[] {
   return raw
-    .filter((e) => !e.date)
+    .filter((e) => !e.date || e.deleteDate)
     .map((e) => {
       const progress = e.progress ?? { current: 0, max: 1 };
       const max = Math.max(1, progress.max);

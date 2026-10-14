@@ -68,7 +68,7 @@ describe('chargement des succès', () => {
 });
 
 describe('normalisation des succès', () => {
-  it('ne garde que les succès pas encore obtenus', () => {
+  it('garde les succès pas encore obtenus et ceux retirés depuis', () => {
     const raw = AchievementEntriesSchema.parse([
       {
         id: 'log',
@@ -98,10 +98,24 @@ describe('normalisation des succès', () => {
           rewardLoreDust: 30,
         },
       },
+      {
+        // Obtenu puis retiré : une carte a rejoint la collection depuis.
+        id: 'log',
+        date: '2023-04-20T14:42:50',
+        deleteDate: '2025-12-20T00:17:53',
+        achievement: {
+          id: 'd',
+          name: 'Toutes les cartes constellation ★★★',
+          description: 'Compléter toutes les cartes constellation ★★★ classiques',
+          score: 500,
+        },
+        progress: { type: 'PERCENT', current: 45, max: 50 },
+      },
     ]);
     expect(normalizeAchievements(raw)).toEqual([
       expect.objectContaining({ id: 'b', current: 10, max: 12, rewardLoreDust: 0 }),
       expect.objectContaining({ id: 'c', current: 0, max: 1, rewardLoreDust: 30 }),
+      expect.objectContaining({ id: 'd', current: 45, max: 50, score: 500 }),
     ]);
   });
 });
