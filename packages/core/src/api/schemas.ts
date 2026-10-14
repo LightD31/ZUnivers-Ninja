@@ -242,6 +242,11 @@ export type ApiAchievementCategory = z.infer<typeof AchievementCategorySchema>;
 export const AchievementEntrySchema = z.looseObject({
   /** Date d'obtention, absente tant que le succès n'est pas obtenu. */
   date: z.string().nullish(),
+  /**
+   * Date de retrait d'un succès « supprimable » : quand une carte rejoint sa collection, le succès
+   * est retiré (avec ses points) jusqu'à ce que la collection soit de nouveau complète.
+   */
+  deleteDate: z.string().nullish(),
   achievement: z.looseObject({
     id: z.string(),
     name: z.string().default(''),
