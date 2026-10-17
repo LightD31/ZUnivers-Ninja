@@ -162,7 +162,7 @@ describe('cas synthétiques', () => {
     const plan = createPlan({
       catalog: makeCatalog([a, b]),
       player: makePlayer({
-        inventory: Object.fromEntries([owned(a.id, 0, 301), owned(b.id, 0, 101)]),
+        inventory: Object.fromEntries([owned(a.id, 0, 501), owned(b.id, 0, 201)]),
       }),
       now: TEST_NOW,
     });
@@ -172,25 +172,25 @@ describe('cas synthétiques', () => {
     for (const c of recycles) expect(c.length).toBeLessThanOrEqual(COMMAND_MAX_LENGTH);
     // La première commande est pleine : une carte de plus (« + 1001 ») la rendrait trop longue.
     expect(recycles[0]!.length + ' + 1001'.length).toBeGreaterThan(COMMAND_MAX_LENGTH);
-    expect(cards.flat()).toHaveLength(400);
+    expect(cards.flat()).toHaveLength(700);
     expect(new Set(cards[1])).toEqual(new Set(['1001', '1002']));
-    expect(plan.after.balances.loreDust).toBe(400 * 5);
+    expect(plan.after.balances.loreDust).toBe(700 * 5);
   });
 
   it('coupe une longue suite de créations en commandes que le jeu accepte', () => {
     const plain = { upgradable: false, goldable: false, recyclable: false } as const;
-    const items = Array.from({ length: 300 }, (_, i) => makeItem(1001 + i, plain));
+    const items = Array.from({ length: 500 }, (_, i) => makeItem(1001 + i, plain));
     const plan = createPlan({
       catalog: makeCatalog(items),
       player: makePlayer({
-        balances: { balance: 0, loreDust: 300 * 50, loreFragment: 0, upgradeDust: 0 },
+        balances: { balance: 0, loreDust: 500 * 50, loreFragment: 0, upgradeDust: 0 },
       }),
       now: TEST_NOW,
     });
     const crafts = plan.groups.filter((g) => g.kind === 'craft');
     expect(crafts.length).toBeGreaterThan(1);
     for (const g of crafts) expect(g.command.length).toBeLessThanOrEqual(COMMAND_MAX_LENGTH);
-    expect(crafts.reduce((n, g) => n + g.size, 0)).toBe(300);
+    expect(crafts.reduce((n, g) => n + g.size, 0)).toBe(500);
   });
 
   it('privilégie la constellation au recyclage', () => {
