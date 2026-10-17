@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server';
 import { Cron } from 'croner';
 import { loadConfig } from './config';
 import { logger, setLogLevel } from './logger';
+import { Metrics, PlayerTracker } from './metrics';
 import { discordNotifier } from './notifiers/discord';
 import { jsonNotifier } from './notifiers/json';
 import type { Notifier } from './notifiers/types';
@@ -15,7 +16,11 @@ async function main() {
   setLogLevel(config.logLevel);
   const once = process.argv.includes('--once');
 
-  const service = new PlanService(config);
+  const players = new PlayerTracker(once ? null : config.metricsFile);
+  const metrics: Metrics | null = config.metricsEnabled
+    ? new Metrics({ version: VERSION, players, pool: () => service.poolStats })
+    : null;
+  const service: PlanService = new PlanService({ ...config, metrics });
   const store = new StateStore(config.stateFile);
   const notifiers: Notifier[] = [];
   if (config.discordWebhook)
@@ -32,6 +37,7 @@ async function main() {
     strategies: config.strategies,
     ruleSet: config.ruleSet,
     dryRun: config.dryRun,
+    metrics,
   };
 
   if (once) {
@@ -59,7 +65,12 @@ async function main() {
     webDir: config.webDir,
     webUrl: config.webUrl,
     cron: config.cron,
+    metrics,
+    metricsToken: config.metricsToken,
   });
+  // Joueurs distincts : enregistrés régulièrement et à l'arrêt.
+  const saveStats = setInterval(() => players.save(), 5 * 60_000);
+  saveStats.unref();
   const server = serve({ fetch: app.fetch, port: config.port, hostname: config.host }, (info) => {
     logger.info(`ZUnivers Ninja ${VERSION} à l'écoute sur http://${config.host}:${info.port}`);
   });
@@ -91,6 +102,8 @@ async function main() {
   const shutdown = () => {
     logger.info('Arrêt…');
     job?.stop();
+    clearInterval(saveStats);
+    players.save();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 5000).unref();
   };

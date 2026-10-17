@@ -153,7 +153,10 @@ export interface PlanResult {
     group: string;
     end: string;
     ascensionsLeft: number;
+    /** Étage à tenter (à partir de 1). */
     floor: number;
+    /** Sommet atteint : plus d'ascension possible cette saison. */
+    summit: boolean;
   } | null;
   insights: Insights;
   stats: {
@@ -703,6 +706,7 @@ export function createPlan({
           end: season.end,
           ascensionsLeft: finalState.ascensionsLeft,
           floor: Math.min(season.floors.length, Math.floor(before.towerFloor) + 1),
+          summit: Math.floor(before.towerFloor) >= season.floors.length,
         }
       : null,
     stats: {

@@ -3,10 +3,11 @@ import type { ActionKind } from './actions';
 
 /**
  * Longueur maximale d'une ligne de commande. Au-delà, le bot du jeu ne l'exécute pas et répond
- * « Je ne suis pas sûre d'avoir pris en compte ton action » : une commande de 3 962 caractères a
- * échoué, une de 2 020 est passée (vérifié en jeu le 12/10/2026).
+ * « Je ne suis pas sûre d'avoir pris en compte ton action ». Vérifié en jeu : une commande de
+ * 3 962 caractères a échoué (12/10/2026), une de 3 119 caractères (441 cartes) est passée
+ * (17/10/2026). La limite réelle est entre les deux : on reste sous la plus longue qui a marché.
  */
-export const COMMAND_MAX_LENGTH = 2000;
+export const COMMAND_MAX_LENGTH = 3100;
 
 /** Séparateur des cartes d'une commande (`/recyclage carte:1001 + 1002`). */
 export const CARD_SEPARATOR = ' + ';

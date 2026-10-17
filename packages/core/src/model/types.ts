@@ -213,7 +213,11 @@ export interface Player {
   loot: LootDay[];
   lootStreak: number;
   /** Progression dans le Vortex de la saison en cours. */
-  tower: { floorIndex: number; logCount: number } | null;
+  /**
+   * `floorsClimbed` : étages déjà gravis (0 = pas encore entré), c'est aussi l'index de l'étage à
+   * tenter ensuite. Égal au nombre d'étages : le sommet est atteint.
+   */
+  tower: { floorsClimbed: number; logCount: number } | null;
   evolution: {
     costs: number[];
     steps: { itemId: string; name: string; rarity: number; score: number; owned: boolean }[];

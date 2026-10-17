@@ -10,6 +10,7 @@ import {
 } from '@zuninja/core';
 import type { Config } from './config';
 import { logger } from './logger';
+import type { Metrics } from './metrics';
 import { PlanAbortedError, PlannerBusyError, PlannerPool } from './pool';
 
 /** Version publiée : tirée du tag de release et injectée au build de l'image Docker. */
@@ -22,7 +23,7 @@ const THREAD_TIMEOUT_MARGIN_MS = 30_000;
 type ServiceConfig = Pick<
   Config,
   'apiBaseUrl' | 'catalogTtlMs' | 'planner' | 'threads' | 'queueLimit' | 'timeLimitMs'
-> & { fetch?: typeof fetch };
+> & { fetch?: typeof fetch; metrics?: Metrics | null };
 
 /** Calcul en cours, partagé par toutes les requêtes identiques. */
 interface Flight {
@@ -50,6 +51,10 @@ export class PlanService {
 
   close(): Promise<void> {
     return this.pool.close();
+  }
+
+  get poolStats() {
+    return this.pool.stats;
   }
 
   client(ruleSet: RuleSet): ZuClient {
@@ -132,6 +137,7 @@ export class PlanService {
   ): Promise<PlanResult> {
     // Refus immédiat quand le serveur est saturé, sans solliciter l'API ZUnivers.
     if (this.pool.saturated) throw new PlannerBusyError();
+    const started = performance.now();
     const [catalog, player] = await Promise.all([
       this.catalog(ruleSet),
       fetchPlayer(this.client(ruleSet), name),
@@ -142,6 +148,12 @@ export class PlanService {
     );
     logger.debug(
       `Plan calculé pour ${player.name} : ${plan.commands.length} commandes, ${plan.stats.explored} états, ${plan.stats.durationMs} ms${plan.stats.timedOut ? ' (limite de temps atteinte)' : ''}`,
+    );
+    this.config.metrics?.computedPlan(
+      plan.strategy.id,
+      ruleSet,
+      (performance.now() - started) / 1000,
+      plan.stats.timedOut,
     );
     this.plans.set(key, { value: plan, expires: Date.now() + PLAN_CACHE_MS });
     if (this.plans.size > 200) this.plans.delete(this.plans.keys().next().value!);

@@ -189,7 +189,8 @@ export const UserTowerSchema = z.looseObject({
   towerStats: z
     .array(
       z.looseObject({
-        maxFloorIndex: num.default(0),
+        /** Dernier étage atteint (0 = étage 1), absent tant que le joueur n'est pas entré. */
+        maxFloorIndex: num.nullish(),
         towerLogCount: num.default(0),
         towerSeasonIndex: num.nullish(),
         isCurrentTowerSeason: z.boolean().default(false),

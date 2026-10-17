@@ -32,7 +32,7 @@ export interface State {
   weeklyDone: boolean;
   dailiesSinceWeekly: number;
   ascensionsLeft: number;
-  /** Étage du Vortex en espérance (fractionnaire). */
+  /** Étages du Vortex gravis, en espérance (fractionnaire) : l'index de l'étage à tenter. */
   towerFloor: number;
   /** Index de l'étape d'évolution possédée, -1 si aucune. */
   evolutionIndex: number;
@@ -106,7 +106,7 @@ export function initialState(ctx: Context): State {
 
   const season = catalog.season;
   const credits = season ? ascensionCredits(season.begin, season.end, now) : 0;
-  const tower = player.tower ?? { floorIndex: 0, logCount: 0 };
+  const tower = player.tower ?? { floorsClimbed: 0, logCount: 0 };
 
   const evolution = player.evolution;
   const evolutionIndex = evolution ? evolution.steps.findLastIndex((s) => s.owned) : -1;
@@ -128,7 +128,7 @@ export function initialState(ctx: Context): State {
     weeklyDone: (todayLoot?.weekly ?? 0) > 0,
     dailiesSinceWeekly,
     ascensionsLeft: Math.max(0, credits - tower.logCount),
-    towerFloor: tower.floorIndex,
+    towerFloor: tower.floorsClimbed,
     evolutionIndex,
     eventInvocations: {},
     expectedNew: {},

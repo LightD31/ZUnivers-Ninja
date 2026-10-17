@@ -81,6 +81,8 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
 | `KEEP_EXTRA`                 | `0`            | Exemplaires gardés en plus pour les échanges.                                                                                                                                      |
 | `DRY_RUN`                    | `false`        | Calcule sans rien envoyer.                                                                                                                                                         |
 | `PORT`                       | `8080`         | Port HTTP.                                                                                                                                                                         |
+| `METRICS`                    | `true`         | Expose les métriques Prometheus sur `/metrics` (voir [Statistiques d'usage](#statistiques-dusage-prometheus--grafana)).                                                            |
+| `METRICS_TOKEN`              | —              | Jeton exigé sur `/metrics` (`Authorization: Bearer …`).                                                                                                                            |
 
 ### API
 
@@ -109,6 +111,43 @@ Les calculs tournent dans des threads séparés : le serveur reste réactif pend
 Les requêtes identiques simultanées partagent le même calcul, et un client qui se déconnecte
 l'annule. Quand tous les threads sont occupés et la file d'attente pleine, les deux routes
 répondent `503` avec un en-tête `Retry-After`.
+
+### Statistiques d'usage (Prometheus + Grafana)
+
+`GET /metrics` expose des métriques au format Prometheus, sans cookie ni service tiers :
+
+| Métrique                                          | Contenu                                                                                                                     |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `zuninja_plan_requests_total{source, outcome}`    | Demandes de plan : `source` = `web`, `bot` (route `/discord`) ou `cron` ; `outcome` = `ok`, `not_found`, `busy`, `timeout`… |
+| `zuninja_players{window}`                         | Joueurs distincts (web et bots) sur `1d`, `7d` et `30d`.                                                                    |
+| `zuninja_page_views_total`                        | Pages de l'interface servies.                                                                                               |
+| `zuninja_plans_computed_total{strategy, ruleset}` | Plans réellement calculés (hors cache).                                                                                     |
+| `zuninja_plan_duration_seconds`                   | Durée d'un calcul, appels à l'API ZUnivers compris.                                                                         |
+| `zuninja_planner_threads{state}`, `…queue_length` | Occupation des threads de calcul.                                                                                           |
+| `zuninja_process_*`, `zuninja_nodejs_*`           | Métriques standard du processus (mémoire, CPU, boucle d'évènements).                                                        |
+
+Les pseudos ne sont jamais exposés : pour compter les joueurs distincts, le serveur garde
+seulement une empreinte salée de chaque pseudo et la date de sa dernière demande, pendant 30
+jours, dans `data/metrics.json`. La version autonome (GitHub Pages) calcule dans le navigateur et
+n'est pas comptée.
+
+Exemple de configuration Prometheus :
+
+```yaml
+scrape_configs:
+  - job_name: zunivers-ninja
+    scrape_interval: 1m
+    static_configs:
+      - targets: ['zunivers-ninja:8080']
+    # Si METRICS_TOKEN est défini :
+    # authorization:
+    #   credentials: ton-jeton
+```
+
+Un tableau de bord Grafana prêt à importer est fourni dans
+[`deploy/grafana-dashboard.json`](deploy/grafana-dashboard.json) (Dashboards → New → Import) :
+joueurs distincts, demandes par origine, pages vues, erreurs, durée des calculs, stratégies et
+occupation du serveur.
 
 ### Brancher un bot Discord (ex : michel-discord-bot)
 

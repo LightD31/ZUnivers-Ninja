@@ -318,7 +318,10 @@ export function normalizePlayer(raw: RawPlayer, ruleSet = 'NORMAL'): Player {
     loot: normalizeLoot(raw.loot),
     lootStreak: u.currentLootStreak,
     tower: currentTower
-      ? { floorIndex: currentTower.maxFloorIndex, logCount: currentTower.towerLogCount }
+      ? {
+          floorsClimbed: currentTower.maxFloorIndex != null ? currentTower.maxFloorIndex + 1 : 0,
+          logCount: currentTower.towerLogCount,
+        }
       : null,
     evolution:
       evoItems.length > 0

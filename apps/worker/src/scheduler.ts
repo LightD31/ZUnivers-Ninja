@@ -1,5 +1,6 @@
 import type { PlanResult, RuleSet, StrategyId } from '@zuninja/core';
 import { logger } from './logger';
+import type { Metrics } from './metrics';
 import type { Notifier } from './notifiers/types';
 import type { PlanService } from './service';
 import type { StateStore } from './store';
@@ -10,6 +11,7 @@ export interface TickOptions {
   dryRun: boolean;
   /** Stratégie choisie par joueur (pseudo en minuscules), sinon celle du serveur. */
   strategies?: Record<string, StrategyId>;
+  metrics?: Metrics | null;
 }
 
 export interface TickResult {
@@ -60,11 +62,13 @@ export async function runTick(
       logger.info(
         `${user} (${plan.strategy.label}) : ${plan.commands.length} commandes, ${plan.gain.points > 0 ? '+' : ''}${Math.round(plan.gain.points)} points${changed ? '' : ' (inchangé)'}${notified ? ', notifié' : ''}`,
       );
+      options.metrics?.request('cron', 'ok');
       results.push({ user, plan, notified });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`Échec du plan pour ${user}`, message);
       store.update(user, { checkedAt: now, lastError: message });
+      options.metrics?.request('cron', 'error');
       results.push({ user, notified: false, error: message });
     }
   }
