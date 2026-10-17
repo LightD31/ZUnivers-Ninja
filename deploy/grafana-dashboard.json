@@ -27,7 +27,7 @@
   "tags": ["zunivers-ninja"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "time": {
     "from": "now-7d",
     "to": "now"
@@ -154,7 +154,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "A",
-          "expr": "sum(increase(zuninja_plan_requests_total{job=~\"$job\",source=~\"web|bot\"}[$__range]))",
+          "expr": "sum(increase(zuninja_plan_requests_total{job=~\"$job\",source=~\"web|bot\"}[$__range])) or vector(0)",
           "legendFormat": "web + bot",
           "range": true
         }
@@ -248,7 +248,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "A",
-          "expr": "sum(increase(zuninja_plan_requests_total{job=~\"$job\",outcome=~\"error|zu_api_error|timeout|busy\"}[$__range]))",
+          "expr": "sum(increase(zuninja_plan_requests_total{job=~\"$job\",outcome=~\"error|zu_api_error|timeout|busy\"}[$__range])) or vector(0)",
           "legendFormat": "erreurs",
           "range": true
         }
@@ -342,7 +342,8 @@
           "sort": "desc"
         }
       },
-      "description": "web = interface, bot = route /discord, cron = conseils planifiés."
+      "description": "web = interface, bot = route /discord, cron = conseils planifiés.",
+      "interval": "2m"
     },
     {
       "id": 6,
@@ -417,7 +418,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "A",
-          "expr": "sum by (outcome) (increase(zuninja_plan_requests_total{job=~\"$job\",outcome!=\"ok\"}[$__rate_interval]))",
+          "expr": "sum by (outcome) (increase(zuninja_plan_requests_total{job=~\"$job\",outcome!=\"ok\"}[$__rate_interval])) and (sum by (outcome) (increase(zuninja_plan_requests_total{job=~\"$job\",outcome!=\"ok\"}[$__range] @ end())) > 0)",
           "legendFormat": "{{outcome}}",
           "range": true
         }
@@ -447,7 +448,8 @@
           "sort": "desc"
         }
       },
-      "description": "invalid, not_found (pseudo inconnu), busy (file pleine), timeout, aborted (client parti), zu_api_error, error."
+      "description": "invalid, not_found (pseudo inconnu), busy (file pleine), timeout, aborted (client parti), zu_api_error, error.",
+      "interval": "2m"
     },
     {
       "id": 8,
@@ -499,7 +501,8 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
+      },
+      "interval": "2m"
     },
     {
       "id": 9,
@@ -573,7 +576,8 @@
           "sort": "desc"
         }
       },
-      "description": "Appels à l'API ZUnivers compris (hors cache)."
+      "description": "Appels à l'API ZUnivers compris (hors cache).",
+      "interval": "2m"
     },
     {
       "id": 10,
@@ -596,7 +600,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "A",
-          "expr": "sum by (strategy) (increase(zuninja_plans_computed_total{job=~\"$job\"}[$__range]))",
+          "expr": "sum by (strategy) (increase(zuninja_plans_computed_total{job=~\"$job\"}[$__range])) > 0",
           "legendFormat": "{{strategy}}",
           "range": true
         }
@@ -641,7 +645,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "A",
-          "expr": "sum by (ruleset) (increase(zuninja_plans_computed_total{job=~\"$job\"}[$__range]))",
+          "expr": "sum by (ruleset) (increase(zuninja_plans_computed_total{job=~\"$job\"}[$__range])) > 0",
           "legendFormat": "{{ruleset}}",
           "range": true
         }
@@ -804,7 +808,8 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
+      },
+      "interval": "2m"
     }
   ]
 }

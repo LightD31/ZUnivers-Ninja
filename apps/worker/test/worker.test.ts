@@ -360,6 +360,13 @@ describe('métriques', () => {
     expect(text).toContain('zuninja_process_cpu_seconds_total');
   });
 
+  it('expose les compteurs à zéro dès le démarrage', async () => {
+    const text = await metricsFor().registry.metrics();
+    expect(text).toContain('zuninja_plan_requests_total{source="web",outcome="ok"} 0');
+    expect(text).toContain('zuninja_plan_requests_total{source="bot",outcome="busy"} 0');
+    expect(text).toContain('zuninja_plans_computed_total{strategy="vortex",ruleset="HARDCORE"} 0');
+  });
+
   it('protège /metrics par un jeton, et ne l’expose pas sans métriques', async () => {
     const base = {
       ruleSet: 'NORMAL' as const,
