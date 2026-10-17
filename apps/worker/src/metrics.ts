@@ -1,15 +1,28 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { STRATEGY_IDS, type RuleSet } from '@zuninja/core';
 import { Counter, Gauge, Histogram, Registry, collectDefaultMetrics } from 'prom-client';
 import { logger } from './logger';
 
 /** Origine d'une demande de plan : interface web, bot (route /discord) ou conseils planifiés. */
-export type PlanSource = 'web' | 'bot' | 'cron';
+export const PLAN_SOURCES = ['web', 'bot', 'cron'] as const;
+export type PlanSource = (typeof PLAN_SOURCES)[number];
 
 /** Issue d'une demande de plan, pour suivre les erreurs et la saturation. */
-export type PlanOutcome =
-  'ok' | 'invalid' | 'not_found' | 'busy' | 'timeout' | 'aborted' | 'zu_api_error' | 'error';
+export const PLAN_OUTCOMES = [
+  'ok',
+  'invalid',
+  'not_found',
+  'busy',
+  'timeout',
+  'aborted',
+  'zu_api_error',
+  'error',
+] as const;
+export type PlanOutcome = (typeof PLAN_OUTCOMES)[number];
+
+const RULE_SETS: readonly RuleSet[] = ['NORMAL', 'HARDCORE'];
 
 const DAY_MS = 86_400_000;
 /** Fenêtres des joueurs distincts. */
@@ -121,6 +134,13 @@ export class Metrics {
     this.players = options.players;
     collectDefaultMetrics({ register: this.registry, prefix: 'zuninja_' });
     const registers = [this.registry];
+
+    // Séries créées à zéro dès le démarrage : sinon increase() ignore la première demande de
+    // chaque combinaison après un redémarrage, et Grafana affiche « No data » au lieu de 0.
+    for (const source of PLAN_SOURCES)
+      for (const outcome of PLAN_OUTCOMES) this.requests.inc({ source, outcome }, 0);
+    for (const strategy of STRATEGY_IDS)
+      for (const ruleset of RULE_SETS) this.computed.inc({ strategy, ruleset }, 0);
 
     new Gauge({
       name: 'zuninja_info',
