@@ -56,6 +56,18 @@ const EnvSchema = z.object({
   /** Temps de recherche maximal par plan (0 = illimité), ensuite la fin est cherchée en glouton. */
   PLANNER_TIME_LIMIT_SECONDS: z.coerce.number().nonnegative().default(20),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+  /** Métriques Prometheus sur /metrics (activées par défaut). */
+  METRICS: z
+    .string()
+    .optional()
+    .transform(
+      (v) => v === undefined || !['0', 'false', 'no', 'off'].includes(v.trim().toLowerCase()),
+    ),
+  /** Jeton exigé sur /metrics (`Authorization: Bearer …`), facultatif. */
+  METRICS_TOKEN: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v.trim() : undefined)),
 });
 
 export type Config = ReturnType<typeof loadConfig>;
@@ -127,5 +139,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     queueLimit: e.PLANNER_QUEUE_LIMIT,
     timeLimitMs: e.PLANNER_TIME_LIMIT_SECONDS * 1000,
     logLevel: e.LOG_LEVEL,
+    metricsEnabled: e.METRICS,
+    metricsToken: e.METRICS_TOKEN,
+    /** Joueurs distincts (empreintes), à côté de l'état. */
+    metricsFile: resolve(dirname(resolve(e.STATE_FILE)), 'metrics.json'),
   };
 }

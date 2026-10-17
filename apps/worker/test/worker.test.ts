@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createPlan, ZuNotFoundError, type PlanResult } from '@zuninja/core';
@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { fixtureCatalog, fixturePlayer, NOW } from '../../../packages/core/test/helpers';
 import { loadConfig } from '../src/config';
 import { setLogLevel } from '../src/logger';
+import { Metrics, PlayerTracker } from '../src/metrics';
 import { buildDiscordMessage, sendDiscord } from '../src/notifiers/discord';
 import { PlannerBusyError, PlannerTimeoutError } from '../src/pool';
 import { runTick } from '../src/scheduler';
@@ -311,5 +312,115 @@ describe('API HTTP', () => {
       keepExtra: 3,
       weights: { loreDust: 0.02 },
     });
+  });
+});
+
+describe('métriques', () => {
+  const day = 86_400_000;
+  const metricsFor = (file: string | null = null) =>
+    new Metrics({
+      version: 'test',
+      players: new PlayerTracker(file),
+      pool: () => ({ threads: 2, busy: 1, queued: 0 }),
+    });
+  const scrape = async (app: ReturnType<typeof createApp>, init?: RequestInit) => {
+    const res = await app.request('/metrics', init);
+    return { status: res.status, text: await res.text() };
+  };
+
+  it('compte les demandes, les joueurs distincts et les pages vues', async () => {
+    const webDir = tmp();
+    writeFileSync(join(webDir, 'index.html'), '<!doctype html><title>Ninja</title>');
+    const metrics = metricsFor();
+    const app = createApp(
+      fakeService(async (name) => {
+        if (name === 'personne') throw new ZuNotFoundError('/public/user/personne');
+        return plan;
+      }),
+      null,
+      { ruleSet: 'NORMAL', users: [], webDir, cron: '* * * * *', metrics },
+    );
+    await app.request('/api/plan/Alice');
+    await app.request('/api/plan/alice');
+    await app.request('/api/plan/bob/discord');
+    await app.request('/api/plan/personne');
+    await app.request('/');
+    await app.request('/strategie');
+
+    const { status, text } = await scrape(app);
+    expect(status).toBe(200);
+    expect(text).toContain('zuninja_plan_requests_total{source="web",outcome="ok"} 2');
+    expect(text).toContain('zuninja_plan_requests_total{source="bot",outcome="ok"} 1');
+    expect(text).toContain('zuninja_plan_requests_total{source="web",outcome="not_found"} 1');
+    // Alice et alice sont le même joueur ; un joueur introuvable ne compte pas.
+    expect(text).toContain('zuninja_players{window="1d"} 2');
+    expect(text).toContain('zuninja_page_views_total 2');
+    expect(text).toContain('zuninja_planner_threads{state="busy"} 1');
+    expect(text).toContain('zuninja_info{version="test"} 1');
+    expect(text).toContain('zuninja_process_cpu_seconds_total');
+  });
+
+  it('protège /metrics par un jeton, et ne l’expose pas sans métriques', async () => {
+    const base = {
+      ruleSet: 'NORMAL' as const,
+      users: [],
+      webDir: join(tmp(), 'absent'),
+      cron: '* * * * *',
+    };
+    const service = fakeService(async () => plan);
+    const app = createApp(service, null, {
+      ...base,
+      metrics: metricsFor(),
+      metricsToken: 's3cret',
+    });
+    expect((await scrape(app)).status).toBe(401);
+    expect((await scrape(app, { headers: { authorization: 'Bearer s3cret' } })).status).toBe(200);
+
+    const without = createApp(service, null, base);
+    expect((await scrape(without)).status).toBe(404);
+  });
+
+  it('compte les passages planifiés sans retenir les joueurs suivis', async () => {
+    const metrics = metricsFor();
+    await runTick(
+      fakeService(async () => plan),
+      new StateStore(join(tmp(), 's.json')),
+      [],
+      {
+        users: ['alice'],
+        ruleSet: 'NORMAL',
+        dryRun: true,
+        metrics,
+      },
+    );
+    const text = await metrics.registry.metrics();
+    expect(text).toContain('zuninja_plan_requests_total{source="cron",outcome="ok"} 1');
+    expect(text).toContain('zuninja_players{window="1d"} 0');
+  });
+
+  it('garde les joueurs vus entre deux redémarrages, sous forme d’empreintes', () => {
+    const file = join(tmp(), 'metrics.json');
+    const now = Date.now();
+    const tracker = new PlayerTracker(file);
+    tracker.see('Alice', now - 3 * day);
+    tracker.see('bob', now);
+    tracker.see('carol', now - 40 * day);
+    tracker.save(now);
+
+    expect(readFileSync(file, 'utf8')).not.toMatch(/alice|bob|carol/i);
+    const reloaded = new PlayerTracker(file);
+    expect(reloaded.count(day, now)).toBe(1);
+    expect(reloaded.count(7 * day, now)).toBe(2);
+    // Au-delà de 30 jours, l'empreinte est oubliée.
+    expect(reloaded.count(365 * day, now)).toBe(2);
+  });
+
+  it('lit la configuration des métriques', () => {
+    expect(loadConfig({})).toMatchObject({ metricsEnabled: true, metricsToken: undefined });
+    expect(loadConfig({ METRICS: 'false', METRICS_TOKEN: ' t ' })).toMatchObject({
+      metricsEnabled: false,
+      metricsToken: 't',
+    });
+    expect(loadConfig({ STATE_FILE: '/data/state.json' }).metricsFile).toBe('/data/metrics.json');
   });
 });

@@ -17,6 +17,7 @@ import {
 import { Hono, type Context } from 'hono';
 import { buildDiscordMessage } from './notifiers/discord';
 import { logger } from './logger';
+import type { Metrics, PlanOutcome, PlanSource } from './metrics';
 import { PlanAbortedError, PlannerBusyError, PlannerTimeoutError } from './pool';
 import { VERSION, type PlanService } from './service';
 import type { StateStore } from './store';
@@ -29,6 +30,10 @@ export interface ServerOptions {
   webDir: string;
   webUrl?: string | undefined;
   cron: string;
+  /** Métriques Prometheus exposées sur /metrics, `null` pour les désactiver. */
+  metrics?: Metrics | null;
+  /** Jeton exigé sur /metrics (`Authorization: Bearer …`). */
+  metricsToken?: string | undefined;
 }
 
 const clamp = (value: string | undefined, min: number, max: number): number | undefined => {
@@ -95,66 +100,98 @@ export function createApp(service: PlanService, store: StateStore | null, option
   /** Stratégies disponibles, pour qu'un bot propose les mêmes choix que l'interface. */
   app.get('/api/strategies', (c) => c.json(strategyList()));
 
-  /** Calcule le plan demandé, ou renvoie la réponse d'erreur adaptée. */
-  async function planFor(c: Context): Promise<PlanResult | Response> {
+  const metrics = options.metrics ?? null;
+
+  /** Calcule le plan demandé, ou renvoie la réponse d'erreur adaptée, et le compte. */
+  async function planFor(c: Context, source: PlanSource): Promise<PlanResult | Response> {
     const user = (c.req.param('user') ?? '').trim();
-    if (!user || user.length > 64) return c.json({ error: 'Pseudo invalide.' }, 400);
+    const { result, outcome } = await planOutcome(c, user);
+    metrics?.request(source, outcome, user);
+    return result;
+  }
+
+  async function planOutcome(
+    c: Context,
+    user: string,
+  ): Promise<{ result: PlanResult | Response; outcome: PlanOutcome }> {
+    const fail = (outcome: PlanOutcome, result: Response) => ({ result, outcome });
+    if (!user || user.length > 64)
+      return fail('invalid', c.json({ error: 'Pseudo invalide.' }, 400));
     const ruleSetParam = (c.req.query('ruleset') ?? options.ruleSet).toUpperCase();
     const ruleSet: RuleSet = ruleSetParam === 'HARDCORE' ? 'HARDCORE' : 'NORMAL';
     const strategy = c.req.query('strategy');
     if (strategy && !isStrategy(strategy)) {
-      return c.json(
-        {
-          error: `Stratégie « ${strategy} » inconnue. Valeurs possibles : ${STRATEGY_IDS.join(', ')}.`,
-        },
-        400,
+      return fail(
+        'invalid',
+        c.json(
+          {
+            error: `Stratégie « ${strategy} » inconnue. Valeurs possibles : ${STRATEGY_IDS.join(', ')}.`,
+          },
+          400,
+        ),
       );
     }
     try {
-      return await service.plan(user, ruleSet, parsePlannerQuery(c.req.query()), {
+      const plan = await service.plan(user, ruleSet, parsePlannerQuery(c.req.query()), {
         fresh: c.req.query('fresh') === '1',
         // Client parti (onglet fermé, nouvelle recherche…) : le calcul est abandonné.
         signal: c.req.raw.signal,
       });
+      return { result: plan, outcome: 'ok' };
     } catch (error) {
       if (error instanceof PlanAbortedError) {
-        return c.json({ error: 'Requête annulée.' }, 503);
+        return fail('aborted', c.json({ error: 'Requête annulée.' }, 503));
       }
       if (error instanceof PlannerBusyError) {
         c.header('Retry-After', '10');
-        return c.json({ error: 'Trop de calculs en cours, réessaie dans quelques secondes.' }, 503);
+        return fail(
+          'busy',
+          c.json({ error: 'Trop de calculs en cours, réessaie dans quelques secondes.' }, 503),
+        );
       }
       if (error instanceof PlannerTimeoutError) {
         logger.warn(`Calcul trop long pour ${user}`, error.message);
-        return c.json(
-          {
-            error:
-              'Le calcul a pris trop de temps : réduis la largeur du faisceau ou la ramification.',
-          },
-          503,
+        return fail(
+          'timeout',
+          c.json(
+            {
+              error:
+                'Le calcul a pris trop de temps : réduis la largeur du faisceau ou la ramification.',
+            },
+            503,
+          ),
         );
       }
       if (error instanceof ZuNotFoundError) {
-        return c.json({ error: `Joueur « ${user} » introuvable sur ZUnivers (${ruleSet}).` }, 404);
+        return fail(
+          'not_found',
+          c.json({ error: `Joueur « ${user} » introuvable sur ZUnivers (${ruleSet}).` }, 404),
+        );
       }
       if (error instanceof ZuSchemaError) {
         logger.error('Format de l’API ZUnivers inattendu', error.message);
-        return c.json(
-          {
-            error: "L'API ZUnivers a changé de format, ZUnivers Ninja doit être mis à jour.",
-            detail: error.issues,
-          },
-          502,
+        return fail(
+          'zu_api_error',
+          c.json(
+            {
+              error: "L'API ZUnivers a changé de format, ZUnivers Ninja doit être mis à jour.",
+              detail: error.issues,
+            },
+            502,
+          ),
         );
       }
       if (error instanceof ZuApiError) {
-        return c.json(
-          { error: "L'API ZUnivers ne répond pas pour le moment, réessaie dans un instant." },
-          502,
+        return fail(
+          'zu_api_error',
+          c.json(
+            { error: "L'API ZUnivers ne répond pas pour le moment, réessaie dans un instant." },
+            502,
+          ),
         );
       }
       logger.error(`Erreur inattendue pour ${user}`, error);
-      return c.json({ error: 'Erreur interne.' }, 500);
+      return fail('error', c.json({ error: 'Erreur interne.' }, 500));
     }
   }
 
@@ -177,7 +214,7 @@ export function createApp(service: PlanService, store: StateStore | null, option
   }
 
   app.get('/api/plan/:user', async (c) => {
-    const plan = await planFor(c);
+    const plan = await planFor(c, 'web');
     if (plan instanceof Response) return plan;
     return notModified(c, plan) ?? c.json(plan);
   });
@@ -187,7 +224,7 @@ export function createApp(service: PlanService, store: StateStore | null, option
    * pièce jointe quand il est trop long. `?mention=1` mentionne le joueur.
    */
   app.get('/api/plan/:user/discord', async (c) => {
-    const plan = await planFor(c);
+    const plan = await planFor(c, 'bot');
     if (plan instanceof Response) return plan;
     const cached = notModified(c, plan);
     if (cached) return cached;
@@ -216,6 +253,23 @@ export function createApp(service: PlanService, store: StateStore | null, option
   });
 
   app.all('/api/*', (c) => c.json({ error: 'Route inconnue.' }, 404));
+
+  if (metrics) {
+    /** Métriques Prometheus (usage, erreurs, calculs, threads). */
+    app.get('/metrics', async (c) => {
+      const token = options.metricsToken;
+      if (token && c.req.header('authorization') !== `Bearer ${token}`)
+        return c.text('Unauthorized', 401);
+      c.header('Content-Type', metrics.registry.contentType);
+      return c.body(await metrics.registry.metrics());
+    });
+    // Pages de l'interface servies (pas les fichiers statiques ni l'API).
+    app.use('*', async (c, next) => {
+      await next();
+      if (c.req.method === 'GET' && c.res.headers.get('content-type')?.startsWith('text/html'))
+        metrics.pageView();
+    });
+  }
 
   // Interface web (fichiers statiques + repli SPA).
   const indexFile = join(options.webDir, 'index.html');

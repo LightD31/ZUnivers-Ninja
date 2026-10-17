@@ -79,6 +79,15 @@ export class PlannerPool {
     }));
   }
 
+  /** Occupation des threads, pour les métriques. */
+  get stats(): { threads: number; busy: number; queued: number } {
+    return {
+      threads: this.slots.length,
+      busy: this.slots.filter((s) => s.job).length,
+      queued: this.queue.length,
+    };
+  }
+
   /** Vrai si un nouveau calcul serait refusé. */
   get saturated(): boolean {
     return this.slots.every((s) => s.job) && this.queue.length >= this.options.queueLimit;
