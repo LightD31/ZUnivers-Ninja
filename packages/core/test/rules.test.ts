@@ -339,3 +339,34 @@ describe('immutabilité', () => {
     expect(JSON.stringify(player)).toBe(snapshot);
   });
 });
+
+describe('ascension', () => {
+  const season: Season = {
+    id: 's',
+    index: 1,
+    begin: '2026-10-05',
+    end: '2026-10-19',
+    towerName: 'Ascension du Manoir Nougaret',
+    group: 'Classique',
+    packId: 'pack-classic',
+    floors: Array.from({ length: 6 }, () => ({ rate: 0.5, drops: [] })),
+  };
+  const ctx = (floorsClimbed: number) =>
+    makeContext(
+      makeCatalog([], { season }),
+      makePlayer({
+        balances: { balance: 0, loreDust: 1000, loreFragment: 0, upgradeDust: 0 },
+        tower: { floorsClimbed, logCount: 7 },
+      }),
+    );
+
+  it("tente l'étage suivant le dernier atteint", () => {
+    const c = ctx(5);
+    expect(applyAction(c, initialState(c), { kind: 'ascension' })?.note).toMatch(/^étage 6,/);
+  });
+
+  it("ne propose plus d'ascension une fois le sommet atteint", () => {
+    const c = ctx(6);
+    expect(applyAction(c, initialState(c), { kind: 'ascension' })).toBeNull();
+  });
+});

@@ -5,9 +5,11 @@ import {
   normalizeFusion,
   normalizeInventory,
   normalizeLoot,
+  normalizePlayer,
+  UserTowerSchema,
   type ApiInventoryEntry,
 } from '../src';
-import { fixtureCatalog, fixturePlayer, rawCatalog } from './helpers';
+import { fixtureCatalog, fixturePlayer, rawCatalog, rawPlayer } from './helpers';
 
 const item = { ...rawCatalog().items[0]!, rarity: 3 };
 const entry = (quantity: number, shinyLevel: number, upgradeLevel: number): ApiInventoryEntry =>
@@ -112,5 +114,32 @@ describe('joueur', () => {
     const catalog = fixtureCatalog();
     expect(catalog.season?.group).toBe('Classique');
     expect(catalog.config[4]?.[1]).toEqual({ recycle: 2000, craft: 4000 });
+  });
+});
+
+describe('Vortex', () => {
+  const tower = (stat: Record<string, unknown>) =>
+    normalizePlayer({
+      ...rawPlayer(),
+      tower: UserTowerSchema.parse({
+        towerStats: [
+          {
+            towerLogCount: 7,
+            isCurrentTowerSeason: true,
+            towerSeasonBeginDate: '2026-10-05',
+            towerSeasonEndDate: '2026-10-19',
+            ...stat,
+          },
+        ],
+      }),
+    }).tower;
+
+  it('compte les étages gravis : maxFloorIndex est le dernier étage atteint', () => {
+    // Comme le site ZUnivers : maxFloorIndex 0 = étage 1 atteint, 5 = sommet.
+    expect(tower({ maxFloorIndex: 0 })).toEqual({ floorsClimbed: 1, logCount: 7 });
+    expect(tower({ maxFloorIndex: 5 })).toEqual({ floorsClimbed: 6, logCount: 7 });
+    // Pas encore entré (« Dehors »).
+    expect(tower({ maxFloorIndex: null })).toEqual({ floorsClimbed: 0, logCount: 7 });
+    expect(tower({})).toEqual({ floorsClimbed: 0, logCount: 7 });
   });
 });

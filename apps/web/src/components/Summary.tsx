@@ -200,10 +200,16 @@ export function Summary({ plan }: { plan: PlanResult }) {
         <Section title="Vortex" icon={<Mountain className="size-3.5" />}>
           <p className="font-medium">{plan.season.name}</p>
           <p className="mt-1 text-sm text-white/60">
-            Étage {plan.season.floor} · {plan.season.ascensionsLeft} essai
-            {plan.season.ascensionsLeft > 1 ? 's' : ''} restant
-            {plan.season.ascensionsLeft > 1 ? 's' : ''} après le plan · jusqu'au{' '}
-            {formatDate(plan.season.end)}
+            {plan.season.summit ? (
+              'Sommet atteint'
+            ) : (
+              <>
+                Étage {plan.season.floor} · {plan.season.ascensionsLeft} essai
+                {plan.season.ascensionsLeft > 1 ? 's' : ''} restant
+                {plan.season.ascensionsLeft > 1 ? 's' : ''} après le plan
+              </>
+            )}{' '}
+            · jusqu'au {formatDate(plan.season.end)}
           </p>
           <p className="mt-2 text-xs text-white/60">
             Forge ouverte aux cartes du groupe « {plan.season.group} ».
