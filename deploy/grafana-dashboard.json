@@ -27,7 +27,7 @@
   "tags": ["zunivers-ninja"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "time": {
     "from": "now-7d",
     "to": "now"
@@ -89,7 +89,7 @@
           "refId": "A",
           "expr": "max(zuninja_players{job=~\"$job\",window=\"1d\"})",
           "legendFormat": "24 h",
-          "range": true
+          "instant": true
         },
         {
           "datasource": {
@@ -99,7 +99,7 @@
           "refId": "B",
           "expr": "max(zuninja_players{job=~\"$job\",window=\"7d\"})",
           "legendFormat": "7 jours",
-          "range": true
+          "instant": true
         },
         {
           "datasource": {
@@ -109,7 +109,7 @@
           "refId": "C",
           "expr": "max(zuninja_players{job=~\"$job\",window=\"30d\"})",
           "legendFormat": "30 jours",
-          "range": true
+          "instant": true
         }
       ],
       "fieldConfig": {
@@ -128,7 +128,7 @@
           "values": false
         },
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "textMode": "value_and_name"
       },
       "description": "Pseudos distincts ayant demandé un plan depuis le web ou un bot (empreintes salées, pas les pseudos)."
@@ -156,7 +156,7 @@
           "refId": "A",
           "expr": "sum(increase(zuninja_plan_requests_total{job=~\"$job\",source=~\"web|bot\"}[$__range])) or vector(0)",
           "legendFormat": "web + bot",
-          "range": true
+          "instant": true
         }
       ],
       "fieldConfig": {
@@ -164,7 +164,8 @@
           "color": {
             "mode": "fixed",
             "fixedColor": "green"
-          }
+          },
+          "decimals": 0
         },
         "overrides": []
       },
@@ -175,7 +176,7 @@
           "values": false
         },
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "textMode": "value_and_name"
       },
       "description": "Sur la période affichée, cache compris."
@@ -203,7 +204,7 @@
           "refId": "A",
           "expr": "sum(increase(zuninja_page_views_total{job=~\"$job\"}[$__range]))",
           "legendFormat": "pages",
-          "range": true
+          "instant": true
         }
       ],
       "fieldConfig": {
@@ -211,7 +212,8 @@
           "color": {
             "mode": "fixed",
             "fixedColor": "green"
-          }
+          },
+          "decimals": 0
         },
         "overrides": []
       },
@@ -222,7 +224,7 @@
           "values": false
         },
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "textMode": "value_and_name"
       },
       "description": "Pages HTML de l'interface servies sur la période affichée."
@@ -250,7 +252,7 @@
           "refId": "A",
           "expr": "sum(increase(zuninja_plan_requests_total{job=~\"$job\",outcome=~\"error|zu_api_error|timeout|busy\"}[$__range])) or vector(0)",
           "legendFormat": "erreurs",
-          "range": true
+          "instant": true
         }
       ],
       "fieldConfig": {
@@ -275,7 +277,8 @@
               }
             ]
           },
-          "custom": {}
+          "custom": {},
+          "decimals": 0
         },
         "overrides": []
       },
@@ -286,7 +289,7 @@
           "values": false
         },
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "textMode": "value_and_name"
       },
       "description": "Demandes en échec (erreur, API ZUnivers, délai dépassé, serveur saturé) sur la période affichée."
@@ -602,11 +605,13 @@
           "refId": "A",
           "expr": "sum by (strategy) (increase(zuninja_plans_computed_total{job=~\"$job\"}[$__range])) > 0",
           "legendFormat": "{{strategy}}",
-          "range": true
+          "instant": true
         }
       ],
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "decimals": 0
+        },
         "overrides": []
       },
       "options": {
@@ -647,11 +652,13 @@
           "refId": "A",
           "expr": "sum by (ruleset) (increase(zuninja_plans_computed_total{job=~\"$job\"}[$__range])) > 0",
           "legendFormat": "{{ruleset}}",
-          "range": true
+          "instant": true
         }
       ],
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "decimals": 0
+        },
         "overrides": []
       },
       "options": {
