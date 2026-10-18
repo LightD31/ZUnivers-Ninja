@@ -196,7 +196,7 @@ function card(ctx: Context, itemId: string, shiny: Shiny, count = 1): PlanCard {
   };
 }
 
-/** Exemplaires d'une carte dans une commande (`1001*2`, `1002+ + 1002+`). */
+/** Exemplaires d'une carte dans une commande (`1001*2`, `1002+*3`). */
 function cardRef(c: PlanCard, kind?: ActionKind): string {
   return cardsToken(c.identifier, c.shiny, c.count, kind);
 }

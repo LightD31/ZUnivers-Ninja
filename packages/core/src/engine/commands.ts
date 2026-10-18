@@ -60,9 +60,8 @@ export function cardToken(identifier: number, shiny: Shiny, kind?: ActionKind): 
 }
 
 /**
- * Plusieurs exemplaires d'une carte dans une commande. Une carte sans suffixe s'écrit avec sa
- * quantité (`1001*5`) ; une dorée ou une chroma est répétée (`1001+ + 1001+`), son suffixe se
- * lirait mal à côté de `*`.
+ * Plusieurs exemplaires d'une carte dans une commande : la carte suivie de `*` et de la quantité
+ * (`1001*5`, `1001+*5`, `1001**5`). Vérifié en jeu, y compris pour les dorées et les chromas.
  */
 export function cardsToken(
   identifier: number,
@@ -71,8 +70,5 @@ export function cardsToken(
   kind?: ActionKind,
 ): string {
   const ref = cardToken(identifier, shiny, kind);
-  const n = Math.max(1, count);
-  if (n === 1) return ref;
-  if (ref === String(identifier)) return `${ref}*${n}`;
-  return Array.from({ length: n }, () => ref).join(CARD_SEPARATOR);
+  return count > 1 ? `${ref}*${count}` : ref;
 }

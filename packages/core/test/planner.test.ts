@@ -167,20 +167,13 @@ describe('cas synthétiques', () => {
   });
 
   it('découpe un gros recyclage en commandes que le jeu accepte', () => {
-    // Le bot du jeu n'exécutait pas une commande de 3 962 caractères (562 cartes). Les dorées
-    // sont répétées (`1001+ + 1001+`), sans quantité.
+    // Le bot du jeu n'exécutait pas une commande de 3 962 caractères (562 cartes).
     const plain = { upgradable: false, goldable: false } as const;
-    const a = makeItem(1001, plain);
-    const b = makeItem(1002, plain);
+    const items = Array.from({ length: 500 }, (_, i) => makeItem(1001 + i, plain));
     const plan = createPlan({
-      catalog: makeCatalog([a, b]),
+      catalog: makeCatalog(items),
       player: makePlayer({
-        inventory: Object.fromEntries([
-          owned(a.id, 0, 1),
-          owned(b.id, 0, 1),
-          owned(a.id, 1, 501),
-          owned(b.id, 1, 201),
-        ]),
+        inventory: Object.fromEntries(items.map((item) => owned(item.id, 0, 2))),
       }),
       now: TEST_NOW,
     });
@@ -188,10 +181,23 @@ describe('cas synthétiques', () => {
     const cards = recycles.map((c) => c.slice('/recyclage carte:'.length).split(' + '));
     expect(recycles).toHaveLength(2);
     for (const c of recycles) expect(c.length).toBeLessThanOrEqual(COMMAND_MAX_LENGTH);
-    // La première commande est pleine : une carte de plus (« + 1001+ ») la rendrait trop longue.
-    expect(recycles[0]!.length + ' + 1001+'.length).toBeGreaterThan(COMMAND_MAX_LENGTH);
-    expect(cards.flat()).toHaveLength(700);
-    expect(new Set(cards[1])).toEqual(new Set(['1001+', '1002+']));
+    // La première commande est pleine : une carte de plus (« + 1500 ») la rendrait trop longue.
+    expect(recycles[0]!.length + ' + 1500'.length).toBeGreaterThan(COMMAND_MAX_LENGTH);
+    expect(cards.flat()).toHaveLength(500);
+    expect(plan.after.balances.loreDust).toBe(500 * 5);
+  });
+
+  it('écrit la quantité des dorées et des chromas', () => {
+    const plain = { upgradable: false, goldable: false } as const;
+    const a = makeItem(1001, plain);
+    const plan = createPlan({
+      catalog: makeCatalog([a]),
+      player: makePlayer({
+        inventory: Object.fromEntries([owned(a.id, 0, 1), owned(a.id, 1, 4), owned(a.id, 2, 6)]),
+      }),
+      now: TEST_NOW,
+    });
+    expect(plan.commands).toEqual(['/recyclage carte:1001+*3 + 1001**5']);
   });
 
   it('coupe une longue suite de créations en commandes que le jeu accepte', () => {
