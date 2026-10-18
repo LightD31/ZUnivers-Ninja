@@ -219,7 +219,7 @@ describe('API HTTP', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.strategy).toBe('prudent');
-      expect(body.strategies).toHaveLength(6);
+      expect(body.strategies).toHaveLength(5);
       expect(body.strategies[0]).toEqual({
         id: 'equilibre',
         label: 'Équilibré',

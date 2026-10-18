@@ -33,8 +33,9 @@ La v2 est une réécriture complète : TypeScript, aucune base de données, une 
   - l'évolution des monnaies et de la collection, les défis, les succès et l'état du Vortex ;
   - les fusions à compléter et les cartes manquantes les plus rentables ;
   - le choix de la stratégie sous la recherche, et des réglages avancés du planificateur.
-- **Stratégies** selon ta façon de jouer : Équilibré, Prudent, Épargne, Vortex, Collectionneur ou
-  Échangeur (voir [Stratégies](#stratégies)).
+- **Stratégies** selon ta façon de jouer : Équilibré, Prudent, Épargne, Vortex ou Collectionneur
+  (voir [Stratégies](#stratégies)). Sous la recherche, choisis aussi le nombre de doublons gardés
+  pour l'échange et si les cartes à enchanter pour les constellations dorées sont gardées.
 - **Notifications Discord** : le plan n'est envoyé que s'il a changé depuis le dernier envoi. Un
   webhook JSON générique est aussi disponible pour tes propres intégrations.
 - **Robustesse** :
@@ -89,7 +90,7 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
 
 - `GET /api/plan/:pseudo` renvoie le plan complet en JSON. Paramètres facultatifs :
   - `ruleset` ;
-  - `strategy` (`equilibre`, `prudent`, `epargne`, `vortex`, `collectionneur` ou `echangeur`) ;
+  - `strategy` (`equilibre`, `prudent`, `epargne`, `vortex` ou `collectionneur`) ;
   - `beamWidth`, `branching` et `keepExtra` ;
   - `keepForGolden` (`1` ou `0`) ;
   - `wBalance`, `wLoreDust`, `wLoreFragment` et `wUpgradeDust` ;
@@ -205,7 +206,6 @@ joueur dans `ZU_USERS`.
 | Épargne        | `epargne`        | Garde des monnaies pour un évènement ou un pack | Poudres × 15, ZUMonnaie × 50 : seules les grosses dépenses passent                    |
 | Vortex         | `vortex`         | Veut monter dans la tour d'Ascension            | Réputation × 50, poudre × 5 : la poudre va aux `/as` avant les petites créations      |
 | Collectionneur | `collectionneur` | Veut le plus de cartes différentes possible     | +1 000 points par carte de la collection : aucune carte perdue, les nouvelles d'abord |
-| Échangeur      | `echangeur`      | Échange avec d'autres joueurs                   | Garde 2 doublons de chaque carte                                                      |
 
 Les réglages explicites l'emportent toujours sur la stratégie : avec
 `?strategy=epargne&wBalance=0.002`, la ZUMonnaie garde sa valeur par défaut. Côté serveur,
