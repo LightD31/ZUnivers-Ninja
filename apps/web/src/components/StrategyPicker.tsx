@@ -69,7 +69,7 @@ export function StrategyPicker({ settings, onChange }: Props) {
         {current.description}
         {isCustomized(settings) && ' · réglages modifiés'}
       </p>
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+      <div className="flex flex-wrap items-start gap-x-5 gap-y-2 text-sm">
         <div
           className="flex items-center gap-1.5"
           title="Exemplaires conservés en plus, jamais recyclés ni consommés."
@@ -98,16 +98,21 @@ export function StrategyPicker({ settings, onChange }: Props) {
           </button>
         </div>
         <label
-          className="flex cursor-pointer items-center gap-2"
-          title="Ne recycle pas les exemplaires normaux à enchanter pour monter la constellation dorée, même si elle n'est pas rentable aujourd'hui. Décoché, seul celui de la première dorée est gardé : plus de poudre tout de suite, mais des cartes à recréer plus tard."
+          className="flex cursor-pointer items-start gap-2"
+          title="Décoché, seule la normale de la première dorée est gardée : plus de poudre tout de suite, mais des cartes à recréer plus tard pour les enchanter."
         >
           <input
             type="checkbox"
             checked={settings.keepForGolden}
             onChange={(e) => onChange({ ...settings, keepForGolden: e.target.checked })}
-            className="size-4 accent-zu-500"
+            className="mt-0.5 size-4 shrink-0 accent-zu-500"
           />
-          <span className="text-white/70">Garder pour les constellations dorées</span>
+          <span>
+            <span className="block text-white/70">Garder les normales à enchanter</span>
+            <span className="block text-xs text-white/50">
+              pour monter les constellations dorées au lieu de les recycler
+            </span>
+          </span>
         </label>
       </div>
     </div>
