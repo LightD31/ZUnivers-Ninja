@@ -79,6 +79,7 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
 | `PLANNER_QUEUE_LIMIT`        | `4`            | Calculs en attente au-delà desquels l'API répond `503`.                                                                                                                            |
 | `PLANNER_TIME_LIMIT_SECONDS` | `20`           | Temps de recherche maximal par plan, ensuite la fin du plan est calculée en glouton (`0` = illimité).                                                                              |
 | `KEEP_EXTRA`                 | `0`            | Exemplaires gardés en plus pour les échanges.                                                                                                                                      |
+| `KEEP_FOR_GOLDEN`            | `true`         | Garde les exemplaires normaux à enchanter pour la constellation dorée, même si elle n'est pas rentable aujourd'hui. `false` : seul celui de la première dorée est gardé.           |
 | `DRY_RUN`                    | `false`        | Calcule sans rien envoyer.                                                                                                                                                         |
 | `PORT`                       | `8080`         | Port HTTP.                                                                                                                                                                         |
 | `METRICS`                    | `true`         | Expose les métriques Prometheus sur `/metrics` (voir [Statistiques d'usage](#statistiques-dusage-prometheus--grafana)).                                                            |
@@ -90,6 +91,7 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
   - `ruleset` ;
   - `strategy` (`equilibre`, `prudent`, `epargne`, `vortex`, `collectionneur` ou `echangeur`) ;
   - `beamWidth`, `branching` et `keepExtra` ;
+  - `keepForGolden` (`1` ou `0`) ;
   - `wBalance`, `wLoreDust`, `wLoreFragment` et `wUpgradeDust` ;
   - `fresh=1` pour ignorer le cache.
 - `GET /api/strategies` liste les stratégies disponibles (`strategies` : `id`, `label`,
@@ -207,7 +209,8 @@ joueur dans `ZU_USERS`.
 
 Les réglages explicites l'emportent toujours sur la stratégie : avec
 `?strategy=epargne&wBalance=0.002`, la ZUMonnaie garde sa valeur par défaut. Côté serveur,
-`KEEP_EXTRA`, `BEAM_WIDTH` et `BRANCHING` s'appliquent aussi par-dessus la stratégie.
+`KEEP_EXTRA`, `KEEP_FOR_GOLDEN`, `BEAM_WIDTH` et `BRANCHING` s'appliquent aussi par-dessus la
+stratégie.
 
 ## Comment fonctionne le planificateur
 

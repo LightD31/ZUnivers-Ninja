@@ -161,6 +161,11 @@ describe('réserve', () => {
       enchant: 2,
       constellation: 0,
     });
+    // Option désactivée : la dorée est déjà là, plus rien n'est gardé pour l'enchantement.
+    const without = makeContext(makeCatalog([r2]), ctx.player, {
+      keepForGolden: false,
+    });
+    expect(reserveFor(without, initialState(without), r2.id, 0).enchant).toBe(0);
   });
 });
 

@@ -52,6 +52,8 @@ export function parsePlannerQuery(query: Record<string, string | undefined>): Pl
   if (beamWidth !== undefined) options.beamWidth = beamWidth;
   if (branching !== undefined) options.branching = branching;
   if (keepExtra !== undefined) options.keepExtra = keepExtra;
+  if (query.keepForGolden === '0' || query.keepForGolden === '1')
+    options.keepForGolden = query.keepForGolden === '1';
   const weights: NonNullable<PlannerOptionsInput['weights']> = {};
   const w = (key: string) => clamp(query[key], 0, 10);
   const balance = w('wBalance');

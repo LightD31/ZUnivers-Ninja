@@ -9,6 +9,15 @@ const bool = z
   .optional()
   .transform((v) => v !== undefined && ['1', 'true', 'yes', 'on'].includes(v.trim().toLowerCase()));
 const optionalNumber = z.coerce.number().finite().optional();
+/** Booléen facultatif : absent, la valeur de la stratégie s'applique. */
+const optionalBool = z
+  .string()
+  .optional()
+  .transform((v) =>
+    v === undefined || v.trim() === ''
+      ? undefined
+      : ['1', 'true', 'yes', 'on'].includes(v.trim().toLowerCase()),
+  );
 const optionalUrl = z
   .string()
   .optional()
@@ -49,6 +58,7 @@ const EnvSchema = z.object({
   BEAM_WIDTH: optionalNumber,
   BRANCHING: optionalNumber,
   KEEP_EXTRA: optionalNumber,
+  KEEP_FOR_GOLDEN: optionalBool,
   /** Threads dédiés au planificateur (calculs simultanés). */
   PLANNER_THREADS: z.coerce.number().int().positive().default(2),
   /** Calculs en attente au-delà desquels l'API répond 503. */
@@ -134,6 +144,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       ...(e.BEAM_WIDTH !== undefined ? { beamWidth: e.BEAM_WIDTH } : {}),
       ...(e.BRANCHING !== undefined ? { branching: e.BRANCHING } : {}),
       ...(e.KEEP_EXTRA !== undefined ? { keepExtra: e.KEEP_EXTRA } : {}),
+      ...(e.KEEP_FOR_GOLDEN !== undefined ? { keepForGolden: e.KEEP_FOR_GOLDEN } : {}),
     },
     threads: e.PLANNER_THREADS,
     queueLimit: e.PLANNER_QUEUE_LIMIT,

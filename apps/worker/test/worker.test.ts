@@ -306,12 +306,20 @@ describe('API HTTP', () => {
 
   it('borne les paramètres du planificateur', () => {
     expect(
-      parsePlannerQuery({ beamWidth: '0', branching: 'abc', keepExtra: '3', wLoreDust: '0.02' }),
+      parsePlannerQuery({
+        beamWidth: '0',
+        branching: 'abc',
+        keepExtra: '3',
+        keepForGolden: '0',
+        wLoreDust: '0.02',
+      }),
     ).toEqual({
       beamWidth: 1,
       keepExtra: 3,
+      keepForGolden: false,
       weights: { loreDust: 0.02 },
     });
+    expect(parsePlannerQuery({ keepForGolden: 'oui' })).toEqual({});
   });
 });
 

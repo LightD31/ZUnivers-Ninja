@@ -40,6 +40,11 @@ export interface PlannerOptions {
   newCardBonus: number;
   /** Exemplaires supplémentaires à garder pour les échanges. */
   keepExtra: number;
+  /**
+   * Garde les exemplaires normaux à enchanter pour la constellation dorée, même si elle n'est pas
+   * rentable aujourd'hui. Sinon, seul celui de la première dorée est gardé.
+   */
+  keepForGolden: boolean;
   /** Actions autorisées. */
   allow: {
     recycle: boolean;
@@ -67,6 +72,7 @@ export const DEFAULT_OPTIONS: PlannerOptions = {
   evFactor: 1,
   newCardBonus: 0,
   keepExtra: 0,
+  keepForGolden: true,
   allow: {
     recycle: true,
     craft: true,
