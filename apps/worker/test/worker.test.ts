@@ -344,8 +344,14 @@ describe('métriques', () => {
     await app.request('/api/plan/alice');
     await app.request('/api/plan/bob/discord');
     await app.request('/api/plan/personne');
-    await app.request('/');
-    await app.request('/strategie');
+    const navigate = { headers: { 'sec-fetch-mode': 'navigate' } };
+    await app.request('/', navigate);
+    await app.request('/strategie', navigate);
+    // Ni une sonde, ni un aperçu de lien, ni un préchargement ne sont des pages vues.
+    await app.request('/', { headers: { 'user-agent': 'Uptime-Kuma/2.0.0' } });
+    await app.request('/', {
+      headers: { 'sec-fetch-mode': 'navigate', 'sec-purpose': 'prefetch;prerender' },
+    });
 
     const { status, text } = await scrape(app);
     expect(status).toBe(200);
