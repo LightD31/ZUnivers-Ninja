@@ -86,6 +86,20 @@ export const DEFAULT_OPTIONS: PlannerOptions = {
   },
 };
 
+/** Actions que le joueur peut refuser : le plan ne les propose jamais et se calcule sans elles. */
+export type OptionalAction = keyof PlannerOptions['allow'];
+
+export const OPTIONAL_ACTIONS = Object.keys(DEFAULT_OPTIONS.allow) as OptionalAction[];
+
+export const isOptionalAction = (value: unknown): value is OptionalAction =>
+  typeof value === 'string' && (OPTIONAL_ACTIONS as readonly string[]).includes(value);
+
+/** Actions autorisées : toutes, sauf celles de `skip`. */
+export const allowExcept = (skip: readonly OptionalAction[]): PlannerOptions['allow'] =>
+  Object.fromEntries(
+    OPTIONAL_ACTIONS.map((action) => [action, !skip.includes(action)]),
+  ) as PlannerOptions['allow'];
+
 export type PlannerOptionsInput = Partial<Omit<PlannerOptions, 'weights' | 'allow'>> & {
   weights?: Partial<Balances>;
   allow?: Partial<PlannerOptions['allow']>;

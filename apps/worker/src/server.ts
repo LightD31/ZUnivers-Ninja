@@ -5,6 +5,8 @@ import {
   DEFAULT_STRATEGY,
   STRATEGIES,
   STRATEGY_IDS,
+  allowExcept,
+  isOptionalAction,
   isStrategy,
   ZuApiError,
   ZuNotFoundError,
@@ -54,6 +56,10 @@ export function parsePlannerQuery(query: Record<string, string | undefined>): Pl
   if (keepExtra !== undefined) options.keepExtra = keepExtra;
   if (query.keepForGolden === '0' || query.keepForGolden === '1')
     options.keepForGolden = query.keepForGolden === '1';
+  // Actions refusées, séparées par des virgules. Présent (même vide), il remplace celles du
+  // serveur : `skip=` les autorise toutes.
+  if (query.skip !== undefined)
+    options.allow = allowExcept(query.skip.split(',').filter(isOptionalAction));
   const weights: NonNullable<PlannerOptionsInput['weights']> = {};
   const w = (key: string) => clamp(query[key], 0, 10);
   const balance = w('wBalance');

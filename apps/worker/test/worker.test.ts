@@ -52,6 +52,16 @@ describe('configuration', () => {
     expect(loadConfig({ PLANNER_TIME_LIMIT_SECONDS: '0' }).timeLimitMs).toBe(0);
   });
 
+  it('lit les actions refusées', () => {
+    expect(loadConfig({}).planner.allow).toBeUndefined();
+    expect(loadConfig({ SKIP_ACTIONS: 'Recycle, invoke' }).planner.allow).toMatchObject({
+      recycle: false,
+      invoke: false,
+      craft: true,
+    });
+    expect(() => loadConfig({ SKIP_ACTIONS: 'recycle,yolo' })).toThrow(/inconnue\(s\) : yolo/);
+  });
+
   it('refuse une configuration invalide', () => {
     expect(() => loadConfig({ RULESET: 'EXTREME' })).toThrow(/Configuration invalide/);
     expect(() => loadConfig({ WEBHOOK_URL: 'pas une url' })).toThrow(/Configuration invalide/);
@@ -326,6 +336,13 @@ describe('API HTTP', () => {
       weights: { loreDust: 0.02 },
     });
     expect(parsePlannerQuery({ keepForGolden: 'oui' })).toEqual({});
+    // Les actions inconnues sont ignorées, et `skip=` vide les autorise toutes.
+    expect(parsePlannerQuery({ skip: 'recycle,invoke,yolo' }).allow).toMatchObject({
+      recycle: false,
+      invoke: false,
+      craft: true,
+    });
+    expect(Object.values(parsePlannerQuery({ skip: '' }).allow ?? {})).not.toContain(false);
   });
 });
 

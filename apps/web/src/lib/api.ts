@@ -24,6 +24,7 @@ async function fetchFromServer(
     branching: String(settings.branching),
     keepExtra: String(settings.keepExtra),
     keepForGolden: settings.keepForGolden ? '1' : '0',
+    skip: settings.skip.join(','),
     wBalance: String(settings.weights.balance),
     wLoreDust: String(settings.weights.loreDust),
     wLoreFragment: String(settings.weights.loreFragment),
