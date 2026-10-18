@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createClient, ZuApiError, ZuNotFoundError, ZuSchemaError } from '../src';
+import { ApiCache, createClient, ZuApiError, ZuNotFoundError, ZuSchemaError } from '../src';
 import { rawCatalog, rawPlayer } from './helpers';
 
 function fakeFetch(responses: Record<string, { status: number; body?: unknown }>) {
@@ -67,5 +67,53 @@ describe('client API', () => {
     await expect(client.towerSeason()).resolves.toBeNull();
     await expect(client.evolution('alice')).resolves.toBeNull();
     await expect(client.user('alice')).rejects.toBeInstanceOf(ZuNotFoundError);
+  });
+});
+
+describe('cache des réponses', () => {
+  function setup() {
+    let now = 0;
+    const cache = new ApiCache<number>({
+      ttlMs: 60_000,
+      freshMinMs: 15_000,
+      maxSize: 2,
+      now: () => now,
+    });
+    let calls = 0;
+    const load = vi.fn(async () => ++calls);
+    return { cache, load, tick: (ms: number) => (now += ms) };
+  }
+
+  it('réutilise une réponse tant qu’elle est fraîche, et partage un appel en cours', async () => {
+    const { cache, load, tick } = setup();
+    const [a, b] = [cache.get('alice', load), cache.get('alice', load)];
+    expect(await a).toBe(1);
+    expect(await b).toBe(1);
+    tick(59_000);
+    expect(await cache.get('alice', load)).toBe(1);
+    tick(1_000);
+    expect(await cache.get('alice', load)).toBe(2);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('ne recharge à la demande qu’une réponse assez ancienne', async () => {
+    const { cache, load, tick } = setup();
+    await cache.get('alice', load);
+    tick(10_000);
+    expect(await cache.get('alice', load, true)).toBe(1);
+    tick(5_000);
+    expect(await cache.get('alice', load, true)).toBe(2);
+  });
+
+  it('oublie un appel échoué et les réponses les plus anciennes', async () => {
+    const { cache, load } = setup();
+    const failing = vi.fn(async () => {
+      throw new Error('panne');
+    });
+    await expect(cache.get('alice', failing)).rejects.toThrow('panne');
+    expect(await cache.get('alice', load)).toBe(1);
+    await cache.get('bob', load);
+    await cache.get('carol', load);
+    expect(await cache.get('alice', load)).toBe(4);
   });
 });

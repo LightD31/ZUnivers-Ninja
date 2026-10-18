@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import {
+  ApiCache,
   createClient,
   createPlan,
   fetchCatalog,
@@ -7,21 +8,21 @@ import {
   ZuNotFoundError,
   ZuSchemaError,
   type Catalog,
+  type Player,
   type PlannerOptionsInput,
   type RuleSet,
 } from '@zuninja/core';
 
-const CATALOG_TTL_MS = 15 * 60_000;
-const catalogs = new Map<RuleSet, { value: Promise<Catalog>; expires: number }>();
-
-function catalogFor(ruleSet: RuleSet, fresh: boolean): Promise<Catalog> {
-  const cached = catalogs.get(ruleSet);
-  if (!fresh && cached && cached.expires > Date.now()) return cached.value;
-  const value = fetchCatalog(createClient({ ruleSet }));
-  catalogs.set(ruleSet, { value, expires: Date.now() + CATALOG_TTL_MS });
-  value.catch(() => catalogs.delete(ruleSet));
-  return value;
-}
+/**
+ * Le catalogue (cartes, fusions, évènements…) change rarement : « Actualiser » ne le recharge
+ * que s'il date de plus de 5 minutes.
+ */
+const catalogs = new ApiCache<Catalog>({ ttlMs: 15 * 60_000, freshMinMs: 5 * 60_000 });
+/**
+ * Données du joueur : réutilisées quand seuls les réglages changent, rechargées par
+ * « Actualiser » sauf si elles ont moins de 15 secondes.
+ */
+const players = new ApiCache<Player>({ ttlMs: 60_000, freshMinMs: 15_000, maxSize: 20 });
 
 interface Request {
   id: number;
@@ -35,8 +36,12 @@ self.addEventListener('message', async (event: MessageEvent<Request>) => {
   const { id, user, ruleSet, options, fresh } = event.data;
   try {
     const [catalog, player] = await Promise.all([
-      catalogFor(ruleSet, fresh),
-      fetchPlayer(createClient({ ruleSet }), user),
+      catalogs.get(ruleSet, () => fetchCatalog(createClient({ ruleSet })), fresh),
+      players.get(
+        `${ruleSet}|${user.toLowerCase()}`,
+        () => fetchPlayer(createClient({ ruleSet }), user),
+        fresh,
+      ),
     ]);
     const plan = createPlan({ catalog, player, options });
     self.postMessage({ id, ok: true, plan });
