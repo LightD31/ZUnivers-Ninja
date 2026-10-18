@@ -55,6 +55,20 @@ describe('plan sur un joueur réel (fixtures)', () => {
     );
   });
 
+  it('se calcule sans les actions refusées', () => {
+    const without = createPlan({
+      catalog,
+      player,
+      now: NOW,
+      options: { allow: { recycle: false, invoke: false } },
+    });
+    const kinds = new Set(without.steps.map((s) => s.kind));
+    expect(kinds.has('recycle')).toBe(false);
+    expect(kinds.has('invoke')).toBe(false);
+    expect(plan.steps.some((s) => s.kind === 'recycle')).toBe(true);
+    for (const v of Object.values(without.after.balances)) expect(v).toBeGreaterThanOrEqual(0);
+  }, 30_000);
+
   it('reste rapide', () => {
     expect(plan.stats.durationMs).toBeLessThan(15_000);
     expect(plan.stats.timedOut).toBe(false);
@@ -159,6 +173,21 @@ describe('cas synthétiques', () => {
     expect(plan.commands).toEqual(['/recyclage carte:1001*11', '/création carte:1002']);
     expect(plan.after.balances.loreDust).toBe(5);
     expect(plan.after.unique[0]).toBe(2);
+  });
+
+  it('ne recycle rien quand le joueur refuse le recyclage', () => {
+    const a = makeItem(1001, { upgradable: false, goldable: false });
+    const b = makeItem(1002, { upgradable: false, goldable: false });
+    const input = {
+      catalog: makeCatalog([a, b]),
+      player: makePlayer({ inventory: Object.fromEntries([owned(a.id, 0, 12)]) }),
+      now: TEST_NOW,
+    };
+    // Sans la poudre du recyclage, la création de la carte manquante n'est plus possible.
+    const plan = createPlan({ ...input, options: { allow: { recycle: false } } });
+    expect(plan.commands.filter((c) => c.startsWith('/recyclage'))).toEqual([]);
+    expect(plan.commands.filter((c) => c.startsWith('/création'))).toEqual([]);
+    expect(plan.after.balances.loreDust).toBe(input.player.balances.loreDust);
   });
 
   it('écrit les exemplaires d’une carte avec leur quantité', () => {

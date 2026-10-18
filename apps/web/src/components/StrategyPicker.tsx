@@ -1,5 +1,6 @@
-import { STRATEGIES, STRATEGY_IDS } from '@zuninja/core';
+import { OPTIONAL_ACTIONS, STRATEGIES, STRATEGY_IDS, type OptionalAction } from '@zuninja/core';
 import { Minus, Plus } from 'lucide-react';
+import { KIND_ICON } from '../lib/game';
 import { isCustomized, withStrategy, type Settings } from '../lib/settings';
 
 interface Props {
@@ -9,6 +10,17 @@ interface Props {
 
 /** Doublons gardés pour l'échange au plus. */
 const KEEP_EXTRA_MAX = 5;
+
+const ACTION_LABEL: Record<OptionalAction, string> = {
+  recycle: 'Recyclage',
+  craft: 'Création',
+  enchant: 'Enchantement',
+  fusion: 'Fusion',
+  constellation: 'Constellation',
+  invoke: 'Invocation',
+  ascension: 'Ascension',
+  evolution: 'Évolution',
+};
 
 const LABEL = 'mr-1 w-20 shrink-0 text-xs tracking-[0.06em] text-white/60 uppercase';
 
@@ -20,11 +32,20 @@ const choice = (checked: boolean) =>
   }`;
 
 /**
- * Choix du mode de jeu, de la stratégie et des réglages de conservation, sous la recherche : un
- * clic recalcule le plan.
+ * Choix du mode de jeu, de la stratégie, des actions voulues et des réglages de conservation, sous
+ * la recherche : un clic recalcule le plan.
  */
 export function StrategyPicker({ settings, onChange }: Props) {
   const current = STRATEGIES[settings.strategy];
+  const toggle = (action: OptionalAction) =>
+    onChange({
+      ...settings,
+      skip: settings.skip.includes(action)
+        ? settings.skip.filter((a) => a !== action)
+        : [...settings.skip, action],
+    });
+  // Sans recyclage, rien n'est recyclé : garder les normales à enchanter ne change plus rien.
+  const recycles = !settings.skip.includes('recycle');
   return (
     <div className="space-y-2">
       <div
@@ -69,6 +90,37 @@ export function StrategyPicker({ settings, onChange }: Props) {
         {current.description}
         {isCustomized(settings) && ' · réglages modifiés'}
       </p>
+      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Actions">
+        <span className={LABEL}>Actions</span>
+        {OPTIONAL_ACTIONS.map((action) => {
+          const allowed = !settings.skip.includes(action);
+          const Icon = KIND_ICON[action];
+          return (
+            <button
+              key={action}
+              type="button"
+              aria-pressed={allowed}
+              title={
+                allowed
+                  ? 'Cliquer pour ne plus proposer cette action'
+                  : 'Cliquer pour proposer à nouveau cette action'
+              }
+              onClick={() => toggle(action)}
+              className={`${choice(allowed)} inline-flex items-center gap-1.5 ${allowed ? '' : 'line-through'}`}
+            >
+              <Icon className="size-3.5" />
+              {ACTION_LABEL[action]}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-xs text-white/60">
+        {settings.skip.length === 0
+          ? 'Décoche les actions que tu ne veux pas faire : le plan est calculé sans elles.'
+          : `Plan calculé sans ${settings.skip
+              .map((a) => ACTION_LABEL[a].toLowerCase())
+              .join(', ')}${recycles ? '' : ', avec la poudre et les cristaux que tu as déjà'}.`}
+      </p>
       <div className="flex flex-wrap items-start gap-x-5 gap-y-2 text-sm">
         <div
           className="flex items-center gap-1.5"
@@ -98,12 +150,13 @@ export function StrategyPicker({ settings, onChange }: Props) {
           </button>
         </div>
         <label
-          className="flex cursor-pointer items-start gap-2"
+          className={`flex items-start gap-2 ${recycles ? 'cursor-pointer' : 'opacity-40'}`}
           title="Décoché, seules les normales que le plan du jour enchante sont gardées : plus de poudre tout de suite, mais des cartes à recréer les jours suivants pour les enchanter."
         >
           <input
             type="checkbox"
             checked={settings.keepForGolden}
+            disabled={!recycles}
             onChange={(e) => onChange({ ...settings, keepForGolden: e.target.checked })}
             className="mt-0.5 size-4 shrink-0 accent-zu-500"
           />

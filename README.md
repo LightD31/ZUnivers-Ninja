@@ -36,7 +36,9 @@ La v2 est une réécriture complète : TypeScript, aucune base de données, une 
   - le choix de la stratégie sous la recherche, et des réglages avancés du planificateur.
 - **Stratégies** selon ta façon de jouer : Équilibré, Prudent, Épargne, Vortex ou Collectionneur
   (voir [Stratégies](#stratégies)). Sous la recherche, choisis aussi le nombre de doublons gardés
-  pour l'échange et si les cartes à enchanter pour les constellations dorées sont gardées.
+  pour l'échange, si les cartes à enchanter pour les constellations dorées sont gardées, et les
+  actions que tu ne veux pas faire (le recyclage, par exemple) : le plan est alors calculé sans
+  elles, avec les monnaies que tu as déjà.
 - **Notifications Discord** : le plan n'est envoyé que s'il a changé depuis le dernier envoi. Un
   webhook JSON générique est aussi disponible pour tes propres intégrations.
 - **Robustesse** :
@@ -82,6 +84,7 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
 | `PLANNER_TIME_LIMIT_SECONDS` | `20`           | Temps de recherche maximal par plan, ensuite la fin du plan est calculée en glouton (`0` = illimité).                                                                              |
 | `KEEP_EXTRA`                 | `0`            | Exemplaires gardés en plus pour les échanges.                                                                                                                                      |
 | `KEEP_FOR_GOLDEN`            | `true`         | Garde les exemplaires normaux à enchanter pour la constellation dorée, même si elle n'est pas rentable aujourd'hui. `false` : seuls ceux que le plan du jour enchante sont gardés. |
+| `SKIP_ACTIONS`               | —              | Actions que le plan ne propose jamais, séparées par des virgules (ex : `recycle,invoke` ; liste dans [API](#api)).                                                                 |
 | `DRY_RUN`                    | `false`        | Calcule sans rien envoyer.                                                                                                                                                         |
 | `PORT`                       | `8080`         | Port HTTP.                                                                                                                                                                         |
 | `METRICS`                    | `true`         | Expose les métriques Prometheus sur `/metrics` (voir [Statistiques d'usage](#statistiques-dusage-prometheus--grafana)).                                                            |
@@ -94,6 +97,9 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
   - `strategy` (`equilibre`, `prudent`, `epargne`, `vortex` ou `collectionneur`) ;
   - `beamWidth`, `branching` et `keepExtra` ;
   - `keepForGolden` (`1` ou `0`) ;
+  - `skip`, les actions refusées séparées par des virgules (`recycle`, `craft`, `enchant`,
+    `fusion`, `constellation`, `invoke`, `ascension`, `evolution`). Présent même vide, il remplace
+    `SKIP_ACTIONS` : `skip=` les autorise toutes ;
   - `wBalance`, `wLoreDust`, `wLoreFragment` et `wUpgradeDust` ;
   - `fresh=1` pour ignorer le cache.
 - `GET /api/strategies` liste les stratégies disponibles (`strategies` : `id`, `label`,
@@ -210,8 +216,8 @@ joueur dans `ZU_USERS`.
 
 Les réglages explicites l'emportent toujours sur la stratégie : avec
 `?strategy=epargne&wBalance=0.002`, la ZUMonnaie garde sa valeur par défaut. Côté serveur,
-`KEEP_EXTRA`, `KEEP_FOR_GOLDEN`, `BEAM_WIDTH` et `BRANCHING` s'appliquent aussi par-dessus la
-stratégie.
+`KEEP_EXTRA`, `KEEP_FOR_GOLDEN`, `SKIP_ACTIONS`, `BEAM_WIDTH` et `BRANCHING` s'appliquent aussi
+par-dessus la stratégie.
 
 ## Comment fonctionne le planificateur
 

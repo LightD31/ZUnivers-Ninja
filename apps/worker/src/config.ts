@@ -1,7 +1,16 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_API_BASE_URL, STRATEGY_IDS, isStrategy, type StrategyId } from '@zuninja/core';
+import {
+  DEFAULT_API_BASE_URL,
+  OPTIONAL_ACTIONS,
+  STRATEGY_IDS,
+  allowExcept,
+  isOptionalAction,
+  isStrategy,
+  type OptionalAction,
+  type StrategyId,
+} from '@zuninja/core';
 import { z } from 'zod';
 
 const bool = z
@@ -59,6 +68,23 @@ const EnvSchema = z.object({
   BRANCHING: optionalNumber,
   KEEP_EXTRA: optionalNumber,
   KEEP_FOR_GOLDEN: optionalBool,
+  /** Actions que le plan ne propose jamais, séparées par des virgules. */
+  SKIP_ACTIONS: z
+    .string()
+    .optional()
+    .transform((v, ctx) => {
+      const list = (v ?? '')
+        .split(/[,\s]+/)
+        .map((a) => a.trim().toLowerCase())
+        .filter(Boolean);
+      const unknown = list.filter((a) => !isOptionalAction(a));
+      if (unknown.length > 0)
+        ctx.addIssue({
+          code: 'custom',
+          message: `action(s) inconnue(s) : ${unknown.join(', ')} (${OPTIONAL_ACTIONS.join(', ')})`,
+        });
+      return list as OptionalAction[];
+    }),
   /** Threads dédiés au planificateur (calculs simultanés). */
   PLANNER_THREADS: z.coerce.number().int().positive().default(2),
   /** Calculs en attente au-delà desquels l'API répond 503. */
@@ -145,6 +171,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       ...(e.BRANCHING !== undefined ? { branching: e.BRANCHING } : {}),
       ...(e.KEEP_EXTRA !== undefined ? { keepExtra: e.KEEP_EXTRA } : {}),
       ...(e.KEEP_FOR_GOLDEN !== undefined ? { keepForGolden: e.KEEP_FOR_GOLDEN } : {}),
+      ...(e.SKIP_ACTIONS.length > 0 ? { allow: allowExcept(e.SKIP_ACTIONS) } : {}),
     },
     threads: e.PLANNER_THREADS,
     queueLimit: e.PLANNER_QUEUE_LIMIT,

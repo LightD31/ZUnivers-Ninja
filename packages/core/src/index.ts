@@ -10,9 +10,13 @@ export { reserveFor, reserveTotal, type Reserve } from './rules/reserve';
 export { boosterOptions, invocationEV, ascensionEV, type BoosterOption } from './rules/random';
 export {
   DEFAULT_OPTIONS,
+  OPTIONAL_ACTIONS,
+  allowExcept,
+  isOptionalAction,
   resolveOptions,
   buildContext,
   type Context,
+  type OptionalAction,
   type PlannerOptions,
   type PlannerOptionsInput,
 } from './engine/context';
