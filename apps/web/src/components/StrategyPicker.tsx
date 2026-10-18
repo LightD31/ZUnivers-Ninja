@@ -99,7 +99,7 @@ export function StrategyPicker({ settings, onChange }: Props) {
         </div>
         <label
           className="flex cursor-pointer items-start gap-2"
-          title="Décoché, seule la normale de la première dorée est gardée : plus de poudre tout de suite, mais des cartes à recréer plus tard pour les enchanter."
+          title="Décoché, seules les normales que le plan du jour enchante sont gardées : plus de poudre tout de suite, mais des cartes à recréer les jours suivants pour les enchanter."
         >
           <input
             type="checkbox"

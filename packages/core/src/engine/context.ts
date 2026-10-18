@@ -42,7 +42,8 @@ export interface PlannerOptions {
   keepExtra: number;
   /**
    * Garde les exemplaires normaux à enchanter pour la constellation dorée, même si elle n'est pas
-   * rentable aujourd'hui. Sinon, seul celui de la première dorée est gardé.
+   * rentable aujourd'hui. Sinon, seuls ceux que le plan enchante sont gardés : un plan ne recycle
+   * jamais une carte pour la recréer ensuite, avec ou sans cette option.
    */
   keepForGolden: boolean;
   /** Actions autorisées. */

@@ -859,6 +859,92 @@ function finish(ctx: Context, start: SearchNode): SearchNode {
   return node;
 }
 
+/**
+ * Passes au plus pour retirer les cartes recyclées puis recréées (voir `keepRecrafted`). Chaque
+ * passe en laisse beaucoup moins : sur un joueur réel, 47 cartes, puis 8, 2, 1, 1 et plus aucune.
+ */
+const RECRAFT_ROUNDS = 16;
+
+/**
+ * Garde les exemplaires normaux qu'un plan recycle puis recrée plus loin (pour les enchanter ou
+ * monter une constellation) : la création coûte plus que ce que rapporte le recyclage. Le
+ * recyclage du surplus passe avant la recherche, qui ne pouvait plus revenir dessus, et le plan
+ * disait de recycler une carte puis de la recréer. Chaque création retirée annule le recyclage le
+ * plus proche qui la précède. Une carte n'est corrigée que si le plan reste possible et vaut au
+ * moins autant (défis de recyclage ou de création compris) ; la poudre économisée est ensuite
+ * dépensée par `finish`, qui peut à nouveau recycler puis recréer : d'où plusieurs passes.
+ */
+function keepRecrafted(ctx: Context, start: SearchNode): SearchNode {
+  let best = start;
+  for (let round = 0; round < RECRAFT_ROUNDS; round++) {
+    const steps = nodeSteps(best);
+    const items = recrafted(steps);
+    if (items.length === 0) break;
+    // Toutes les cartes d'un coup, sinon une à une : un recyclage annulé peut manquer à une
+    // dépense placée entre lui et la création.
+    const all = rebuild(ctx, withoutRecycles(steps, new Set(items)));
+    let next = all && all.value >= best.value - EPSILON ? all : best;
+    if (next === best) {
+      for (const itemId of items) {
+        const rebuilt = rebuild(ctx, withoutRecycles(nodeSteps(next), new Set([itemId])));
+        if (rebuilt && rebuilt.value >= next.value - EPSILON) next = rebuilt;
+      }
+    }
+    if (next === best) break;
+    best = finish(ctx, next);
+  }
+  return best;
+}
+
+/**
+ * Pour chaque carte de `itemIds`, les créations précédées d'un recyclage de ses exemplaires
+ * normaux, appariées au recyclage le plus proche avant elles.
+ */
+function recraftPairs(steps: Step[], itemIds: Set<string> | null) {
+  const pending = new Map<string, [number, number][]>();
+  const crafts = new Set<number>();
+  const fewer = new Map<number, Map<number, number>>();
+  const items = new Set<string>();
+  steps.forEach(({ action }, index) => {
+    if (action.kind === 'recycle') {
+      action.cards.forEach((card, c) => {
+        if (card.shiny !== 0 || (itemIds && !itemIds.has(card.itemId))) return;
+        const list = pending.get(card.itemId) ?? [];
+        for (let n = 0; n < card.count; n++) list.push([index, c]);
+        pending.set(card.itemId, list);
+      });
+    } else if (action.kind === 'craft') {
+      const recycle = pending.get(action.itemId)?.pop();
+      if (!recycle) return;
+      items.add(action.itemId);
+      crafts.add(index);
+      const cards = fewer.get(recycle[0]) ?? new Map<number, number>();
+      cards.set(recycle[1], (cards.get(recycle[1]) ?? 0) + 1);
+      fewer.set(recycle[0], cards);
+    }
+  });
+  return { items, crafts, fewer };
+}
+
+/** Cartes recyclées puis recréées dans le plan, triées pour un résultat déterministe. */
+const recrafted = (steps: Step[]) => [...recraftPairs(steps, null).items].sort();
+
+/** Étapes sans les créations de `itemIds` précédées d'un recyclage, ni ces recyclages. */
+function withoutRecycles(steps: Step[], itemIds: Set<string>): Step[] {
+  const { crafts, fewer } = recraftPairs(steps, itemIds);
+  const out: Step[] = [];
+  steps.forEach((step, index) => {
+    if (crafts.has(index)) return;
+    const cards = fewer.get(index);
+    if (!cards || step.action.kind !== 'recycle') return void out.push(step);
+    const left = step.action.cards
+      .map((card, c) => ({ ...card, count: card.count - (cards.get(c) ?? 0) }))
+      .filter((card) => card.count > 0);
+    if (left.length > 0) out.push({ ...step, action: { kind: 'recycle', cards: left } });
+  });
+  return out;
+}
+
 export interface SearchResult {
   root: SearchNode;
   best: SearchNode;
@@ -1041,6 +1127,7 @@ function beamSearch(ctx: Context): SearchResult {
   best = finish(ctx, best);
   const fallback = finish(ctx, greedy.node);
   if (fallback.value > best.value + EPSILON) best = fallback;
+  best = keepRecrafted(ctx, best);
 
   return { root, best, explored, timedOut };
 }
