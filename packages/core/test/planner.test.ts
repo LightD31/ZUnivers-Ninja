@@ -418,6 +418,24 @@ describe('cas synthétiques', () => {
       expect(c).toMatch(/^\/im( évènement:\S.*)?$/);
   });
 
+  it('ne recycle pas une carte pour la recréer ensuite', () => {
+    // Dorée possédée, constellations normales au maximum : les normaux en trop servent à monter la
+    // constellation dorée. Les recycler pour en recréer coûtait plus cher.
+    const a = makeItem(2001);
+    const plan = createPlan({
+      catalog: makeCatalog([a]),
+      player: makePlayer({
+        balances: { balance: 0, loreDust: 10_000, loreFragment: 0, upgradeDust: 0 },
+        inventory: Object.fromEntries([owned(a.id, 0, 6, 2), owned(a.id, 1, 1, 0)]),
+      }),
+      now: TEST_NOW,
+    });
+    const recycled = plan.commands.some((c) => c.startsWith('/recyclage') && c.includes('2001'));
+    const crafted = plan.commands.some((c) => c.startsWith('/création') && c.includes('2001'));
+    expect(recycled && crafted).toBe(false);
+    expect(plan.commands.some((c) => c.startsWith('/enchantement'))).toBe(true);
+  });
+
   it('respecte keepExtra pour les échanges', () => {
     const a = makeItem(1001, { upgradable: false, goldable: false });
     const catalogA = makeCatalog([a]);

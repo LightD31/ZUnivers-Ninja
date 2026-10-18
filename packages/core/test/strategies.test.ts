@@ -121,7 +121,6 @@ describe('stratégies sur un joueur réel (fixtures)', () => {
   });
 
   it('Collectionneur ne retire aucune carte de la collection', () => {
-    // Équilibré enchante le dernier exemplaire normal de cartes pour leurs constellations dorées.
     // L'évolution remplace sa carte par la suivante, sans en retirer une de la collection.
     const evolution = new Set(player.evolution?.steps.map((s) => s.itemId) ?? []);
     const lost = (strategy: StrategyId) => {
@@ -138,7 +137,6 @@ describe('stratégies sur un joueur réel (fixtures)', () => {
           (final.cards.get(cardKey(c.itemId, c.shiny))?.copies ?? 0) === 0,
       ).length;
     };
-    expect(lost('equilibre')).toBeGreaterThan(0);
     expect(lost('collectionneur')).toBe(0);
   }, 60_000);
 

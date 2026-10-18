@@ -9,7 +9,10 @@ export interface Reserve {
   keep: number;
   /** Exemplaires nécessaires aux fusions dont le résultat manque encore. */
   fusion: number;
-  /** Exemplaire normal gardé pour l'enchanter si la version dorée manque. */
+  /**
+   * Exemplaires normaux gardés pour les enchanter : la dorée si elle manque, puis les dorées qui
+   * manquent à sa constellation.
+   */
   enchant: number;
   /** Doublons nécessaires pour monter la constellation au maximum. */
   constellation: number;
@@ -37,8 +40,13 @@ export function reserveFor(ctx: Context, state: State, itemId: string, shiny: Sh
       if (input.itemId === itemId) reserve.fusion += input.quantity;
   }
 
-  if (shiny === 0 && isEnchantable(ctx, item) && getCard(state, itemId, 1).copies === 0)
-    reserve.enchant = 1;
+  // Recycler ces normaux puis en recréer pour les enchanter coûterait la différence entre création
+  // et recyclage. Gardés même si la constellation dorée n'est pas rentable aujourd'hui : elle le
+  // deviendra. Les fusions dorées, bien plus chères, ne réservent rien.
+  if (shiny === 0 && isEnchantable(ctx, item)) {
+    const goldens = 1 + reserveFor(ctx, state, itemId, 1).constellation;
+    reserve.enchant = Math.max(0, goldens - getCard(state, itemId, 1).copies);
+  }
 
   // Pas de constellations dans ce mode de jeu (Hardcore) : rien à garder pour elles.
   const constellations = ctx.options.allow.constellation && ctx.features.has(FEATURE.upgrade);
