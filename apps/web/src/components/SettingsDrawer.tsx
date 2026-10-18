@@ -90,33 +90,6 @@ export function SettingsDrawer({ open, settings, onChange, onClose }: Props) {
             max={16}
             onChange={(branching) => onChange({ ...settings, branching })}
           />
-          <Slider
-            label="Doublons gardés pour l'échange"
-            hint="Exemplaires conservés en plus, jamais recyclés ni consommés."
-            value={settings.keepExtra}
-            min={0}
-            max={5}
-            onChange={(keepExtra) => onChange({ ...settings, keepExtra })}
-          />
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              checked={settings.keepForGolden}
-              onChange={(e) => onChange({ ...settings, keepForGolden: e.target.checked })}
-              className="mt-0.5 size-4 accent-zu-500"
-            />
-            <span className="space-y-1.5">
-              <span className="block text-sm font-medium">
-                Garder pour les constellations dorées
-              </span>
-              <span className="block text-xs text-white/60">
-                Ne recycle pas les exemplaires normaux à enchanter pour monter la constellation
-                dorée, même si elle n'est pas rentable aujourd'hui. Décoché, seul celui de la
-                première dorée est gardé : plus de poudre tout de suite, mais des cartes à recréer
-                plus tard.
-              </span>
-            </span>
-          </label>
           <fieldset className="space-y-3">
             <legend className="text-sm font-medium">Valeur des monnaies</legend>
             <p className="text-xs text-white/60">
