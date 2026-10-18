@@ -120,7 +120,7 @@ répondent `503` avec un en-tête `Retry-After`.
 | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `zuninja_plan_requests_total{source, outcome}`    | Demandes de plan : `source` = `web`, `bot` (route `/discord`) ou `cron` ; `outcome` = `ok`, `not_found`, `busy`, `timeout`… |
 | `zuninja_players{window}`                         | Joueurs distincts (web et bots) sur `1d`, `7d` et `30d`.                                                                    |
-| `zuninja_page_views_total`                        | Pages de l'interface servies.                                                                                               |
+| `zuninja_page_views_total`                        | Pages de l'interface ouvertes dans un navigateur (hors sondes, aperçus de liens et préchargements).                         |
 | `zuninja_plans_computed_total{strategy, ruleset}` | Plans réellement calculés (hors cache).                                                                                     |
 | `zuninja_plan_duration_seconds`                   | Durée d'un calcul, appels à l'API ZUnivers compris.                                                                         |
 | `zuninja_planner_threads{state}`, `…queue_length` | Occupation des threads de calcul.                                                                                           |

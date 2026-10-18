@@ -263,10 +263,17 @@ export function createApp(service: PlanService, store: StateStore | null, option
       c.header('Content-Type', metrics.registry.contentType);
       return c.body(await metrics.registry.metrics());
     });
-    // Pages de l'interface servies (pas les fichiers statiques ni l'API).
+    // Pages de l'interface ouvertes dans un navigateur (pas les fichiers statiques ni l'API).
+    // Seule une navigation envoie `Sec-Fetch-Mode: navigate` : les sondes (Uptime Kuma…) et les
+    // aperçus de liens (Discordbot…) ne comptent pas, ni le préchargement (`Sec-Purpose`).
     app.use('*', async (c, next) => {
       await next();
-      if (c.req.method === 'GET' && c.res.headers.get('content-type')?.startsWith('text/html'))
+      if (
+        c.req.method === 'GET' &&
+        c.req.header('sec-fetch-mode') === 'navigate' &&
+        !c.req.header('sec-purpose') &&
+        c.res.headers.get('content-type')?.startsWith('text/html')
+      )
         metrics.pageView();
     });
   }
