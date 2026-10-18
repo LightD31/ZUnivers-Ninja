@@ -146,16 +146,12 @@ describe('cas synthétiques', () => {
       now: TEST_NOW,
     });
     // 11 doublons × 5 = 55 poudres → création de la carte manquante (50).
-    expect(plan.commands).toEqual([
-      `/recyclage carte:${Array(11).fill('1001').join(' + ')}`,
-      '/création carte:1002',
-    ]);
+    expect(plan.commands).toEqual(['/recyclage carte:1001*11', '/création carte:1002']);
     expect(plan.after.balances.loreDust).toBe(5);
     expect(plan.after.unique[0]).toBe(2);
   });
 
-  it('découpe un gros recyclage en commandes que le jeu accepte', () => {
-    // Le bot du jeu n'exécutait pas une commande de 3 962 caractères (562 cartes).
+  it('écrit les exemplaires d’une carte avec leur quantité', () => {
     const plain = { upgradable: false, goldable: false } as const;
     const a = makeItem(1001, plain);
     const b = makeItem(1002, plain);
@@ -166,15 +162,36 @@ describe('cas synthétiques', () => {
       }),
       now: TEST_NOW,
     });
+    expect(plan.commands).toEqual(['/recyclage carte:1001*500 + 1002*200']);
+    expect(plan.after.balances.loreDust).toBe(700 * 5);
+  });
+
+  it('découpe un gros recyclage en commandes que le jeu accepte', () => {
+    // Le bot du jeu n'exécutait pas une commande de 3 962 caractères (562 cartes). Les dorées
+    // sont répétées (`1001+ + 1001+`), sans quantité.
+    const plain = { upgradable: false, goldable: false } as const;
+    const a = makeItem(1001, plain);
+    const b = makeItem(1002, plain);
+    const plan = createPlan({
+      catalog: makeCatalog([a, b]),
+      player: makePlayer({
+        inventory: Object.fromEntries([
+          owned(a.id, 0, 1),
+          owned(b.id, 0, 1),
+          owned(a.id, 1, 501),
+          owned(b.id, 1, 201),
+        ]),
+      }),
+      now: TEST_NOW,
+    });
     const recycles = plan.commands.filter((c) => c.startsWith('/recyclage'));
     const cards = recycles.map((c) => c.slice('/recyclage carte:'.length).split(' + '));
     expect(recycles).toHaveLength(2);
     for (const c of recycles) expect(c.length).toBeLessThanOrEqual(COMMAND_MAX_LENGTH);
-    // La première commande est pleine : une carte de plus (« + 1001 ») la rendrait trop longue.
-    expect(recycles[0]!.length + ' + 1001'.length).toBeGreaterThan(COMMAND_MAX_LENGTH);
+    // La première commande est pleine : une carte de plus (« + 1001+ ») la rendrait trop longue.
+    expect(recycles[0]!.length + ' + 1001+'.length).toBeGreaterThan(COMMAND_MAX_LENGTH);
     expect(cards.flat()).toHaveLength(700);
-    expect(new Set(cards[1])).toEqual(new Set(['1001', '1002']));
-    expect(plan.after.balances.loreDust).toBe(700 * 5);
+    expect(new Set(cards[1])).toEqual(new Set(['1001+', '1002+']));
   });
 
   it('coupe une longue suite de créations en commandes que le jeu accepte', () => {
@@ -200,10 +217,7 @@ describe('cas synthétiques', () => {
       player: makePlayer({ inventory: Object.fromEntries([owned(r3.id, 0, 6)]) }),
       now: TEST_NOW,
     });
-    expect(plan.commands).toEqual([
-      '/constellation carte:3001 + 3001 + 3001',
-      '/recyclage carte:3001 + 3001',
-    ]);
+    expect(plan.commands).toEqual(['/constellation carte:3001*3', '/recyclage carte:3001*2']);
     expect(plan.groups[0]?.title).toBe('Constellations : 3 niveaux sur 1 carte');
   });
 
@@ -408,7 +422,7 @@ describe('cas synthétiques', () => {
       now: TEST_NOW,
       options: { keepExtra: 2 },
     });
-    expect(plan.commands).toEqual(['/recyclage carte:1001 + 1001']);
+    expect(plan.commands).toEqual(['/recyclage carte:1001*2']);
     const ctx = buildContext(catalogA, playerA, TEST_NOW, resolveOptions({ keepExtra: 2 }));
     const final = replay(
       ctx,

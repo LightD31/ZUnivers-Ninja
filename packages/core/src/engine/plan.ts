@@ -18,13 +18,7 @@ import {
   type Shiny,
 } from '../model/types';
 import { applyAction, type Action, type ActionKind } from './actions';
-import {
-  CARD_SEPARATOR,
-  COMMAND_MAX_LENGTH,
-  cardToken,
-  commandLine,
-  commandPrefix,
-} from './commands';
+import { CARD_SEPARATOR, COMMAND_MAX_LENGTH, cardsToken, commandLine } from './commands';
 import {
   buildContext,
   craftCost,
@@ -202,10 +196,14 @@ function card(ctx: Context, itemId: string, shiny: Shiny, count = 1): PlanCard {
   };
 }
 
-/** Cartes d'une commande, chacune répétée selon sa quantité (`1001 + 1001 + 1002+`). */
+/** Exemplaires d'une carte dans une commande (`1001*2`, `1002+ + 1002+`). */
 function cardRef(c: PlanCard, kind?: ActionKind): string {
-  const ref = cardToken(c.identifier, c.shiny, kind);
-  return Array.from({ length: Math.max(1, c.count) }, () => ref).join(CARD_SEPARATOR);
+  return cardsToken(c.identifier, c.shiny, c.count, kind);
+}
+
+/** Arguments d'une commande : ses cartes, séparées par ` + `. */
+function cardsArgs(cards: Iterable<PlanCard>, kind?: ActionKind): string {
+  return [...cards].map((c) => cardRef(c, kind)).join(CARD_SEPARATOR);
 }
 
 function describe(ctx: Context, step: Step, achievements: string[]): PlanStep {
@@ -235,7 +233,7 @@ function describe(ctx: Context, step: Step, achievements: string[]): PlanStep {
   switch (action.kind) {
     case 'recycle': {
       const cards = action.cards.map((c) => card(ctx, c.itemId, c.shiny, c.count));
-      return make(cards, cards.map((c) => cardRef(c)).join(CARD_SEPARATOR));
+      return make(cards, cardsArgs(cards));
     }
     case 'craft':
     case 'enchant': {
@@ -352,34 +350,23 @@ export function groupSteps(steps: PlanStep[]): StepGroup[] {
       i++;
       continue;
     }
-    const counts = new Map<string, PlanCard>();
+    let counts = new Map<string, PlanCard>();
     let gain = 0;
     let balanceDelta: Partial<Balances> = {};
     let size = 0;
     let auto = true;
     const achievements: string[] = [];
-    // Longueur de la commande : début, cartes, et un séparateur entre deux cartes.
-    const prefix = commandPrefix(step.kind).length;
-    let tokens = 0;
-    let chars = 0;
     while (i < steps.length && steps[i]!.kind === step.kind) {
       const current = steps[i]!;
-      let addTokens = 0;
-      let addChars = 0;
-      for (const c of current.cards) {
-        const n = Math.max(1, c.count);
-        addTokens += n;
-        addChars += n * cardToken(c.identifier, c.shiny, step.kind).length;
-      }
-      const length = prefix + chars + addChars + CARD_SEPARATOR.length * (tokens + addTokens - 1);
-      if (size > 0 && length > COMMAND_MAX_LENGTH) break;
-      tokens += addTokens;
-      chars += addChars;
+      const next = new Map(counts);
       for (const c of current.cards) {
         const key = `${c.itemId}:${c.shiny}`;
-        const existing = counts.get(key);
-        counts.set(key, existing ? { ...existing, count: existing.count + c.count } : { ...c });
+        const existing = next.get(key);
+        next.set(key, existing ? { ...existing, count: existing.count + c.count } : { ...c });
       }
+      const length = commandLine(step.kind, cardsArgs(next.values(), step.kind)).length;
+      if (size > 0 && length > COMMAND_MAX_LENGTH) break;
+      counts = next;
       gain += current.gain;
       balanceDelta = sumDelta(balanceDelta, current.balanceDelta);
       auto &&= current.auto;
@@ -390,10 +377,7 @@ export function groupSteps(steps: PlanStep[]): StepGroup[] {
     const cards = [...counts.values()];
     groups.push({
       kind: step.kind,
-      command:
-        size === 1
-          ? step.command
-          : commandLine(step.kind, cards.map((c) => cardRef(c, step.kind)).join(CARD_SEPARATOR)),
+      command: size === 1 ? step.command : commandLine(step.kind, cardsArgs(cards, step.kind)),
       title: groupTitle(step.kind, cards, size, step.title),
       detail: size === 1 ? step.detail : null,
       cards,
