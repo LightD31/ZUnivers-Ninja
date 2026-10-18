@@ -10,16 +10,44 @@ interface Props {
 /** Doublons gardés pour l'échange au plus. */
 const KEEP_EXTRA_MAX = 5;
 
+const LABEL = 'mr-1 w-20 shrink-0 text-xs tracking-[0.06em] text-white/60 uppercase';
+
+const choice = (checked: boolean) =>
+  `rounded border px-2.5 py-1 text-sm transition ${
+    checked
+      ? 'border-zu-500 bg-zu-500/15 font-medium text-white'
+      : 'border-white/10 text-white/70 hover:border-white/25 hover:text-white'
+  }`;
+
 /**
- * Choix de la stratégie et des réglages de conservation, sous la recherche : un clic recalcule le
- * plan.
+ * Choix du mode de jeu, de la stratégie et des réglages de conservation, sous la recherche : un
+ * clic recalcule le plan.
  */
 export function StrategyPicker({ settings, onChange }: Props) {
   const current = STRATEGIES[settings.strategy];
   return (
     <div className="space-y-2">
+      <div
+        className="flex flex-wrap items-center gap-1.5"
+        role="radiogroup"
+        aria-label="Mode de jeu"
+      >
+        <span className={LABEL}>Mode</span>
+        {(['NORMAL', 'HARDCORE'] as const).map((ruleSet) => (
+          <button
+            key={ruleSet}
+            type="button"
+            role="radio"
+            aria-checked={settings.ruleSet === ruleSet}
+            onClick={() => onChange({ ...settings, ruleSet })}
+            className={choice(settings.ruleSet === ruleSet)}
+          >
+            {ruleSet === 'NORMAL' ? 'Normal' : 'Hardcore'}
+          </button>
+        ))}
+      </div>
       <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Stratégie">
-        <span className="mr-1 text-xs tracking-[0.06em] text-white/60 uppercase">Stratégie</span>
+        <span className={LABEL}>Stratégie</span>
         {STRATEGY_IDS.map((id) => {
           const checked = settings.strategy === id;
           return (
@@ -30,11 +58,7 @@ export function StrategyPicker({ settings, onChange }: Props) {
               aria-checked={checked}
               title={STRATEGIES[id].description}
               onClick={() => onChange(withStrategy(settings, id))}
-              className={`rounded border px-2.5 py-1 text-sm transition ${
-                checked
-                  ? 'border-zu-500 bg-zu-500/15 font-medium text-white'
-                  : 'border-white/10 text-white/70 hover:border-white/25 hover:text-white'
-              }`}
+              className={choice(checked)}
             >
               {STRATEGIES[id].label}
             </button>
