@@ -152,6 +152,16 @@ describe('service de plans', { timeout: 30_000 }, () => {
     gone.abort();
     await expect(abandoned).rejects.toBeInstanceOf(PlanAbortedError);
     await expect(plans.plan('alexpresso', 'NORMAL')).resolves.toHaveProperty('hash');
-    expect(userCalls(fetch)).toBe(2);
+    // Le calcul est relancé, mais les données du joueur déjà chargées sont réutilisées.
+    expect(userCalls(fetch)).toBe(1);
+  });
+
+  it("ne rappelle pas l'API ZUnivers quand seuls les réglages changent", async () => {
+    const fetch = fixtureApi();
+    const plans = service(fetch);
+    await plans.plan('alexpresso', 'NORMAL');
+    await plans.plan('alexpresso', 'NORMAL', { strategy: 'prudent' });
+    await plans.plan('alexpresso', 'NORMAL', {}, { fresh: true });
+    expect(userCalls(fetch)).toBe(1);
   });
 });

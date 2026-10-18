@@ -1,4 +1,5 @@
 export * from './api/client';
+export * from './api/cache';
 export * from './api/schemas';
 export * from './model/types';
 export * from './model/normalize';

@@ -1,8 +1,10 @@
 import {
+  ApiCache,
   createClient,
   fetchCatalog,
   fetchPlayer,
   type Catalog,
+  type Player,
   type PlanResult,
   type PlannerOptionsInput,
   type RuleSet,
@@ -17,6 +19,10 @@ import { PlanAbortedError, PlannerBusyError, PlannerPool } from './pool';
 export const VERSION = process.env.APP_VERSION || 'dev';
 const USER_AGENT = `ZUnivers-Ninja/${VERSION} (+https://github.com/LightD31/ZUnivers-Ninja)`;
 const PLAN_CACHE_MS = 60_000;
+/** Données d'un joueur réutilisées quand seuls les réglages du plan changent. */
+const PLAYER_CACHE_MS = 60_000;
+/** « Actualiser » ne recharge pas un joueur chargé il y a moins longtemps que ça. */
+const PLAYER_FRESH_MIN_MS = 15_000;
 /** Marge laissée au-delà de la limite de recherche avant d'arrêter un thread. */
 const THREAD_TIMEOUT_MARGIN_MS = 30_000;
 
@@ -34,7 +40,11 @@ interface Flight {
 
 export class PlanService {
   private readonly clients = new Map<RuleSet, ZuClient>();
-  private readonly catalogs = new Map<RuleSet, { value: Promise<Catalog>; expires: number }>();
+  private readonly catalogs: ApiCache<Catalog>;
+  private readonly players = new ApiCache<Player>({
+    ttlMs: PLAYER_CACHE_MS,
+    freshMinMs: PLAYER_FRESH_MIN_MS,
+  });
   private readonly plans = new Map<string, { value: PlanResult; expires: number }>();
   private readonly flights = new Map<string, Flight>();
   private readonly pool: PlannerPool;
@@ -42,6 +52,7 @@ export class PlanService {
 
   constructor(config: ServiceConfig) {
     this.config = config;
+    this.catalogs = new ApiCache({ ttlMs: config.catalogTtlMs });
     this.pool = new PlannerPool({
       threads: config.threads,
       queueLimit: config.queueLimit,
@@ -73,12 +84,19 @@ export class PlanService {
 
   /** Catalogue partagé entre tous les joueurs, rafraîchi périodiquement. */
   catalog(ruleSet: RuleSet): Promise<Catalog> {
-    const cached = this.catalogs.get(ruleSet);
-    if (cached && cached.expires > Date.now()) return cached.value;
-    const value = fetchCatalog(this.client(ruleSet));
-    this.catalogs.set(ruleSet, { value, expires: Date.now() + this.config.catalogTtlMs });
-    value.catch(() => this.catalogs.delete(ruleSet));
-    return value;
+    return this.catalogs.get(ruleSet, () => fetchCatalog(this.client(ruleSet)));
+  }
+
+  /**
+   * Données d'un joueur, partagées entre ses plans : changer de stratégie ou de réglages ne
+   * rappelle pas l'API ZUnivers.
+   */
+  player(name: string, ruleSet: RuleSet, fresh = false): Promise<Player> {
+    return this.players.get(
+      `${ruleSet}|${name.toLowerCase()}`,
+      () => fetchPlayer(this.client(ruleSet), name),
+      fresh,
+    );
   }
 
   /**
@@ -99,7 +117,7 @@ export class PlanService {
     let flight = this.flights.get(key);
     if (!flight) {
       const controller = new AbortController();
-      const promise = this.compute(name, ruleSet, merged, key, controller.signal);
+      const promise = this.compute(name, ruleSet, merged, key, fresh, controller.signal);
       const created: Flight = { promise, waiters: 0, controller };
       void promise.catch(() => {}).finally(() => this.land(key, created));
       this.flights.set(key, created);
@@ -133,6 +151,7 @@ export class PlanService {
     ruleSet: RuleSet,
     options: PlannerOptionsInput,
     key: string,
+    fresh: boolean,
     signal: AbortSignal,
   ): Promise<PlanResult> {
     // Refus immédiat quand le serveur est saturé, sans solliciter l'API ZUnivers.
@@ -140,7 +159,7 @@ export class PlanService {
     const started = performance.now();
     const [catalog, player] = await Promise.all([
       this.catalog(ruleSet),
-      fetchPlayer(this.client(ruleSet), name),
+      this.player(name, ruleSet, fresh),
     ]);
     const plan = await this.pool.run(
       { catalog, player, options: { ...options, timeLimitMs: this.config.timeLimitMs } },
