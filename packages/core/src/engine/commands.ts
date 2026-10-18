@@ -53,9 +53,22 @@ export function commandLine(kind: ActionKind, args: string): string {
 
 /**
  * Référence d'une carte dans une commande : numéro + suffixe de brillance (`+` dorée, `*` chroma).
- * /enchantement prend la carte normale à transformer. Les quantités sont écrites en répétant la
- * carte, pour éviter toute ambiguïté avec `*`.
+ * /enchantement prend la carte normale à transformer.
  */
 export function cardToken(identifier: number, shiny: Shiny, kind?: ActionKind): string {
   return `${identifier}${kind === 'enchant' ? '' : SHINY_SUFFIX[shiny]}`;
+}
+
+/**
+ * Plusieurs exemplaires d'une carte dans une commande : la carte suivie de `*` et de la quantité
+ * (`1001*5`, `1001+*5`, `1001**5`). Vérifié en jeu, y compris pour les dorées et les chromas.
+ */
+export function cardsToken(
+  identifier: number,
+  shiny: Shiny,
+  count: number,
+  kind?: ActionKind,
+): string {
+  const ref = cardToken(identifier, shiny, kind);
+  return count > 1 ? `${ref}*${count}` : ref;
 }

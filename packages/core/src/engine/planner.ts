@@ -13,7 +13,7 @@ import {
 import { goalCardMet } from './achievements';
 import { actionKey, applyAction, type Action, type Applied, type RecycleEntry } from './actions';
 import { canRecycle, craftCost, enchantCost, forgeCurrency, type Context } from './context';
-import { CARD_SEPARATOR, COMMAND_MAX_LENGTH, cardToken, commandPrefix } from './commands';
+import { CARD_SEPARATOR, COMMAND_MAX_LENGTH, cardsToken, commandPrefix } from './commands';
 import { getCard, initialState, stateValue, type State } from './state';
 
 export interface Step {
@@ -131,19 +131,30 @@ function recycleChunks(ctx: Context, cards: RecycleEntry[]): RecycleEntry[][] {
   let chunk: RecycleEntry[] = [];
   let used = 0;
   for (const entry of cards) {
-    const width = cardToken(ctx.items[entry.itemId]?.identifier ?? 0, entry.shiny).length;
+    const identifier = ctx.items[entry.itemId]?.identifier ?? 0;
+    // Place prise par `count` exemplaires de la carte, séparateur compris.
+    const width = (count: number) => cardsToken(identifier, entry.shiny, count).length + separator;
     let left = entry.count;
     while (left > 0) {
-      const room = Math.floor((budget - used) / (width + separator));
+      // Plus grand nombre d'exemplaires qui tient encore dans la commande. La place prise ne
+      // diminue pas avec la quantité : une recherche dichotomique suffit.
+      let room = 0;
+      for (let lo = 1, hi = left; lo <= hi;) {
+        const mid = (lo + hi) >> 1;
+        if (width(mid) <= budget - used) {
+          room = mid;
+          lo = mid + 1;
+        } else hi = mid - 1;
+      }
       if (room === 0 && chunk.length > 0) {
         chunks.push(chunk);
         chunk = [];
         used = 0;
         continue;
       }
-      const count = Math.max(1, Math.min(left, room));
+      const count = Math.max(1, room);
       chunk.push({ ...entry, count });
-      used += count * (width + separator);
+      used += width(count);
       left -= count;
     }
   }
