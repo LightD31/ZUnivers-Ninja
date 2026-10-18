@@ -141,9 +141,31 @@ describe('réserve', () => {
     expect(reserveFor(ctx, initialState(ctx), r4.id, 0)).toEqual({
       keep: 1,
       fusion: 2,
-      enchant: 1,
+      // La dorée, puis 4 dorées pour sa constellation (rareté 4).
+      enchant: 5,
       constellation: 3,
     });
+  });
+
+  it('garde les normaux à enchanter pour la constellation dorée, même avec la dorée', () => {
+    const ctx = makeContext(
+      makeCatalog([r2]),
+      makePlayer({
+        inventory: Object.fromEntries([owned(r2.id, 0, 6, 2), owned(r2.id, 1, 1, 0)]),
+      }),
+    );
+    // Dorée possédée, constellation dorée à 0 : 2 dorées à obtenir, donc 2 normaux à garder.
+    expect(reserveFor(ctx, initialState(ctx), r2.id, 0)).toEqual({
+      keep: 1,
+      fusion: 0,
+      enchant: 2,
+      constellation: 0,
+    });
+    // Option désactivée : la dorée est déjà là, plus rien n'est gardé pour l'enchantement.
+    const without = makeContext(makeCatalog([r2]), ctx.player, {
+      keepForGolden: false,
+    });
+    expect(reserveFor(without, initialState(without), r2.id, 0).enchant).toBe(0);
   });
 });
 

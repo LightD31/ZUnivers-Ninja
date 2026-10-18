@@ -10,7 +10,6 @@ export const STRATEGY_IDS = [
   'epargne',
   'vortex',
   'collectionneur',
-  'echangeur',
 ] as const;
 
 export type StrategyId = (typeof STRATEGY_IDS)[number];
@@ -69,12 +68,6 @@ export const STRATEGIES: Record<StrategyId, Strategy> = {
     // différentes plafonne à partir de 1 000 (71 par joueur, contre 42 avec l'ancien bonus de 25),
     // et plus aucune carte n'est perdue en enchantant son dernier exemplaire normal.
     options: { newCardBonus: 1000 },
-  },
-  echangeur: {
-    id: 'echangeur',
-    label: 'Échangeur',
-    description: 'Garde deux doublons de chaque carte pour les échanges.',
-    options: { keepExtra: 2 },
   },
 };
 

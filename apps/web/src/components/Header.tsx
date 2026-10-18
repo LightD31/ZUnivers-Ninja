@@ -1,10 +1,7 @@
-import type { RuleSet } from '@zuninja/core';
 import { SlidersHorizontal } from 'lucide-react';
 import { useId } from 'react';
 
 interface Props {
-  ruleSet: RuleSet;
-  onRuleSet: (r: RuleSet) => void;
   onOpenSettings: () => void;
   onHome: () => void;
 }
@@ -35,28 +32,12 @@ export function Logo({ className = 'size-8' }: { className?: string }) {
 const NAV_ITEM =
   'relative inline-flex h-9 items-center px-2.5 text-[11.5px] tracking-[0.06em] uppercase transition sm:px-4';
 
-export function Header({ ruleSet, onRuleSet, onOpenSettings, onHome }: Props) {
+export function Header({ onOpenSettings, onHome }: Props) {
   return (
     <header className="sticky top-0 z-30 bg-linear-to-b from-ink-950 via-ink-950/85 to-transparent px-3 pt-3 pb-2 sm:px-9 sm:pt-6">
       <div className="zu-appbar mx-auto grid h-16 max-w-[1400px] grid-cols-[1fr_auto_1fr] items-center rounded-md px-2 shadow-[0_8px_24px_rgb(0_0_0/0.45)] sm:px-6">
-        <div role="radiogroup" aria-label="Mode de jeu" className="flex items-center">
-          {(['NORMAL', 'HARDCORE'] as const).map((r) => (
-            <button
-              key={r}
-              type="button"
-              role="radio"
-              aria-checked={ruleSet === r}
-              onClick={() => onRuleSet(r)}
-              className={`${NAV_ITEM} ${
-                ruleSet === r
-                  ? 'text-white after:absolute after:inset-x-2.5 after:bottom-0.5 after:h-0.5 after:rounded-full after:bg-chroma sm:after:inset-x-4'
-                  : 'text-white/65 hover:text-white'
-              }`}
-            >
-              {r === 'NORMAL' ? 'Normal' : 'Hardcore'}
-            </button>
-          ))}
-        </div>
+        {/* Colonne vide : garde le logo centré. */}
+        <div />
 
         <button
           type="button"

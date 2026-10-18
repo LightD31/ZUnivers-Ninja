@@ -119,6 +119,8 @@ export interface PlanResult {
   version: 1;
   generatedAt: string;
   ruleSet: string;
+  /** Mode de jeu fermé (pas de saison Hardcore en cours) : le plan est vide. */
+  closed: boolean;
   /** Stratégie utilisée pour calculer le plan. */
   strategy: { id: StrategyId; label: string };
   player: {
@@ -608,7 +610,16 @@ export function createPlan({
 }: CreatePlanInput): PlanResult {
   const started = performance.now();
   const ctx = buildContext(catalog, player, now, resolveOptions(options));
-  const { best, explored, timedOut } = search(ctx);
+  const closed = catalog.settings.closed === true;
+  const start = initialState(ctx);
+  // Pas de saison Hardcore en cours : aucune commande ne peut être jouée, même pas /journa.
+  const { best, explored, timedOut } = closed
+    ? {
+        best: { state: start, value: stateValue(ctx, start), steps: null, signature: [], depth: 0 },
+        explored: 0,
+        timedOut: false,
+      }
+    : search(ctx);
   // Commandes regroupées : les créations à la suite, puis les enchantements… (voir `regroup`).
   const steps = sortInvocations(regroup(ctx, nodeSteps(best)));
   // Succès débloqués à chaque étape, pour les signaler sur la commande qui les obtient.
@@ -623,7 +634,7 @@ export function createPlan({
           .map((a) => a.name),
       ),
   );
-  const before = initialState(ctx);
+  const before = start;
 
   const planSteps = steps.map((s, i) => describe(ctx, s, unlocked[i] ?? []));
   const groups = groupSteps(planSteps);
@@ -659,6 +670,7 @@ export function createPlan({
     version: 1,
     generatedAt: now.toISOString(),
     ruleSet: catalog.ruleSet,
+    closed,
     strategy: { id: ctx.options.strategy, label: STRATEGIES[ctx.options.strategy].label },
     player: {
       name: player.name,

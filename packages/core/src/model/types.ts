@@ -121,6 +121,8 @@ export interface Settings {
   weeklyReward: number;
   dailyLoreDust: number;
   features: string[];
+  /** Mode de jeu fermé : Hardcore sans saison en cours, rien ne peut y être joué. */
+  closed?: boolean;
 }
 
 export interface Catalog {

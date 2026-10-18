@@ -18,9 +18,9 @@ import { fixtureCatalog, fixturePlayer, NOW } from './helpers';
 
 describe('résolution des options', () => {
   it('applique le préréglage de la stratégie', () => {
-    const options = resolveOptions({ strategy: 'echangeur' });
-    expect(options.strategy).toBe('echangeur');
-    expect(options.keepExtra).toBe(2);
+    const options = resolveOptions({ strategy: 'collectionneur' });
+    expect(options.strategy).toBe('collectionneur');
+    expect(options.newCardBonus).toBe(1000);
     expect(options.weights).toEqual(DEFAULT_OPTIONS.weights);
   });
 
@@ -121,7 +121,6 @@ describe('stratégies sur un joueur réel (fixtures)', () => {
   });
 
   it('Collectionneur ne retire aucune carte de la collection', () => {
-    // Équilibré enchante le dernier exemplaire normal de cartes pour leurs constellations dorées.
     // L'évolution remplace sa carte par la suivante, sans en retirer une de la collection.
     const evolution = new Set(player.evolution?.steps.map((s) => s.itemId) ?? []);
     const lost = (strategy: StrategyId) => {
@@ -138,12 +137,12 @@ describe('stratégies sur un joueur réel (fixtures)', () => {
           (final.cards.get(cardKey(c.itemId, c.shiny))?.copies ?? 0) === 0,
       ).length;
     };
-    expect(lost('equilibre')).toBeGreaterThan(0);
     expect(lost('collectionneur')).toBe(0);
   }, 60_000);
 
-  it('Échangeur recycle moins', () => {
-    expect(recycled(plans.echangeur)).toBeLessThan(recycled(equilibre));
+  it("recycle moins en gardant des doublons pour l'échange", () => {
+    const trader = createPlan({ catalog, player, now: NOW, options: { keepExtra: 2 } });
+    expect(recycled(trader)).toBeLessThan(recycled(equilibre));
   });
 
   it('tient à jour le nombre de cartes possédées', () => {

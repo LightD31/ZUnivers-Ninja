@@ -23,6 +23,7 @@ async function fetchFromServer(
     beamWidth: String(settings.beamWidth),
     branching: String(settings.branching),
     keepExtra: String(settings.keepExtra),
+    keepForGolden: settings.keepForGolden ? '1' : '0',
     wBalance: String(settings.weights.balance),
     wLoreDust: String(settings.weights.loreDust),
     wLoreFragment: String(settings.weights.loreFragment),

@@ -90,14 +90,6 @@ export function SettingsDrawer({ open, settings, onChange, onClose }: Props) {
             max={16}
             onChange={(branching) => onChange({ ...settings, branching })}
           />
-          <Slider
-            label="Doublons gardés pour l'échange"
-            hint="Exemplaires conservés en plus, jamais recyclés ni consommés."
-            value={settings.keepExtra}
-            min={0}
-            max={5}
-            onChange={(keepExtra) => onChange({ ...settings, keepExtra })}
-          />
           <fieldset className="space-y-3">
             <legend className="text-sm font-medium">Valeur des monnaies</legend>
             <p className="text-xs text-white/60">

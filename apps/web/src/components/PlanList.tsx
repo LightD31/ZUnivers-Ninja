@@ -1,5 +1,5 @@
 import type { Currency, PlanResult, StepGroup } from '@zuninja/core';
-import { CircleCheck, Trophy } from 'lucide-react';
+import { CalendarX, CircleCheck, Trophy } from 'lucide-react';
 import { CURRENCY_DOT, CURRENCY_SHORT, KIND_ICON, KIND_TINT } from '../lib/game';
 import { signed, signed1 } from '../lib/format';
 import { collapseRepeats } from '../lib/repeat';
@@ -66,6 +66,19 @@ function GainBadge({ group }: { group: StepGroup }) {
 }
 
 export function PlanList({ plan }: { plan: PlanResult }) {
+  if (plan.closed) {
+    return (
+      <div className="card flex flex-col items-center gap-3 px-6 py-14 text-center">
+        <CalendarX className="size-10 text-white/50" />
+        <p className="text-lg font-semibold uppercase">Pas de saison Hardcore en cours</p>
+        <p className="max-w-md text-sm text-white/60">
+          La dernière saison Hardcore est terminée : rien à jouer en attendant la prochaine. Repasse
+          en mode Normal pour ton plan du jour.
+        </p>
+      </div>
+    );
+  }
+
   if (plan.groups.length === 0) {
     return (
       <div className="card flex flex-col items-center gap-3 px-6 py-14 text-center">

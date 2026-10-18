@@ -70,6 +70,12 @@ describe('message Discord', () => {
     expect(message.payload.allowed_mentions).toEqual({ parse: [], users: [] });
   });
 
+  it('signale une saison Hardcore terminée', () => {
+    const closed: PlanResult = { ...plan, closed: true, commands: [] };
+    const embed = (buildDiscordMessage(closed).payload.embeds as Record<string, unknown>[])[0]!;
+    expect(embed.description).toMatch(/Pas de saison Hardcore en cours/);
+  });
+
   it('garde la stratégie dans le lien vers l’interface', () => {
     const prudent: PlanResult = { ...plan, strategy: { id: 'prudent', label: 'Prudent' } };
     const message = buildDiscordMessage(prudent, { webUrl: 'https://ninja.example' });
@@ -219,7 +225,7 @@ describe('API HTTP', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.strategy).toBe('prudent');
-      expect(body.strategies).toHaveLength(6);
+      expect(body.strategies).toHaveLength(5);
       expect(body.strategies[0]).toEqual({
         id: 'equilibre',
         label: 'Équilibré',
@@ -306,12 +312,20 @@ describe('API HTTP', () => {
 
   it('borne les paramètres du planificateur', () => {
     expect(
-      parsePlannerQuery({ beamWidth: '0', branching: 'abc', keepExtra: '3', wLoreDust: '0.02' }),
+      parsePlannerQuery({
+        beamWidth: '0',
+        branching: 'abc',
+        keepExtra: '3',
+        keepForGolden: '0',
+        wLoreDust: '0.02',
+      }),
     ).toEqual({
       beamWidth: 1,
       keepExtra: 3,
+      keepForGolden: false,
       weights: { loreDust: 0.02 },
     });
+    expect(parsePlannerQuery({ keepForGolden: 'oui' })).toEqual({});
   });
 });
 

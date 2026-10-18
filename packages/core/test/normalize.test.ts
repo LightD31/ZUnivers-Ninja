@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   challengeActionFor,
   constellationLevel,
+  normalizeCatalog,
   normalizeFusion,
   normalizeInventory,
   normalizeLoot,
@@ -14,6 +15,24 @@ import { fixtureCatalog, fixturePlayer, rawCatalog, rawPlayer } from './helpers'
 const item = { ...rawCatalog().items[0]!, rarity: 3 };
 const entry = (quantity: number, shinyLevel: number, upgradeLevel: number): ApiInventoryEntry =>
   ({ item, quantity, shinyLevel, upgradeLevel }) as ApiInventoryEntry;
+
+describe('saison Hardcore', () => {
+  const settings = (done: boolean | undefined) => ({
+    ...rawCatalog(),
+    settings: { ...rawCatalog().settings, lastHardcoreSeasonDone: done },
+  });
+
+  it('ferme le mode Hardcore quand la dernière saison est terminée', () => {
+    expect(normalizeCatalog(settings(true), 'HARDCORE').settings.closed).toBe(true);
+    expect(normalizeCatalog(settings(false), 'HARDCORE').settings.closed).toBe(false);
+    // Information absente : le mode reste ouvert.
+    expect(normalizeCatalog(settings(undefined), 'HARDCORE').settings.closed).toBe(false);
+  });
+
+  it('ne ferme jamais le mode Normal', () => {
+    expect(normalizeCatalog(settings(true), 'NORMAL').settings.closed).toBe(false);
+  });
+});
 
 describe('inventaire', () => {
   it('sépare les cartes Constellation des exemplaires utilisables', () => {

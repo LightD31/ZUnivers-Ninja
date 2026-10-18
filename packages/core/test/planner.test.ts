@@ -61,6 +61,16 @@ describe('plan sur un joueur réel (fixtures)', () => {
   });
 });
 
+describe('saison Hardcore terminée', () => {
+  it('ne propose rien, même pas /journa', () => {
+    const closed = { ...catalog, settings: { ...catalog.settings, closed: true } };
+    const result = createPlan({ catalog: closed, player, now: NOW });
+    expect(result.closed).toBe(true);
+    expect(result.commands).toEqual([]);
+    expect(result.after).toEqual(result.before);
+  });
+});
+
 describe('recherche', () => {
   const ctx = (beamWidth: number) =>
     buildContext(catalog, player, NOW, resolveOptions({ beamWidth }));
@@ -417,6 +427,46 @@ describe('cas synthétiques', () => {
     ))
       expect(c).toMatch(/^\/im( évènement:\S.*)?$/);
   });
+
+  it.each([true, false])(
+    'ne recycle pas une carte pour la recréer ensuite (keepForGolden : %s)',
+    (keepForGolden) => {
+      // Dorée possédée, constellations normales au maximum : les normaux en trop servent à monter
+      // la constellation dorée. Les recycler pour en recréer coûtait plus cher, et sans l'option
+      // le plan ne garde que ceux qu'il enchante.
+      const a = makeItem(2001);
+      const plan = createPlan({
+        catalog: makeCatalog([a]),
+        player: makePlayer({
+          balances: { balance: 0, loreDust: 10_000, loreFragment: 0, upgradeDust: 0 },
+          inventory: Object.fromEntries([owned(a.id, 0, 6, 2), owned(a.id, 1, 1, 0)]),
+        }),
+        now: TEST_NOW,
+        options: { keepForGolden },
+      });
+      const has = (prefix: string) =>
+        plan.commands.some((c) => c.startsWith(prefix) && c.includes('2001'));
+      expect(has('/recyclage') && has('/création')).toBe(false);
+      expect(has('/enchantement')).toBe(true);
+    },
+  );
+
+  it.each([true, false])(
+    'ne recycle aucune carte recréée sur un joueur réel (keepForGolden : %s)',
+    (keepForGolden) => {
+      const result = createPlan({ catalog, player, now: NOW, options: { keepForGolden } });
+      const recycled = new Set(
+        result.steps
+          .filter((s) => s.kind === 'recycle')
+          .flatMap((s) => s.cards.filter((c) => c.shiny === 0).map((c) => c.itemId)),
+      );
+      const recrafted = result.steps
+        .filter((s) => s.kind === 'craft')
+        .flatMap((s) => s.cards.filter((c) => recycled.has(c.itemId)).map((c) => c.identifier));
+      expect(recrafted).toEqual([]);
+    },
+    30_000,
+  );
 
   it('respecte keepExtra pour les échanges', () => {
     const a = makeItem(1001, { upgradable: false, goldable: false });

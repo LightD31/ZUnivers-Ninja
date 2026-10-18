@@ -87,9 +87,11 @@ export function buildDiscordMessage(
   const linkParams = new URLSearchParams({ u: plan.player.name });
   if (plan.strategy.id !== DEFAULT_STRATEGY) linkParams.set('strategy', plan.strategy.id);
   const link = options.webUrl ? `${options.webUrl.replace(/\/+$/, '')}/?${linkParams}` : undefined;
-  const description = fitsInEmbed
-    ? block
-    : `Le plan compte ${plan.commands.length} commandes : il est joint en fichier.${link ? `\n[Voir le détail](${link})` : ''}`;
+  const description = plan.closed
+    ? 'Pas de saison Hardcore en cours : rien à jouer en attendant la prochaine.'
+    : fitsInEmbed
+      ? block
+      : `Le plan compte ${plan.commands.length} commandes : il est joint en fichier.${link ? `\n[Voir le détail](${link})` : ''}`;
 
   const mention =
     options.mention && plan.player.discordId

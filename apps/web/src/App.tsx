@@ -136,12 +136,7 @@ export function App() {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <Header
-        ruleSet={settings.ruleSet}
-        onRuleSet={(ruleSet) => setSettings((s) => ({ ...s, ruleSet }))}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onHome={goHome}
-      />
+      <Header onOpenSettings={() => setSettingsOpen(true)} onHome={goHome} />
 
       <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-9">
         {!user ? (
