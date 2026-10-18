@@ -158,6 +158,7 @@ export function normalizeCatalog(
       weeklyReward: raw.settings.weeklyReward,
       dailyLoreDust: raw.settings.dailyLoreDust,
       features: raw.settings.gameFeatures,
+      closed: ruleSet === 'HARDCORE' && raw.settings.lastHardcoreSeasonDone === true,
     },
     items,
     fusions: fusions.filter((f) => items[f.resultId] && f.inputs.every((i) => items[i.itemId])),

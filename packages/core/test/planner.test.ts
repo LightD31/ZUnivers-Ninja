@@ -61,6 +61,16 @@ describe('plan sur un joueur réel (fixtures)', () => {
   });
 });
 
+describe('saison Hardcore terminée', () => {
+  it('ne propose rien, même pas /journa', () => {
+    const closed = { ...catalog, settings: { ...catalog.settings, closed: true } };
+    const result = createPlan({ catalog: closed, player, now: NOW });
+    expect(result.closed).toBe(true);
+    expect(result.commands).toEqual([]);
+    expect(result.after).toEqual(result.before);
+  });
+});
+
 describe('recherche', () => {
   const ctx = (beamWidth: number) =>
     buildContext(catalog, player, NOW, resolveOptions({ beamWidth }));

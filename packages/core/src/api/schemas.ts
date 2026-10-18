@@ -61,6 +61,8 @@ export const SettingsSchema = z.looseObject({
   dailyLoreDust: num.default(10),
   gameFeatures: z.array(z.string()).default([]),
   currentEventId: z.string().nullish(),
+  /** La dernière saison Hardcore est terminée (aucune en cours). */
+  lastHardcoreSeasonDone: z.boolean().nullish(),
 });
 export type ApiSettings = z.infer<typeof SettingsSchema>;
 

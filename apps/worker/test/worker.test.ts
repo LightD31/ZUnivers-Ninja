@@ -70,6 +70,12 @@ describe('message Discord', () => {
     expect(message.payload.allowed_mentions).toEqual({ parse: [], users: [] });
   });
 
+  it('signale une saison Hardcore terminée', () => {
+    const closed: PlanResult = { ...plan, closed: true, commands: [] };
+    const embed = (buildDiscordMessage(closed).payload.embeds as Record<string, unknown>[])[0]!;
+    expect(embed.description).toMatch(/Pas de saison Hardcore en cours/);
+  });
+
   it('garde la stratégie dans le lien vers l’interface', () => {
     const prudent: PlanResult = { ...plan, strategy: { id: 'prudent', label: 'Prudent' } };
     const message = buildDiscordMessage(prudent, { webUrl: 'https://ninja.example' });

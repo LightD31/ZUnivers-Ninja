@@ -26,6 +26,7 @@ La v2 est une réécriture complète : TypeScript, aucune base de données, une 
   - constellations et carte Évolution ;
   - invocations et ascensions, estimées en espérance à partir des vrais taux de drop ;
   - défis de la semaine ;
+  - mode Hardcore : aucun conseil quand aucune saison n'est en cours ;
   - succès : collections (toutes les cartes d'une rareté, d'un pack, toutes les constellations…)
     et compteurs (recyclages, fusions, défis terminés, ascension du Vortex en cours).
 - **Interface web** :
