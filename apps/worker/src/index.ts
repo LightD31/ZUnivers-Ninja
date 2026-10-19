@@ -1,4 +1,5 @@
 import { serve } from '@hono/node-server';
+import { CURRENCY_LABEL, reserveLabel } from '@zuninja/core';
 import { Cron } from 'croner';
 import { loadConfig } from './config';
 import { logger, setLogLevel } from './logger';
@@ -52,6 +53,10 @@ async function main() {
           `\nGain : ${r.plan.gain.points > 0 ? '+' : ''}${Math.round(r.plan.gain.points)} points, +${r.plan.gain.expected.toFixed(1)} espérés`,
         );
         for (const line of r.plan.advice) console.log(`• ${line}`);
+        for (const kept of r.plan.horizon?.reserves ?? [])
+          console.log(
+            `• À garder : ${Math.round(kept.amount)} ${CURRENCY_LABEL[kept.currency]} · ${reserveLabel(kept)} · ~+${Math.round(kept.value)} points`,
+          );
       }
     }
     process.exitCode = results.some((r) => r.error) ? 1 : 0;

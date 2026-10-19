@@ -109,7 +109,7 @@ describe('message Discord', () => {
       .fields;
     expect(fields).toContainEqual({
       name: 'À garder',
-      value: "Cristaux d'histoire : `3\u202f000` pour le Vortex « ZLAN » du 02/11 (~+450 points)",
+      value: "Cristaux d'histoire : `3\u202f000` · Vortex « ZLAN » du 02/11 (prévu) · ~+450 points",
       inline: false,
     });
     const none = (buildDiscordMessage(plan).payload.embeds as { fields: { name: string }[] }[])[0]!;

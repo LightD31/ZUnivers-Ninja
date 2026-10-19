@@ -455,13 +455,6 @@ const frDate = (date: string) => date.slice(0, 10).split('-').reverse().join('/'
 
 /** Points espérés au moins pour signaler une monnaie gardée pour plus tard. */
 const RESERVE_MIN_POINTS = 1;
-/** Monnaies dans une phrase (« Garde 300 poudres… »). */
-const CURRENCY_WORD: Record<Currency, string> = {
-  balance: 'ZUMonnaie',
-  loreDust: 'poudres',
-  loreFragment: "cristaux d'histoire",
-  upgradeDust: "éclats d'étoile",
-};
 
 /** Monnaies gardées pour plus tard qui valent d'être signalées. */
 const shownReserves = (ctx: Context, after: State) =>
@@ -472,29 +465,12 @@ const shownReserves = (ctx: Context, after: State) =>
     : [];
 
 /**
- * Conseils de l'anticipation : monnaies gardées pour une période à venir, puis échéances proches
- * (fin du Vortex et de sa forge, évènement, défis de la semaine).
+ * Échéances proches de l'anticipation : fin du Vortex et de sa forge, évènement, défis de la
+ * semaine. Les monnaies gardées pour plus tard sont dans `PlanResult.horizon.reserves`, affichées
+ * en tête du plan plutôt que parmi les conseils.
  */
 function horizonAdvice(ctx: Context, after: State): string[] {
   const advice: string[] = [];
-  const percent = (p: number) => (p < 0.9 ? ` (prévision : ${Math.round(p * 100)} %)` : '');
-  for (const r of shownReserves(ctx, after)) {
-    const gain = `~+${fmt(r.value)} points espérés`;
-    const amount = `${fmt(r.amount)} ${CURRENCY_WORD[r.currency]}`;
-    if (r.kind === 'vortex')
-      advice.push(
-        `Garde ${amount} pour le Vortex « ${r.label} » prévu du ${frDate(r.begin)} au ${frDate(seasonLastDay(r))}${percent(r.probability)} : ${gain}.`,
-      );
-    else if (r.kind === 'ascension')
-      advice.push(
-        `Garde ${amount} pour les ${r.count} essais d'ascension encore à venir d'ici le ${frDate(seasonLastDay(r))} : ${gain}.`,
-      );
-    else
-      advice.push(
-        `Garde ${amount} pour l'évènement « ${r.label} » qui commence le ${frDate(r.begin)} : ${gain}.`,
-      );
-  }
-
   const today = gameClock(ctx.now).date;
   const when = (left: number) => (left === 0 ? 'ce soir' : 'demain soir');
   const season = ctx.catalog.season;

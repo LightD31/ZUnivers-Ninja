@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createPlan,
   curveValue,
+  reserveLabel,
   resolveOptions,
   withHorizon,
   type GameEvent,
@@ -73,6 +74,23 @@ describe('courbe de valeur de garde', () => {
   });
 });
 
+describe('libellé des monnaies gardées', () => {
+  it('donne la probabilité d’un Vortex incertain', () => {
+    const vortex = {
+      currency: 'loreFragment' as const,
+      kind: 'vortex' as const,
+      label: 'ZEvent',
+      begin: '2026-11-16',
+      end: '2026-11-30',
+      probability: 0.84,
+    };
+    expect(reserveLabel(vortex)).toBe('Vortex « ZEvent » du 16/11 (prévu · 84 %)');
+    expect(reserveLabel({ ...vortex, probability: 0.99 })).toBe(
+      'Vortex « ZEvent » du 16/11 (prévu)',
+    );
+  });
+});
+
 describe('cristaux et prochain Vortex', () => {
   // Vortex Autres en cours : trois cartes ★ de la TMCUP à créer, 1 point pour 50 cristaux.
   const tmcup = [1001, 1002, 1003].map((id) => eventItem(id, 'pack-tmcup', plain));
@@ -111,11 +129,9 @@ describe('cristaux et prochain Vortex', () => {
         amount: 400,
       }),
     ]);
-    expect(plan.advice).toContainEqual(
-      expect.stringMatching(
-        /^Garde 400 cristaux d'histoire pour le Vortex « ZLAN » prévu du 19\/10\/2026 au 01\/11\/2026/,
-      ),
-    );
+    expect(reserveLabel(plan.horizon!.reserves[0]!)).toBe('Vortex « ZLAN » du 19/10 (prévu)');
+    // Affiché en tête du plan, pas répété dans les conseils.
+    expect(plan.advice.some((a) => a.startsWith('Garde'))).toBe(false);
   });
 
   it('ne garde que ce que le prochain Vortex dépensera', () => {
@@ -174,11 +190,7 @@ describe('poudre et ascensions à venir', () => {
     expect(plan.horizon?.reserves).toEqual([
       expect.objectContaining({ currency: 'loreDust', kind: 'ascension', amount: 100, count: 14 }),
     ]);
-    expect(plan.advice).toContainEqual(
-      expect.stringMatching(
-        /^Garde 100 poudres pour les 14 essais d'ascension encore à venir d'ici le 18\/10\/2026/,
-      ),
-    );
+    expect(reserveLabel(plan.horizon!.reserves[0]!)).toBe("14 essais d'ascension d'ici le 18/10");
   });
 });
 
@@ -238,11 +250,7 @@ describe('évènement annoncé', () => {
         amount: 1000,
       }),
     ]);
-    expect(plan.advice).toContainEqual(
-      expect.stringMatching(
-        /^Garde 1\s000 ZUMonnaie pour l'évènement « zerator » qui commence le 13\/10\/2026/,
-      ),
-    );
+    expect(reserveLabel(plan.horizon!.reserves[0]!)).toBe('évènement « zerator » du 13/10');
   });
 
   it("n'attend pas un évènement annoncé au-delà de horizonEventDays", () => {

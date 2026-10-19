@@ -134,14 +134,15 @@ l'option »).
 
 ### 4.5 Ce que voit le joueur
 
-- **Conseils** :
-  - « Garde 400 cristaux d'histoire pour le Vortex « ZLAN » prévu du 19/10/2026 au 01/11/2026 :
-    ~+104 points espérés. »
-  - « Garde 100 poudres pour les 14 essais d'ascension encore à venir d'ici le 18/10/2026… »
-  - les échéances proches : dernier jour du Vortex et de sa forge (avec la prochaine ouverture
-    prévue du groupe), essais perdus ce soir, fin d'un évènement, défis pas terminés.
-- **Interface** : la case « Anticiper » sous la stratégie, et les prochains Vortex prévus dans
-  l'encadré Vortex.
+- **En tête du plan**, un encadré « À garder pour plus tard » : une ligne par monnaie gardée, par
+  exemple « 400 Cristaux · Vortex « ZLAN » du 19/10 (prévu) · ~+104 pts » ou « 100 Poudre · 14
+  essais d'ascension d'ici le 18/10 ». Le même libellé (`reserveLabel`) sert sur Discord et en
+  console. Un plan vide parce qu'il garde tout le dit, au lieu de « Rien à faire ».
+- **Conseils** : les échéances proches. Ce sont le dernier jour du Vortex et de sa forge (avec la
+  prochaine ouverture prévue du groupe), les essais perdus ce soir, la fin d'un évènement et les
+  défis pas terminés.
+- **Interface** : la case « Anticiper » sous la stratégie, ses réglages dans le panneau
+  « Réglages », et les prochains Vortex prévus dans l'encadré Vortex.
 - **Discord** : un champ « À garder ».
 - **API** : `?horizon=1` ; `HORIZON=true` côté serveur. Le plan JSON contient `horizon` (saisons
   prévues, monnaies gardées) et `stats.horizon` (périodes simulées, écartées, temps).

@@ -317,8 +317,9 @@ seulement leur poids fixe, mais aussi ce qu'elles rapporteront plus tard :
 
 Une dépense n'est faite aujourd'hui que si elle rapporte plus que ce que ses monnaies rapporteraient
 plus tard, et seulement pour la part qui sera vraiment dépensée : au-delà, une monnaie retrouve son
-poids. Les conseils disent ce qui est gardé et pour quoi, et signalent les échéances proches (fin du
-Vortex et de sa forge, fin d'un évènement ou des défis de la semaine). L'étude complète, avec ses
+poids. Un encadré « À garder pour plus tard », en tête du plan, dit ce qui est gardé et pour quoi ;
+les conseils signalent les échéances proches (fin du Vortex et de sa forge, fin d'un évènement ou
+des défis de la semaine). L'étude complète, avec ses
 limites, est dans [`docs/planification-temporelle.md`](docs/planification-temporelle.md).
 
 Trois réglages, dans le panneau « Réglages » de l'interface, l'API ou les variables d'environnement :

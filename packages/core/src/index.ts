@@ -61,7 +61,13 @@ export {
   type Step,
   type SearchNode,
 } from './engine/planner';
-export { buildHorizon, horizonReserves, withHorizon, type HorizonReserve } from './engine/horizon';
+export {
+  buildHorizon,
+  horizonReserves,
+  reserveLabel,
+  withHorizon,
+  type HorizonReserve,
+} from './engine/horizon';
 export {
   curveValue,
   holdCost,
