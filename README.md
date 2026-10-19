@@ -67,28 +67,29 @@ utilise un miroir :
 
 Toutes les variables sont facultatives, et documentées dans [`.env.example`](.env.example).
 
-| Variable                     | Défaut         | Rôle                                                                                                                                                                                                         |
-| ---------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ZU_USERS`                   | —              | Pseudos Discord à conseiller automatiquement, séparés par des virgules. Vide = interface web seule. Ajoute `:stratégie` pour choisir celle d'un joueur (ex : `alice:prudent,bob`).                           |
-| `RULESET`                    | `NORMAL`       | Mode de jeu : `NORMAL` ou `HARDCORE`.                                                                                                                                                                        |
-| `STRATEGY`                   | `equilibre`    | Stratégie par défaut (voir [Stratégies](#stratégies)).                                                                                                                                                       |
-| `CRON`                       | `*/30 * * * *` | Fréquence des conseils automatiques.                                                                                                                                                                         |
-| `TZ`                         | `Europe/Paris` | Fuseau du cron.                                                                                                                                                                                              |
-| `WEBHOOK_URL`                | —              | Webhook Discord où envoyer les conseils.                                                                                                                                                                     |
-| `DISCORD_MENTION`            | `false`        | Mentionne le joueur dans le message.                                                                                                                                                                         |
-| `JSON_WEBHOOK_URL`           | —              | Reçoit le plan complet en JSON (remplace l'ancien système de plugins).                                                                                                                                       |
-| `WEB_URL`                    | —              | URL publique de l'interface, utilisée pour les liens dans Discord.                                                                                                                                           |
-| `BEAM_WIDTH` / `BRANCHING`   | `8` / `4`      | Effort de recherche du planificateur.                                                                                                                                                                        |
-| `PLANNER_THREADS`            | `2`            | Threads de calcul : nombre de plans calculés en parallèle.                                                                                                                                                   |
-| `PLANNER_QUEUE_LIMIT`        | `4`            | Calculs en attente au-delà desquels l'API répond `503`.                                                                                                                                                      |
-| `PLANNER_TIME_LIMIT_SECONDS` | `20`           | Temps de recherche maximal par plan, ensuite la fin du plan est calculée en glouton (`0` = illimité).                                                                                                        |
-| `KEEP_EXTRA`                 | `0`            | Exemplaires gardés en plus pour les échanges.                                                                                                                                                                |
-| `KEEP_FOR_GOLDEN`            | `true`         | Garde les exemplaires normaux à enchanter pour la constellation dorée et les fusions dorées, même si elles ne sont pas rentables aujourd'hui. `false` : seuls ceux que le plan du jour enchante sont gardés. |
-| `SKIP_ACTIONS`               | —              | Actions que le plan ne propose jamais, séparées par des virgules (ex : `recycle,invoke` ; liste dans [API](#api)).                                                                                           |
-| `DRY_RUN`                    | `false`        | Calcule sans rien envoyer.                                                                                                                                                                                   |
-| `PORT`                       | `8080`         | Port HTTP.                                                                                                                                                                                                   |
-| `METRICS`                    | `true`         | Expose les métriques Prometheus sur `/metrics` (voir [Statistiques d'usage](#statistiques-dusage-prometheus--grafana)).                                                                                      |
-| `METRICS_TOKEN`              | —              | Jeton exigé sur `/metrics` (`Authorization: Bearer …`).                                                                                                                                                      |
+| Variable                     | Défaut         | Rôle                                                                                                                                                                               |
+| ---------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ZU_USERS`                   | —              | Pseudos Discord à conseiller automatiquement, séparés par des virgules. Vide = interface web seule. Ajoute `:stratégie` pour choisir celle d'un joueur (ex : `alice:prudent,bob`). |
+| `RULESET`                    | `NORMAL`       | Mode de jeu : `NORMAL` ou `HARDCORE`.                                                                                                                                              |
+| `STRATEGY`                   | `equilibre`    | Stratégie par défaut (voir [Stratégies](#stratégies)).                                                                                                                             |
+| `CRON`                       | `*/30 * * * *` | Fréquence des conseils automatiques.                                                                                                                                               |
+| `TZ`                         | `Europe/Paris` | Fuseau du cron.                                                                                                                                                                    |
+| `WEBHOOK_URL`                | —              | Webhook Discord où envoyer les conseils.                                                                                                                                           |
+| `DISCORD_MENTION`            | `false`        | Mentionne le joueur dans le message.                                                                                                                                               |
+| `JSON_WEBHOOK_URL`           | —              | Reçoit le plan complet en JSON (remplace l'ancien système de plugins).                                                                                                             |
+| `WEB_URL`                    | —              | URL publique de l'interface, utilisée pour les liens dans Discord.                                                                                                                 |
+| `BEAM_WIDTH` / `BRANCHING`   | `8` / `4`      | Effort de recherche du planificateur.                                                                                                                                              |
+| `PLANNER_THREADS`            | `2`            | Threads de calcul : nombre de plans calculés en parallèle.                                                                                                                         |
+| `PLANNER_QUEUE_LIMIT`        | `4`            | Calculs en attente au-delà desquels l'API répond `503`.                                                                                                                            |
+| `PLANNER_TIME_LIMIT_SECONDS` | `20`           | Temps de recherche maximal par plan, ensuite la fin du plan est calculée en glouton (`0` = illimité).                                                                              |
+| `KEEP_EXTRA`                 | `0`            | Exemplaires gardés en plus pour les échanges.                                                                                                                                      |
+| `KEEP_FOR_GOLDEN`            | `true`         | Garde les exemplaires normaux à enchanter pour la constellation dorée, même si elle n'est pas rentable aujourd'hui. `false` : seuls ceux que le plan du jour enchante sont gardés. |
+| `KEEP_FOR_GOLDEN_FUSIONS`    | `true`         | Garde aussi les exemplaires normaux à enchanter pour les fusions dorées encore à faire (les 100 pièces du puzzle doré, par exemple).                                               |
+| `SKIP_ACTIONS`               | —              | Actions que le plan ne propose jamais, séparées par des virgules (ex : `recycle,invoke` ; liste dans [API](#api)).                                                                 |
+| `DRY_RUN`                    | `false`        | Calcule sans rien envoyer.                                                                                                                                                         |
+| `PORT`                       | `8080`         | Port HTTP.                                                                                                                                                                         |
+| `METRICS`                    | `true`         | Expose les métriques Prometheus sur `/metrics` (voir [Statistiques d'usage](#statistiques-dusage-prometheus--grafana)).                                                            |
+| `METRICS_TOKEN`              | —              | Jeton exigé sur `/metrics` (`Authorization: Bearer …`).                                                                                                                            |
 
 ### API
 
@@ -96,7 +97,7 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
   - `ruleset` ;
   - `strategy` (`equilibre`, `prudent`, `epargne`, `vortex` ou `collectionneur`) ;
   - `beamWidth`, `branching` et `keepExtra` ;
-  - `keepForGolden` (`1` ou `0`) ;
+  - `keepForGolden` et `keepForGoldenFusions` (`1` ou `0`) ;
   - `skip`, les actions refusées séparées par des virgules (`recycle`, `craft`, `enchant`,
     `fusion`, `constellation`, `invoke`, `ascension`, `evolution`). Présent même vide, il remplace
     `SKIP_ACTIONS` : `skip=` les autorise toutes ;
@@ -216,8 +217,8 @@ joueur dans `ZU_USERS`.
 
 Les réglages explicites l'emportent toujours sur la stratégie : avec
 `?strategy=epargne&wBalance=0.002`, la ZUMonnaie garde sa valeur par défaut. Côté serveur,
-`KEEP_EXTRA`, `KEEP_FOR_GOLDEN`, `SKIP_ACTIONS`, `BEAM_WIDTH` et `BRANCHING` s'appliquent aussi
-par-dessus la stratégie.
+`KEEP_EXTRA`, `KEEP_FOR_GOLDEN`, `KEEP_FOR_GOLDEN_FUSIONS`, `SKIP_ACTIONS`, `BEAM_WIDTH` et
+`BRANCHING` s'appliquent aussi par-dessus la stratégie.
 
 ## Comment fonctionne le planificateur
 
@@ -233,9 +234,10 @@ par-dessus la stratégie.
    - 1 exemplaire gardé ;
    - ceux nécessaires aux fusions encore à faire ;
    - les doublons qui serviront aux niveaux de constellation restants ;
-   - un exemplaire à enchanter si la version dorée manque, et (case « Garder les normales à
-     enchanter », cochée par défaut) ceux à enchanter pour la constellation dorée et les fusions
-     dorées encore à faire.
+   - un exemplaire à enchanter si la version dorée manque, puis ceux à enchanter pour la
+     constellation dorée (case « Garder les normales à enchanter ») et pour les fusions dorées
+     encore à faire (case « Garder les composants des fusions dorées »). Les deux cases sont
+     cochées par défaut.
 
    Seul le surplus est recyclé.
 

@@ -41,11 +41,17 @@ export interface PlannerOptions {
   /** Exemplaires supplémentaires à garder pour les échanges. */
   keepExtra: number;
   /**
-   * Garde les exemplaires normaux à enchanter pour la constellation dorée et les fusions dorées,
-   * même si elles ne sont pas rentables aujourd'hui. Sinon, seuls ceux que le plan enchante sont gardés : un plan ne recycle
+   * Garde les exemplaires normaux à enchanter pour la constellation dorée, même si elle n'est pas
+   * rentable aujourd'hui. Sinon, seuls ceux que le plan enchante sont gardés : un plan ne recycle
    * jamais une carte pour la recréer ensuite, avec ou sans cette option.
    */
   keepForGolden: boolean;
+  /**
+   * Garde aussi les exemplaires normaux à enchanter pour les fusions dorées encore à faire (les
+   * 100 pièces du puzzle doré, par exemple). Un joueur avec beaucoup de fusions dorées à faire
+   * garde alors une normale de plus par composant.
+   */
+  keepForGoldenFusions: boolean;
   /** Actions autorisées. */
   allow: {
     recycle: boolean;
@@ -74,6 +80,7 @@ export const DEFAULT_OPTIONS: PlannerOptions = {
   newCardBonus: 0,
   keepExtra: 0,
   keepForGolden: true,
+  keepForGoldenFusions: true,
   allow: {
     recycle: true,
     craft: true,

@@ -10,8 +10,9 @@ export interface Reserve {
   /** Exemplaires nécessaires aux fusions dont le résultat manque encore. */
   fusion: number;
   /**
-   * Exemplaires normaux gardés pour les enchanter : la dorée si elle manque, puis (option
-   * `keepForGolden`) les dorées qui manquent à sa constellation et aux fusions dorées à faire.
+   * Exemplaires normaux gardés pour les enchanter : la dorée si elle manque, puis les dorées qui
+   * manquent à sa constellation (option `keepForGolden`) et aux fusions dorées à faire (option
+   * `keepForGoldenFusions`).
    */
   enchant: number;
   /** Doublons nécessaires pour monter la constellation au maximum. */
@@ -44,10 +45,12 @@ export function reserveFor(ctx: Context, state: State, itemId: string, shiny: Sh
   // et recyclage. Gardés même si la constellation ou la fusion dorée n'est pas rentable
   // aujourd'hui : elle le deviendra (les 100 pièces du puzzle doré, par exemple).
   if (shiny === 0 && isEnchantable(ctx, item)) {
+    const { keepForGolden, keepForGoldenFusions } = ctx.options;
     let goldens = 1;
-    if (ctx.options.keepForGolden) {
+    if (keepForGolden || keepForGoldenFusions) {
       const golden = reserveFor(ctx, state, itemId, 1);
-      goldens += golden.constellation + golden.fusion;
+      if (keepForGolden) goldens += golden.constellation;
+      if (keepForGoldenFusions) goldens += golden.fusion;
     }
     reserve.enchant = Math.max(0, goldens - getCard(state, itemId, 1).copies);
   }

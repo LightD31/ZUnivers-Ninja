@@ -327,15 +327,17 @@ describe('API HTTP', () => {
         branching: 'abc',
         keepExtra: '3',
         keepForGolden: '0',
+        keepForGoldenFusions: '0',
         wLoreDust: '0.02',
       }),
     ).toEqual({
       beamWidth: 1,
       keepExtra: 3,
       keepForGolden: false,
+      keepForGoldenFusions: false,
       weights: { loreDust: 0.02 },
     });
-    expect(parsePlannerQuery({ keepForGolden: 'oui' })).toEqual({});
+    expect(parsePlannerQuery({ keepForGolden: 'oui', keepForGoldenFusions: 'oui' })).toEqual({});
     // Les actions inconnues sont ignorées, et `skip=` vide les autorise toutes.
     expect(parsePlannerQuery({ skip: 'recycle,invoke,yolo' }).allow).toMatchObject({
       recycle: false,

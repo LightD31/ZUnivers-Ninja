@@ -22,6 +22,7 @@ export interface Settings {
   branching: number;
   keepExtra: number;
   keepForGolden: boolean;
+  keepForGoldenFusions: boolean;
   /** Actions que le joueur ne veut pas faire : le plan ne les propose jamais. */
   skip: OptionalAction[];
   weights: Balances;
@@ -34,6 +35,7 @@ export const DEFAULT_SETTINGS: Settings = {
   branching: DEFAULT_OPTIONS.branching,
   keepExtra: DEFAULT_OPTIONS.keepExtra,
   keepForGolden: DEFAULT_OPTIONS.keepForGolden,
+  keepForGoldenFusions: DEFAULT_OPTIONS.keepForGoldenFusions,
   skip: [],
   weights: { ...DEFAULT_OPTIONS.weights },
 };
@@ -63,6 +65,7 @@ export function withStrategy(s: Settings, strategy: StrategyId): Settings {
     strategy,
     keepExtra: preset.keepExtra,
     keepForGolden: preset.keepForGolden,
+    keepForGoldenFusions: preset.keepForGoldenFusions,
     weights: { ...preset.weights },
   };
 }
@@ -73,6 +76,7 @@ export function isCustomized(s: Settings): boolean {
   return (
     s.keepExtra !== preset.keepExtra ||
     s.keepForGolden !== preset.keepForGolden ||
+    s.keepForGoldenFusions !== preset.keepForGoldenFusions ||
     OPTIONAL_ACTIONS.some((a) => s.skip.includes(a) === preset.allow[a]) ||
     CURRENCIES.some((c) => s.weights[c] !== preset.weights[c])
   );
@@ -85,6 +89,7 @@ export function plannerOptions(s: Settings): PlannerOptionsInput {
     branching: s.branching,
     keepExtra: s.keepExtra,
     keepForGolden: s.keepForGolden,
+    keepForGoldenFusions: s.keepForGoldenFusions,
     allow: allowExcept(s.skip),
     weights: s.weights,
   };

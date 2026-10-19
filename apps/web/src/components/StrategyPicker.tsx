@@ -163,7 +163,25 @@ export function StrategyPicker({ settings, onChange }: Props) {
           <span>
             <span className="block text-white/70">Garder les normales à enchanter</span>
             <span className="block text-xs text-white/50">
-              pour les constellations et fusions dorées, au lieu de les recycler
+              pour monter les constellations dorées au lieu de les recycler
+            </span>
+          </span>
+        </label>
+        <label
+          className={`flex items-start gap-2 ${recycles ? 'cursor-pointer' : 'opacity-40'}`}
+          title="Décoché, les composants des fusions dorées ne sont gardés que pour leur propre dorée : plus de poudre tout de suite, mais des cartes à recréer pour faire la fusion dorée."
+        >
+          <input
+            type="checkbox"
+            checked={settings.keepForGoldenFusions}
+            disabled={!recycles}
+            onChange={(e) => onChange({ ...settings, keepForGoldenFusions: e.target.checked })}
+            className="mt-0.5 size-4 shrink-0 accent-zu-500"
+          />
+          <span>
+            <span className="block text-white/70">Garder les composants des fusions dorées</span>
+            <span className="block text-xs text-white/50">
+              les normales à enchanter pour les fusions dorées qui te manquent
             </span>
           </span>
         </label>

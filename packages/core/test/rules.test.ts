@@ -169,8 +169,13 @@ describe('réserve', () => {
       enchant: 100,
       constellation: 0,
     });
-    const without = makeContext(catalog, player, { keepForGolden: false });
-    expect(reserveFor(without, initialState(without), piece.id, 0).enchant).toBe(0);
+    // Chaque case ne garde que pour son propre usage.
+    const noConstellation = makeContext(catalog, player, { keepForGolden: false });
+    expect(reserveFor(noConstellation, initialState(noConstellation), piece.id, 0).enchant).toBe(
+      100,
+    );
+    const noFusion = makeContext(catalog, player, { keepForGoldenFusions: false });
+    expect(reserveFor(noFusion, initialState(noFusion), piece.id, 0).enchant).toBe(0);
   });
 
   it('garde les normaux à enchanter pour la constellation dorée, même avec la dorée', () => {
