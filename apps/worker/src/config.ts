@@ -68,6 +68,7 @@ const EnvSchema = z.object({
   BRANCHING: optionalNumber,
   KEEP_EXTRA: optionalNumber,
   KEEP_FOR_GOLDEN: optionalBool,
+  KEEP_FOR_GOLDEN_FUSIONS: optionalBool,
   /** Actions que le plan ne propose jamais, séparées par des virgules. */
   SKIP_ACTIONS: z
     .string()
@@ -171,6 +172,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       ...(e.BRANCHING !== undefined ? { branching: e.BRANCHING } : {}),
       ...(e.KEEP_EXTRA !== undefined ? { keepExtra: e.KEEP_EXTRA } : {}),
       ...(e.KEEP_FOR_GOLDEN !== undefined ? { keepForGolden: e.KEEP_FOR_GOLDEN } : {}),
+      ...(e.KEEP_FOR_GOLDEN_FUSIONS !== undefined
+        ? { keepForGoldenFusions: e.KEEP_FOR_GOLDEN_FUSIONS }
+        : {}),
       ...(e.SKIP_ACTIONS.length > 0 ? { allow: allowExcept(e.SKIP_ACTIONS) } : {}),
     },
     threads: e.PLANNER_THREADS,

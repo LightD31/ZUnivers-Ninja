@@ -141,10 +141,41 @@ describe('réserve', () => {
     expect(reserveFor(ctx, initialState(ctx), r4.id, 0)).toEqual({
       keep: 1,
       fusion: 2,
-      // La dorée, puis 4 dorées pour sa constellation (rareté 4).
-      enchant: 5,
+      // La dorée, puis 4 dorées pour sa constellation (rareté 4) et 2 pour la fusion dorée.
+      enchant: 7,
       constellation: 3,
     });
+  });
+
+  it('garde les normaux à enchanter pour une fusion dorée, même avec la fusion normale', () => {
+    // Le puzzle : 100 pièces (sans constellation) pour la fusion, déjà faite en normal.
+    const piece = makeItem(1139, { upgradable: false });
+    const puzzle = makeItem(2129, { isFusion: true, upgradable: false });
+    const catalog = makeCatalog([piece, puzzle], {
+      fusions: [{ resultId: puzzle.id, inputs: [{ itemId: piece.id, quantity: 100 }] }],
+    });
+    const player = makePlayer({
+      inventory: Object.fromEntries([
+        owned(piece.id, 0, 18),
+        owned(piece.id, 1, 1),
+        owned(puzzle.id, 0, 1),
+      ]),
+    });
+    const ctx = makeContext(catalog, player);
+    // La dorée gardée + 100 pour la fusion dorée, moins celle possédée : rien n'est recyclable.
+    expect(reserveFor(ctx, initialState(ctx), piece.id, 0)).toEqual({
+      keep: 1,
+      fusion: 0,
+      enchant: 100,
+      constellation: 0,
+    });
+    // Chaque case ne garde que pour son propre usage.
+    const noConstellation = makeContext(catalog, player, { keepForGolden: false });
+    expect(reserveFor(noConstellation, initialState(noConstellation), piece.id, 0).enchant).toBe(
+      100,
+    );
+    const noFusion = makeContext(catalog, player, { keepForGoldenFusions: false });
+    expect(reserveFor(noFusion, initialState(noFusion), piece.id, 0).enchant).toBe(0);
   });
 
   it('garde les normaux à enchanter pour la constellation dorée, même avec la dorée', () => {

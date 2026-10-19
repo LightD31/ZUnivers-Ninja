@@ -46,6 +46,12 @@ export interface PlannerOptions {
    * jamais une carte pour la recréer ensuite, avec ou sans cette option.
    */
   keepForGolden: boolean;
+  /**
+   * Garde aussi les exemplaires normaux à enchanter pour les fusions dorées encore à faire (les
+   * 100 pièces du puzzle doré, par exemple). Un joueur avec beaucoup de fusions dorées à faire
+   * garde alors une normale de plus par composant.
+   */
+  keepForGoldenFusions: boolean;
   /** Actions autorisées. */
   allow: {
     recycle: boolean;
@@ -74,6 +80,7 @@ export const DEFAULT_OPTIONS: PlannerOptions = {
   newCardBonus: 0,
   keepExtra: 0,
   keepForGolden: true,
+  keepForGoldenFusions: true,
   allow: {
     recycle: true,
     craft: true,

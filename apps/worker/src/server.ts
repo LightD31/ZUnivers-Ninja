@@ -56,6 +56,8 @@ export function parsePlannerQuery(query: Record<string, string | undefined>): Pl
   if (keepExtra !== undefined) options.keepExtra = keepExtra;
   if (query.keepForGolden === '0' || query.keepForGolden === '1')
     options.keepForGolden = query.keepForGolden === '1';
+  if (query.keepForGoldenFusions === '0' || query.keepForGoldenFusions === '1')
+    options.keepForGoldenFusions = query.keepForGoldenFusions === '1';
   // Actions refusées, séparées par des virgules. Présent (même vide), il remplace celles du
   // serveur : `skip=` les autorise toutes.
   if (query.skip !== undefined)
