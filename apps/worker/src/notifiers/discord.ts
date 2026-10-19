@@ -2,6 +2,7 @@ import {
   CURRENCY_LABEL,
   DEFAULT_STRATEGY,
   SHINY_LABEL,
+  reserveLabel,
   type Currency,
   type PlanResult,
   type Shiny,
@@ -18,8 +19,6 @@ const FIELD_LIMIT = 1024;
 const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR');
 const signed = (n: number) => `${Math.round(n) > 0 ? '+' : ''}${fmt(n)}`;
 const clip = (s: string, max: number) => (s.length <= max ? s : `${s.slice(0, max - 1)}…`);
-/** AAAA-MM-JJ → JJ/MM */
-const day = (date: string) => date.slice(5, 10).split('-').reverse().join('/');
 
 export interface DiscordOptions {
   webUrl?: string | undefined;
@@ -71,13 +70,7 @@ export function buildDiscordMessage(
   // Option `horizon` : monnaies gardées pour plus tard, sinon un plan qui attend paraît incomplet.
   const reserves = (plan.horizon?.reserves ?? []).map(
     (r) =>
-      `${CURRENCY_LABEL[r.currency]} : \`${fmt(r.amount)}\` pour ${
-        r.kind === 'vortex'
-          ? `le Vortex « ${r.label} » du ${day(r.begin)}`
-          : r.kind === 'ascension'
-            ? `${r.count} essais d'ascension à venir`
-            : `l'évènement « ${r.label} » du ${day(r.begin)}`
-      } (~+${fmt(r.value)} points)`,
+      `${CURRENCY_LABEL[r.currency]} : \`${fmt(r.amount)}\` · ${reserveLabel(r)} · ~+${fmt(r.value)} points`,
   );
 
   const fields = [

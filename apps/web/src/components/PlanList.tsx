@@ -1,7 +1,7 @@
-import type { Currency, PlanResult, StepGroup } from '@zuninja/core';
-import { CalendarX, CircleCheck, Trophy } from 'lucide-react';
+import { reserveLabel, type Currency, type PlanResult, type StepGroup } from '@zuninja/core';
+import { CalendarX, CircleCheck, Hourglass, Trophy } from 'lucide-react';
 import { CURRENCY_DOT, CURRENCY_SHORT, KIND_ICON, KIND_TINT } from '../lib/game';
-import { signed, signed1 } from '../lib/format';
+import { fmt, signed, signed1 } from '../lib/format';
 import { collapseRepeats } from '../lib/repeat';
 import { CardChip, CardThumb } from './CardChip';
 import { CopyButton } from './CopyButton';
@@ -65,6 +65,34 @@ function GainBadge({ group }: { group: StepGroup }) {
   );
 }
 
+/**
+ * Monnaies que le plan garde pour plus tard (option « Anticiper ») : en tête du plan, pour
+ * comprendre tout de suite pourquoi il ne dépense pas tout.
+ */
+function Reserves({ plan, className }: { plan: PlanResult; className: string }) {
+  const reserves = plan.horizon?.reserves ?? [];
+  if (reserves.length === 0) return null;
+  return (
+    <div className={`space-y-2 border-white/[0.08] bg-gold/[0.04] px-4 py-3 ${className}`}>
+      <p className="label flex items-center gap-1.5 text-gold">
+        <Hourglass className="size-3.5" />À garder pour plus tard
+      </p>
+      <ul className="space-y-1.5 text-sm">
+        {reserves.map((r, i) => (
+          <li key={i} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="inline-flex items-center gap-1.5 font-semibold tabular-nums">
+              <span className={`size-1.5 rounded-full ${CURRENCY_DOT[r.currency]}`} />
+              {fmt(r.amount)} {CURRENCY_SHORT[r.currency]}
+            </span>
+            <span className="text-white/75">{reserveLabel(r)}</span>
+            <span className="text-xs text-zu-400 tabular-nums">~{signed(r.value)} pts</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function PlanList({ plan }: { plan: PlanResult }) {
   if (plan.closed) {
     return (
@@ -80,14 +108,22 @@ export function PlanList({ plan }: { plan: PlanResult }) {
   }
 
   if (plan.groups.length === 0) {
+    // Plan vide parce qu'il garde des monnaies pour plus tard : le dire, plutôt que « rien à faire ».
+    const waiting = (plan.horizon?.reserves.length ?? 0) > 0;
     return (
-      <div className="card flex flex-col items-center gap-3 px-6 py-14 text-center">
-        <CircleCheck className="size-10 text-zu-500" />
-        <p className="text-lg font-semibold uppercase">Rien à faire pour le moment</p>
-        <p className="max-w-md text-sm text-white/60">
-          Aucune action ne fait progresser ta collection avec tes ressources actuelles. Reviens
-          après ton prochain /journa !
-        </p>
+      <div className="card overflow-hidden">
+        <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
+          <CircleCheck className="size-10 text-zu-500" />
+          <p className="text-lg font-semibold uppercase">
+            {waiting ? "Rien à dépenser aujourd'hui" : 'Rien à faire pour le moment'}
+          </p>
+          <p className="max-w-md text-sm text-white/60">
+            {waiting
+              ? 'Tes monnaies rapporteront plus tard : ton plan les garde pour la suite.'
+              : 'Aucune action ne fait progresser ta collection avec tes ressources actuelles. Reviens après ton prochain /journa !'}
+          </p>
+        </div>
+        <Reserves plan={plan} className="border-t" />
       </div>
     );
   }
@@ -104,6 +140,7 @@ export function PlanList({ plan }: { plan: PlanResult }) {
         </div>
         <CopyButton text={plan.commands.join('\n')} label="Tout copier" className="ml-auto" />
       </div>
+      <Reserves plan={plan} className="border-b" />
       <ol className="divide-y divide-white/[0.06]">
         {collapseRepeats(plan.groups).map(({ group, repeat, first }, index) => {
           const Icon = KIND_ICON[group.kind];

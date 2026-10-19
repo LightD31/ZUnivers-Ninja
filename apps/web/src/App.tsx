@@ -7,6 +7,7 @@ import {
 } from '@zuninja/core';
 import { CircleAlert, Clock, Crown, RefreshCw, Sparkles, Swords, Target, Zap } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Achievements } from './components/Achievements';
 import { Collection } from './components/Collection';
 import { Header, Logo } from './components/Header';
 import { PlanList } from './components/PlanList';
@@ -24,7 +25,7 @@ type Status =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
   | { kind: 'done'; plan: PlanResult };
-type Tab = 'plan' | 'collection';
+type Tab = 'plan' | 'collection' | 'achievements';
 
 const RECENT_KEY = 'zuninja:recent';
 
@@ -132,6 +133,8 @@ export function App() {
   };
 
   const plan = status.kind === 'done' ? status.plan : null;
+  // Succès que le plan débloque : signalés sur l'onglet Succès.
+  const unlocked = plan?.achievements.filter((a) => a.after >= a.max).length ?? 0;
   const suggestions = [...new Set([...tracked, ...recent])].slice(0, 8);
 
   return (
@@ -183,6 +186,7 @@ export function App() {
                       [
                         ['plan', 'Plan'],
                         ['collection', 'Collection'],
+                        ['achievements', 'Succès'],
                       ] as const
                     ).map(([key, label]) => (
                       <button
@@ -191,13 +195,21 @@ export function App() {
                         role="tab"
                         aria-selected={tab === key}
                         onClick={() => setTab(key)}
-                        className={`rounded-t px-5 text-sm tracking-[0.06em] uppercase transition ${
+                        className={`rounded-t px-3 text-sm tracking-[0.06em] whitespace-nowrap uppercase transition sm:px-5 ${
                           tab === key
                             ? 'h-12 bg-ink-700 font-semibold text-white'
                             : 'h-10 bg-ink-800/85 text-white/65 hover:text-white'
                         }`}
                       >
                         {label}
+                        {key === 'achievements' && unlocked > 0 && (
+                          <span
+                            className="ml-2 inline-block rounded bg-gold/15 px-1.5 align-[1px] text-xs font-semibold text-gold tabular-nums"
+                            title={`${unlocked} succès débloqué${unlocked > 1 ? 's' : ''} par le plan`}
+                          >
+                            {unlocked}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -205,7 +217,13 @@ export function App() {
                 </div>
                 <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
                   <div className="min-w-0">
-                    {tab === 'plan' ? <PlanList plan={plan} /> : <Collection plan={plan} />}
+                    {tab === 'plan' ? (
+                      <PlanList plan={plan} />
+                    ) : tab === 'collection' ? (
+                      <Collection plan={plan} />
+                    ) : (
+                      <Achievements plan={plan} />
+                    )}
                   </div>
                   <Summary plan={plan} />
                 </div>

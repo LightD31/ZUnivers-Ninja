@@ -2,7 +2,8 @@ import { CURRENCY_LABEL, type Currency, type PlanResult, type Shiny } from '@zun
 import { Lightbulb, Mountain, Target, Trophy } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { CURRENCY_DOT, SHINY_BAR, SHINY_NAME } from '../lib/game';
-import { fmt, formatDate, pct, signed } from '../lib/format';
+import { fmt, formatDate, signed } from '../lib/format';
+import { Progress } from './Progress';
 
 function Section({
   title,
@@ -21,31 +22,6 @@ function Section({
       </h3>
       {children}
     </section>
-  );
-}
-
-function Progress({
-  before,
-  after,
-  total,
-  bar,
-}: {
-  before: number;
-  after: number;
-  total: number;
-  bar: string;
-}) {
-  return (
-    <div className="relative h-1.5 overflow-hidden rounded-full bg-white/[0.12]">
-      <div
-        className={`absolute inset-y-0 left-0 rounded-full opacity-35 ${bar}`}
-        style={{ width: `${pct(after, total)}%` }}
-      />
-      <div
-        className={`absolute inset-y-0 left-0 rounded-full ${bar}`}
-        style={{ width: `${pct(before, total)}%` }}
-      />
-    </div>
   );
 }
 
@@ -157,39 +133,24 @@ export function Summary({ plan }: { plan: PlanResult }) {
         </Section>
       )}
 
-      {plan.achievements.length > 0 && (
-        <Section title="Succès" icon={<Trophy className="size-3.5" />}>
-          {unlocked.length > 0 && (
-            <p className="mb-3 text-sm">
-              Le plan débloque{' '}
-              {unlocked.map((a, i) => (
-                <span key={i}>
-                  {i > 0 && (i === unlocked.length - 1 ? ' et ' : ', ')}
-                  <span className="font-semibold text-gold">{a.name}</span>
+      {unlocked.length > 0 && (
+        <Section title="Succès débloqués" icon={<Trophy className="size-3.5" />}>
+          <p className="mb-3 text-sm">
+            Le plan rapporte{' '}
+            <span className="font-semibold text-zu-400">{signed(plan.gain.achievements)}</span>{' '}
+            points de succès.
+          </p>
+          <ul className="space-y-2 text-sm">
+            {unlocked.map((a, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <Trophy className="mt-0.5 size-3.5 shrink-0 text-gold" />
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium text-gold">{a.name}</span>
+                  <span className="block text-xs text-white/60">
+                    +{fmt(a.score)} points
+                    {a.reward > 0 ? ` · +${fmt(a.reward)} poudre` : ''}
+                  </span>
                 </span>
-              ))}{' '}
-              : <span className="font-semibold text-zu-400">{signed(plan.gain.achievements)}</span>{' '}
-              points de succès.
-            </p>
-          )}
-          <ul className="space-y-3 text-sm">
-            {plan.achievements.map((a, i) => (
-              <li key={i} className="space-y-1.5">
-                <div className="flex items-baseline gap-2">
-                  <span className={a.after >= a.max ? 'font-medium text-gold' : 'font-medium'}>
-                    {a.after >= a.max && <Trophy className="mr-1 inline size-3.5 align-[-2px]" />}
-                    {a.name}
-                  </span>
-                  <span className="ml-auto shrink-0 font-mono text-xs tabular-nums">
-                    {a.after}/{a.max}
-                  </span>
-                </div>
-                <p className="text-xs text-white/60">{a.description}</p>
-                <Progress before={a.before} after={a.after} total={a.max} bar="bg-gold" />
-                <p className="text-xs text-white/60">
-                  {a.after >= a.max ? 'Débloqué par le plan · ' : ''}+{fmt(a.score)} points
-                  {a.reward > 0 ? ` · +${fmt(a.reward)} poudre` : ''}
-                </p>
               </li>
             ))}
           </ul>

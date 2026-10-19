@@ -389,3 +389,24 @@ export function horizonReserves(horizon: Horizon, balances: Balances): HorizonRe
   }
   return [...reserves].sort(([a], [b]) => a - b).map(([, r]) => r);
 }
+
+/** AAAA-MM-JJ → JJ/MM */
+const shortDate = (date: string) => date.slice(5, 10).split('-').reverse().join('/');
+
+/**
+ * Pour quoi une monnaie est gardée, en quelques mots : « Vortex « ZLAN » du 02/11 (prévu) »,
+ * « 14 essais d'ascension d'ici le 18/10 », « évènement « zerator » du 13/10 ». Même texte dans
+ * l'interface, sur Discord et en console.
+ */
+export function reserveLabel(r: HoldSource): string {
+  switch (r.kind) {
+    case 'vortex': {
+      const chance = r.probability < 0.9 ? ` · ${Math.round(r.probability * 100)} %` : '';
+      return `Vortex « ${r.label} » du ${shortDate(r.begin)} (prévu${chance})`;
+    }
+    case 'ascension':
+      return `${r.count ?? 0} essais d'ascension d'ici le ${shortDate(seasonLastDay(r))}`;
+    case 'event':
+      return `évènement « ${r.label} » du ${shortDate(r.begin)}`;
+  }
+}
