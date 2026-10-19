@@ -22,6 +22,22 @@ const ACTION_LABEL: Record<OptionalAction, string> = {
   evolution: 'Évolution',
 };
 
+/** Usages des normales gardées pour les enchanter (ligne « Dorées »). */
+const GOLDEN_KEEPS = [
+  {
+    key: 'keepForGolden',
+    label: 'Constellations',
+    title:
+      'Garde les normales à enchanter pour monter la constellation dorée. Décoché, seules celles que le plan du jour enchante sont gardées : plus de poudre tout de suite, mais des cartes à recréer les jours suivants.',
+  },
+  {
+    key: 'keepForGoldenFusions',
+    label: 'Fusions',
+    title:
+      'Garde les normales à enchanter pour les fusions dorées qui te manquent (les 100 pièces du puzzle doré, par exemple). Décoché : plus de poudre tout de suite, mais des cartes à recréer pour faire la fusion dorée.',
+  },
+] as const satisfies readonly { key: keyof Settings; label: string; title: string }[];
+
 const LABEL = 'mr-1 w-20 shrink-0 text-xs tracking-[0.06em] text-white/60 uppercase';
 
 const choice = (checked: boolean) =>
@@ -149,43 +165,35 @@ export function StrategyPicker({ settings, onChange }: Props) {
             <Plus className="size-3.5" />
           </button>
         </div>
-        <label
-          className={`flex items-start gap-2 ${recycles ? 'cursor-pointer' : 'opacity-40'}`}
-          title="Décoché, seules les normales que le plan du jour enchante sont gardées : plus de poudre tout de suite, mais des cartes à recréer les jours suivants pour les enchanter."
-        >
-          <input
-            type="checkbox"
-            checked={settings.keepForGolden}
-            disabled={!recycles}
-            onChange={(e) => onChange({ ...settings, keepForGolden: e.target.checked })}
-            className="mt-0.5 size-4 shrink-0 accent-zu-500"
-          />
-          <span>
-            <span className="block text-white/70">Garder les normales à enchanter</span>
-            <span className="block text-xs text-white/50">
-              pour monter les constellations dorées au lieu de les recycler
-            </span>
-          </span>
-        </label>
-        <label
-          className={`flex items-start gap-2 ${recycles ? 'cursor-pointer' : 'opacity-40'}`}
-          title="Décoché, les composants des fusions dorées ne sont gardés que pour leur propre dorée : plus de poudre tout de suite, mais des cartes à recréer pour faire la fusion dorée."
-        >
-          <input
-            type="checkbox"
-            checked={settings.keepForGoldenFusions}
-            disabled={!recycles}
-            onChange={(e) => onChange({ ...settings, keepForGoldenFusions: e.target.checked })}
-            className="mt-0.5 size-4 shrink-0 accent-zu-500"
-          />
-          <span>
-            <span className="block text-white/70">Garder les composants des fusions dorées</span>
-            <span className="block text-xs text-white/50">
-              les normales à enchanter pour les fusions dorées qui te manquent
-            </span>
-          </span>
-        </label>
       </div>
+      <div
+        className={`flex flex-wrap items-center gap-1.5 ${recycles ? '' : 'opacity-40'}`}
+        role="group"
+        aria-label="Garder pour les dorées"
+      >
+        <span className={LABEL}>Dorées</span>
+        {GOLDEN_KEEPS.map(({ key, label, title }) => (
+          <label
+            key={key}
+            title={title}
+            className={`${choice(settings[key])} inline-flex items-center gap-1.5 ${recycles ? 'cursor-pointer' : ''}`}
+          >
+            <input
+              type="checkbox"
+              checked={settings[key]}
+              disabled={!recycles}
+              onChange={(e) => onChange({ ...settings, [key]: e.target.checked })}
+              className="size-3.5 accent-zu-500"
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+      <p className="text-xs text-white/60">
+        {recycles
+          ? 'Garde les normales à enchanter pour les dorées cochées, au lieu de les recycler.'
+          : "Sans recyclage, rien n'est recyclé : ces cases ne changent rien."}
+      </p>
     </div>
   );
 }
