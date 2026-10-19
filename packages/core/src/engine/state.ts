@@ -12,6 +12,7 @@ import {
 } from '../model/types';
 import { goalCardMet, type AchievementCounter } from './achievements';
 import type { Context } from './context';
+import { holdValue } from './hold';
 import { OverlayMap } from './overlay';
 
 export interface ChallengeProgress {
@@ -260,12 +261,14 @@ export function progressChallenges(
 
 /**
  * Valeur d'un état pour le planificateur : points (collection et succès) + espérance (réduite
- * selon `evFactor`) + bonus des cartes nouvelles + monnaies pondérées.
+ * selon `evFactor`) + bonus des cartes nouvelles + monnaies pondérées, et avec l'option `horizon`
+ * ce que les monnaies gardées rapporteront plus tard.
  */
 export function stateValue(ctx: Context, state: State): number {
   const { evFactor, newCardBonus, weights } = ctx.options;
   let value = state.points + state.achievementPoints + state.ev * evFactor;
   if (newCardBonus > 0) value += newCardBonus * (state.owned + state.expectedNewCards * evFactor);
   for (const c of CURRENCIES) value += state.balances[c] * weights[c];
+  if (ctx.horizon) value += holdValue(ctx.horizon.curves, state.balances);
   return value;
 }

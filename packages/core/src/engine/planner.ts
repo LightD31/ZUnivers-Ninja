@@ -14,6 +14,7 @@ import { goalCardMet } from './achievements';
 import { actionKey, applyAction, type Action, type Applied, type RecycleEntry } from './actions';
 import { canRecycle, craftCost, enchantCost, forgeCurrency, type Context } from './context';
 import { CARD_SEPARATOR, COMMAND_MAX_LENGTH, cardsToken, commandPrefix } from './commands';
+import { holdCost } from './hold';
 import { getCard, initialState, stateValue, type State } from './state';
 
 export interface Step {
@@ -727,7 +728,16 @@ export function candidates(ctx: Context, state: State, affordableOnly = true): C
     }
   }
 
-  return out;
+  // Option `horizon` : une dépense coûte aussi ce que ses monnaies auraient rapporté plus tard
+  // (prochain Vortex, ascensions à venir…). Celles que l'avenir bat ne sont plus explorées.
+  const curves = ctx.horizon?.curves;
+  if (!curves) return out;
+  const kept: Candidate[] = [];
+  for (const c of out) {
+    const gain = c.gain - holdCost(curves, state.balances, c.price);
+    if (gain > EPSILON) kept.push(gain === c.gain ? c : { ...c, gain });
+  }
+  return kept;
 }
 
 /**
@@ -778,16 +788,29 @@ export function shadowPrices(ctx: Context, state: State): Balances {
   return rollout(ctx, start).prices;
 }
 
+/** Dépense faite par `rollout` dans une seule monnaie, et ce qu'elle rapporte au-delà de son prix. */
+export interface LedgerEntry {
+  currency: Currency;
+  amount: number;
+  /** Gain net du poids de la monnaie dépensée. */
+  net: number;
+}
+
 /**
  * Dépenses gloutonnes, la plus rentable par unité d'abord, jusqu'à ce que chaque monnaie manque :
  * donne le prix d'opportunité des monnaies (`shadowPrices`) et un plan complet, comparé à celui du
- * faisceau.
+ * faisceau. `ledger` reçoit chaque dépense faite : l'option `horizon` s'en sert pour savoir ce
+ * que rapporteraient les monnaies dans une période à venir.
  */
-function rollout(ctx: Context, start: SearchNode): { prices: Balances; node: SearchNode } {
+export function rollout(
+  ctx: Context,
+  start: SearchNode,
+  { maxSteps = ctx.options.maxDepth, ledger }: { maxSteps?: number; ledger?: LedgerEntry[] } = {},
+): { prices: Balances; node: SearchNode } {
   const prices: Balances = { balance: 0, loreDust: 0, loreFragment: 0, upgradeDust: 0 };
   const open = new Set<Currency>(CURRENCIES);
   let node = start;
-  for (let step = 0; step < ctx.options.maxDepth && open.size > 0; step++) {
+  for (let step = 0; step < maxSteps && open.size > 0; step++) {
     // Dépense la plus rentable par unité, dans une seule monnaie (seules à donner un prix lisible).
     let best: { candidate: Candidate; currency: Currency; perUnit: number } | null = null;
     for (const c of candidates(ctx, node.state, false)) {
@@ -817,6 +840,11 @@ function rollout(ctx: Context, start: SearchNode): { prices: Balances; node: Sea
       open.delete(best.currency);
       continue;
     }
+    ledger?.push({
+      currency: best.currency,
+      amount: best.candidate.price[best.currency]!,
+      net: best.candidate.gain,
+    });
     node = closure(ctx, next, touched);
   }
   return { prices, node };

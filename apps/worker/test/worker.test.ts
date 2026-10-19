@@ -40,6 +40,8 @@ describe('configuration', () => {
     expect(config.strategies).toEqual({ alice: 'prudent', carol: 'vortex' });
     expect(config.planner.strategy).toBe('epargne');
     expect(loadConfig({}).planner.strategy).toBeUndefined();
+    expect(loadConfig({}).planner.horizon).toBeUndefined();
+    expect(loadConfig({ HORIZON: 'true' }).planner.horizon).toBe(true);
   });
 
   it('refuse une stratégie inconnue', () => {
@@ -78,6 +80,36 @@ describe('message Discord', () => {
     expect(embed.url).toBe('https://ninja.example/?u=alexpresso');
     expect((embed.footer as { text: string }).text).toMatch(/^Stratégie : Équilibré/);
     expect(message.payload.allowed_mentions).toEqual({ parse: [], users: [] });
+  });
+
+  it('dit ce que le plan garde pour plus tard (option horizon)', () => {
+    const waiting: PlanResult = {
+      ...plan,
+      horizon: {
+        seasons: [],
+        reserves: [
+          {
+            currency: 'loreFragment',
+            kind: 'vortex',
+            label: 'ZLAN',
+            begin: '2026-11-02',
+            end: '2026-11-16',
+            probability: 0.99,
+            amount: 3000,
+            value: 450,
+          },
+        ],
+      },
+    };
+    const fields = (buildDiscordMessage(waiting).payload.embeds as { fields: unknown[] }[])[0]!
+      .fields;
+    expect(fields).toContainEqual({
+      name: 'À garder',
+      value: "Cristaux d'histoire : `3\u202f000` pour le Vortex « ZLAN » du 02/11 (~+450 points)",
+      inline: false,
+    });
+    const none = (buildDiscordMessage(plan).payload.embeds as { fields: { name: string }[] }[])[0]!;
+    expect(none.fields.map((f) => f.name)).not.toContain('À garder');
   });
 
   it('signale une saison Hardcore terminée', () => {
@@ -328,6 +360,7 @@ describe('API HTTP', () => {
         keepExtra: '3',
         keepForGolden: '0',
         keepForGoldenFusions: '0',
+        horizon: '1',
         wLoreDust: '0.02',
       }),
     ).toEqual({
@@ -335,9 +368,12 @@ describe('API HTTP', () => {
       keepExtra: 3,
       keepForGolden: false,
       keepForGoldenFusions: false,
+      horizon: true,
       weights: { loreDust: 0.02 },
     });
-    expect(parsePlannerQuery({ keepForGolden: 'oui', keepForGoldenFusions: 'oui' })).toEqual({});
+    expect(
+      parsePlannerQuery({ keepForGolden: 'oui', keepForGoldenFusions: 'oui', horizon: 'oui' }),
+    ).toEqual({});
     // Les actions inconnues sont ignorées, et `skip=` vide les autorise toutes.
     expect(parsePlannerQuery({ skip: 'recycle,invoke,yolo' }).allow).toMatchObject({
       recycle: false,

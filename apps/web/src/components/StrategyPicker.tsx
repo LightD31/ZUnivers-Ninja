@@ -194,6 +194,26 @@ export function StrategyPicker({ settings, onChange }: Props) {
           ? 'Garde les normales à enchanter pour les dorées cochées, au lieu de les recycler.'
           : "Sans recyclage, rien n'est recyclé : ces cases ne changent rien."}
       </p>
+      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Anticipation">
+        <span className={LABEL}>Anticiper</span>
+        <label
+          title="Simule les prochains Vortex (groupe prévu d'après ton historique), les essais d'ascension encore à venir et les évènements déjà annoncés : une monnaie qui y rapportera plus est gardée au lieu d'être dépensée aujourd'hui."
+          className={`${choice(settings.horizon)} inline-flex cursor-pointer items-center gap-1.5`}
+        >
+          <input
+            type="checkbox"
+            checked={settings.horizon}
+            onChange={(e) => onChange({ ...settings, horizon: e.target.checked })}
+            className="size-3.5 accent-zu-500"
+          />
+          Prochains Vortex et évènements
+        </label>
+      </div>
+      <p className="text-xs text-white/60">
+        {settings.horizon
+          ? "Expérimental : le plan garde les monnaies qui rapporteront plus au prochain Vortex, aux essais d'ascension à venir ou à un évènement annoncé."
+          : "Coche pour garder les monnaies qui rapporteront plus plus tard au lieu de les dépenser aujourd'hui."}
+      </p>
     </div>
   );
 }

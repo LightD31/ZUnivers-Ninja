@@ -177,6 +177,8 @@ export interface Challenge {
   max: number;
   /** Action du planificateur qui fait progresser ce défi, `null` si non planifiable (échange…). */
   action: ChallengeAction;
+  /** Fin de la semaine du défi (AAAA-MM-JJTHH:MM:SS, heure française), si l'API la donne. */
+  end?: string;
 }
 
 /** Succès pas encore obtenu. Le planificateur en déduit l'objectif depuis la description. */
@@ -189,6 +191,15 @@ export interface Achievement {
   rewardLoreDust: number;
   current: number;
   max: number;
+}
+
+/** Saison de Vortex à laquelle le joueur a participé. */
+export interface TowerSeasonLog {
+  index: number;
+  towerName: string;
+  /** Dates au format AAAA-MM-JJ, fin exclue (c'est le début de la saison suivante). */
+  begin: string;
+  end: string;
 }
 
 export interface LootDay {
@@ -220,6 +231,11 @@ export interface Player {
    * tenter ensuite. Égal au nombre d'étages : le sommet est atteint.
    */
   tower: { floorsClimbed: number; logCount: number } | null;
+  /**
+   * Saisons de Vortex auxquelles le joueur a participé, triées par index : sert à prévoir le groupe
+   * des prochains Vortex (l'API ne donne que la saison en cours).
+   */
+  towerHistory: TowerSeasonLog[];
   evolution: {
     costs: number[];
     steps: { itemId: string; name: string; rarity: number; score: number; owned: boolean }[];

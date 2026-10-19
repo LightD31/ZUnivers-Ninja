@@ -23,6 +23,8 @@ export interface Settings {
   keepExtra: number;
   keepForGolden: boolean;
   keepForGoldenFusions: boolean;
+  /** Anticipe les prochains Vortex et évènements : un choix du joueur, gardé d'une stratégie à l'autre. */
+  horizon: boolean;
   /** Actions que le joueur ne veut pas faire : le plan ne les propose jamais. */
   skip: OptionalAction[];
   weights: Balances;
@@ -36,6 +38,7 @@ export const DEFAULT_SETTINGS: Settings = {
   keepExtra: DEFAULT_OPTIONS.keepExtra,
   keepForGolden: DEFAULT_OPTIONS.keepForGolden,
   keepForGoldenFusions: DEFAULT_OPTIONS.keepForGoldenFusions,
+  horizon: DEFAULT_OPTIONS.horizon,
   skip: [],
   weights: { ...DEFAULT_OPTIONS.weights },
 };
@@ -77,6 +80,7 @@ export function isCustomized(s: Settings): boolean {
     s.keepExtra !== preset.keepExtra ||
     s.keepForGolden !== preset.keepForGolden ||
     s.keepForGoldenFusions !== preset.keepForGoldenFusions ||
+    s.horizon !== preset.horizon ||
     OPTIONAL_ACTIONS.some((a) => s.skip.includes(a) === preset.allow[a]) ||
     CURRENCIES.some((c) => s.weights[c] !== preset.weights[c])
   );
@@ -90,6 +94,7 @@ export function plannerOptions(s: Settings): PlannerOptionsInput {
     keepExtra: s.keepExtra,
     keepForGolden: s.keepForGolden,
     keepForGoldenFusions: s.keepForGoldenFusions,
+    horizon: s.horizon,
     allow: allowExcept(s.skip),
     weights: s.weights,
   };

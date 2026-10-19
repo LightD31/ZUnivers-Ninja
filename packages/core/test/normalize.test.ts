@@ -134,6 +134,19 @@ describe('joueur', () => {
     expect(catalog.season?.group).toBe('Classique');
     expect(catalog.config[4]?.[1]).toEqual({ recycle: 2000, craft: 4000 });
   });
+
+  it("garde l'historique des Vortex et la fin des défis", () => {
+    const player = fixturePlayer();
+    const indexes = player.towerHistory.map((s) => s.index);
+    expect(indexes).toEqual([...indexes].sort((a, b) => a - b));
+    expect(player.towerHistory.at(-1)).toEqual({
+      index: 111,
+      towerName: 'Ascension de RPZ 2021',
+      begin: '2026-06-22',
+      end: '2026-07-06',
+    });
+    expect(player.challenges[0]?.end).toBe('2026-10-11T23:59:59');
+  });
 });
 
 describe('Vortex', () => {

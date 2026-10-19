@@ -6,6 +6,18 @@ export * from './model/normalize';
 export * from './model/fetch';
 export * from './rules/constants';
 export { gameClock, ascensionCredits } from './rules/time';
+export {
+  addDays,
+  forecastSeasons,
+  likelyGroup,
+  lootUntil,
+  nextTower,
+  predictedSeason,
+  remainingAscensionCredits,
+  seasonLastDay,
+  vortexGroups,
+  type SeasonForecast,
+} from './rules/calendar';
 export { reserveFor, reserveTotal, type Reserve } from './rules/reserve';
 export { boosterOptions, invocationEV, ascensionEV, type BoosterOption } from './rules/random';
 export {
@@ -42,9 +54,27 @@ export {
   candidates,
   closure,
   nodeSteps,
+  rollout,
+  type LedgerEntry,
   type Step,
   type SearchNode,
 } from './engine/planner';
+export {
+  HORIZON_DISCOUNT,
+  buildHorizon,
+  horizonReserves,
+  withHorizon,
+  type HorizonReserve,
+} from './engine/horizon';
+export {
+  curveValue,
+  holdCost,
+  holdValue,
+  type HoldCurve,
+  type HoldCurves,
+  type HoldSource,
+  type Horizon,
+} from './engine/hold';
 export {
   createPlan,
   replay,
@@ -52,6 +82,7 @@ export {
   groupSteps,
   sortInvocations,
   type StepGroup,
+  type PlanHorizon,
   type PlanResult,
   type PlanStep,
   type PlanCard,

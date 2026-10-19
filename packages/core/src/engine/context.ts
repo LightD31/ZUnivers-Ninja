@@ -10,6 +10,7 @@ import {
   type Shiny,
 } from '../model/types';
 import { resolveAchievements, type AchievementGoal } from './achievements';
+import type { Horizon } from './hold';
 import { DEFAULT_STRATEGY, STRATEGIES, isStrategy, type StrategyId } from './strategies';
 
 export interface PlannerOptions {
@@ -52,6 +53,12 @@ export interface PlannerOptions {
    * garde alors une normale de plus par composant.
    */
   keepForGoldenFusions: boolean;
+  /**
+   * Anticipe les prochains Vortex, les essais d'ascension à venir et les évènements annoncés : une
+   * monnaie qui rapportera plus tard vaut plus qu'en dépense peu rentable aujourd'hui, et le plan
+   * la garde (voir `horizon.ts`).
+   */
+  horizon: boolean;
   /** Actions autorisées. */
   allow: {
     recycle: boolean;
@@ -81,6 +88,7 @@ export const DEFAULT_OPTIONS: PlannerOptions = {
   keepExtra: 0,
   keepForGolden: true,
   keepForGoldenFusions: true,
+  horizon: false,
   allow: {
     recycle: true,
     craft: true,
@@ -166,6 +174,13 @@ export interface Context {
   achievements: AchievementGoal[];
   /** Succès de collection concernés par chaque carte (index dans `achievements`). */
   achievementsByItem: Map<string, { index: number; shiny: Shiny | null }[]>;
+  /** Valeur de garde des monnaies (option `horizon`), calculée une fois par plan. */
+  horizon?: Horizon;
+  /**
+   * Simulation d'une période à venir (voir `horizon.ts`) : seules ses nouveautés sont proposées,
+   * les packs que le Vortex prévu ouvre à la forge et l'évènement annoncé.
+   */
+  futureWindow?: { packs: Set<string>; events: Set<string> };
 }
 
 export function buildContext(
@@ -248,7 +263,9 @@ export const forgeCurrency = (item: Item): Currency =>
 
 /** Les cartes d'évènement ne sont forgeables / enchantables que pendant leur Vortex (source : /forge). */
 export const isForgeableNow = (ctx: Context, item: Item) =>
-  item.isClassic || ctx.forgeablePacks.has(item.packId);
+  ctx.futureWindow
+    ? ctx.futureWindow.packs.has(item.packId)
+    : item.isClassic || ctx.forgeablePacks.has(item.packId);
 
 export function craftCost(ctx: Context, item: Item): number | undefined {
   if (!item.craftable || item.isFusion || item.isStar || !isForgeableNow(ctx, item))

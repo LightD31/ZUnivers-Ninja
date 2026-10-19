@@ -214,6 +214,24 @@ export function Summary({ plan }: { plan: PlanResult }) {
           <p className="mt-2 text-xs text-white/60">
             Forge ouverte aux cartes du groupe « {plan.season.group} ».
           </p>
+          {plan.horizon && plan.horizon.seasons.length > 0 && (
+            <div className="mt-3 border-t border-white/[0.08] pt-3">
+              <p className="mb-1.5 text-xs text-white/60">Prochains Vortex (prévision)</p>
+              <ul className="space-y-1 text-sm">
+                {plan.horizon.seasons.map((s) => (
+                  <li key={s.begin} className="flex items-baseline gap-2">
+                    <span className="text-white/75">{s.group}</span>
+                    {s.probability < 0.9 && (
+                      <span className="text-xs text-white/45">{fmt(s.probability * 100)} %</span>
+                    )}
+                    <span className="ml-auto font-mono text-xs text-white/45 tabular-nums">
+                      {formatDate(s.begin)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Section>
       )}
 

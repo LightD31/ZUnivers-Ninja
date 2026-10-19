@@ -111,6 +111,7 @@ export function makePlayer(overrides: Partial<Player> = {}): Player {
     loot: [{ date: '2026-10-11', daily: 1, weekly: 1 }],
     lootStreak: 1,
     tower: null,
+    towerHistory: [],
     evolution: null,
     tradesLeft: 2,
     invokeBeforePity: null,
