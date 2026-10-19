@@ -794,6 +794,8 @@ export interface LedgerEntry {
   amount: number;
   /** Gain net du poids de la monnaie dépensée. */
   net: number;
+  /** Actions de la dépense. */
+  actions: Action[];
 }
 
 /**
@@ -844,6 +846,7 @@ export function rollout(
       currency: best.currency,
       amount: best.candidate.price[best.currency]!,
       net: best.candidate.gain,
+      actions: best.candidate.actions,
     });
     node = closure(ctx, next, touched);
   }

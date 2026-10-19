@@ -101,6 +101,7 @@ describe('message Discord', () => {
             probability: 0.99,
             amount: 3000,
             value: 450,
+            preview: [],
           },
         ],
       },

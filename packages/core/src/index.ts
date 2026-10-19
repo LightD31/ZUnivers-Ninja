@@ -85,6 +85,7 @@ export {
   sortInvocations,
   type StepGroup,
   type PlanHorizon,
+  type PlanReserve,
   type PlanResult,
   type PlanStep,
   type PlanCard,

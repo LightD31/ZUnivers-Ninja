@@ -130,6 +130,11 @@ describe('cristaux et prochain Vortex', () => {
       }),
     ]);
     expect(reserveLabel(plan.horizon!.reserves[0]!)).toBe('Vortex « ZLAN » du 19/10 (prévu)');
+    // Ce que le Vortex ZLAN fera de ces cristaux : enchanter la normale, monter la constellation dorée.
+    expect(plan.horizon!.reserves[0]!.preview.map((g) => g.command)).toEqual([
+      '/enchantement carte:1101',
+      '/constellation carte:1101+',
+    ]);
     // Affiché en tête du plan, pas répété dans les conseils.
     expect(plan.advice.some((a) => a.startsWith('Garde'))).toBe(false);
   });
@@ -191,6 +196,9 @@ describe('poudre et ascensions à venir', () => {
       expect.objectContaining({ currency: 'loreDust', kind: 'ascension', amount: 100, count: 14 }),
     ]);
     expect(reserveLabel(plan.horizon!.reserves[0]!)).toBe("14 essais d'ascension d'ici le 18/10");
+    const preview = plan.horizon!.reserves[0]!.preview;
+    expect(preview).toHaveLength(14);
+    expect(new Set(preview.map((g) => g.command))).toEqual(new Set(['/as']));
   });
 });
 
@@ -251,6 +259,10 @@ describe('évènement annoncé', () => {
       }),
     ]);
     expect(reserveLabel(plan.horizon!.reserves[0]!)).toBe('évènement « zerator » du 13/10');
+    expect(plan.horizon!.reserves[0]!.preview[0]).toMatchObject({
+      command: '/im évènement:zerator',
+      title: 'Invocation « zerator »',
+    });
   });
 
   it("n'attend pas un évènement annoncé au-delà de horizonEventDays", () => {

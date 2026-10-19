@@ -1,4 +1,5 @@
 import type { SeasonForecast } from '../rules/calendar';
+import type { Action } from './actions';
 import { CURRENCIES, type Balances, type Currency } from '../model/types';
 
 /**
@@ -45,6 +46,8 @@ export interface HoldSource {
   probability: number;
   /** Essais d'ascension encore à créditer (source `ascension`). */
   count?: number;
+  /** Ce que la simulation de la période y fait avec ces monnaies (aperçu, plafonné). */
+  actions: Action[];
 }
 
 export interface Horizon {

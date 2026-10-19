@@ -122,7 +122,16 @@ export interface PlanHorizon {
   /** Prochains Vortex : dates (fin exclue), groupe le plus probable et sa probabilité. */
   seasons: { begin: string; end: string; group: string; probability: number }[];
   /** Monnaies que le plan garde pour une période à venir. */
-  reserves: HorizonReserve[];
+  reserves: PlanReserve[];
+}
+
+/** Monnaies gardées pour une période à venir, et ce que la simulation de cette période y fait. */
+export interface PlanReserve extends Omit<HorizonReserve, 'actions'> {
+  /**
+   * Commandes prévues pour cette période, regroupées comme le plan, avec la collection
+   * d'aujourd'hui : à recalculer quand la période arrive.
+   */
+  preview: StepGroup[];
 }
 
 export interface PlanResult {
@@ -463,6 +472,24 @@ const shownReserves = (ctx: Context, after: State) =>
       )
     : [];
 
+/** Monnaies gardées pour plus tard, avec les commandes prévues pour chaque période. */
+function planReserves(ctx: Context, after: State): PlanReserve[] {
+  return shownReserves(ctx, after).map(({ actions, ...reserve }) => {
+    const steps = actions.map((action) => {
+      const step = describe(ctx, { action, gain: 0, balanceDelta: {}, auto: false }, []);
+      // L'évènement annoncé n'est pas encore proposé aujourd'hui : `describe` ne le trouve pas.
+      return action.kind === 'invoke' && reserve.kind === 'event'
+        ? {
+            ...step,
+            title: `Invocation « ${reserve.label} »`,
+            command: commandLine('invoke', reserve.label),
+          }
+        : step;
+    });
+    return { ...reserve, preview: groupSteps(steps) };
+  });
+}
+
 /**
  * Échéances proches de l'anticipation : fin du Vortex et de sa forge, évènement, défis de la
  * semaine. Les monnaies gardées pour plus tard sont dans `PlanResult.horizon.reserves`, affichées
@@ -768,7 +795,7 @@ export function createPlan({
             const group = likelyGroup(f);
             return { begin: f.begin, end: f.end, group, probability: f.groups[group] ?? 0 };
           }),
-          reserves: shownReserves(ctx, finalState),
+          reserves: planReserves(ctx, finalState),
         }
       : null,
     season: season
