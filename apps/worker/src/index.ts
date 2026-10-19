@@ -1,5 +1,5 @@
 import { serve } from '@hono/node-server';
-import { CURRENCY_LABEL, reserveLabel } from '@zuninja/core';
+import { CURRENCY_LABEL, reserveLabel, type Currency } from '@zuninja/core';
 import { Cron } from 'croner';
 import { loadConfig } from './config';
 import { logger, setLogLevel } from './logger';
@@ -52,6 +52,10 @@ async function main() {
         console.log(
           `\nGain : ${r.plan.gain.points > 0 ? '+' : ''}${Math.round(r.plan.gain.points)} points, +${r.plan.gain.expected.toFixed(1)} espérés`,
         );
+        const balances = (Object.keys(r.plan.after.balances) as Currency[])
+          .map((c) => `${CURRENCY_LABEL[c]} ${Math.round(r.plan!.after.balances[c])}`)
+          .join(' · ');
+        console.log(`Solde après le plan : ${balances}`);
         for (const line of r.plan.advice) console.log(`• ${line}`);
         for (const kept of r.plan.horizon?.reserves ?? [])
           console.log(
