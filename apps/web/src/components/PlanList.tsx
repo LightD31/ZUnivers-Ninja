@@ -1,5 +1,11 @@
-import { reserveLabel, type Currency, type PlanResult, type StepGroup } from '@zuninja/core';
-import { CalendarX, CircleCheck, Hourglass, Trophy } from 'lucide-react';
+import {
+  reserveLabel,
+  type Currency,
+  type PlanReserve,
+  type PlanResult,
+  type StepGroup,
+} from '@zuninja/core';
+import { CalendarX, ChevronRight, CircleCheck, Hourglass, Trophy } from 'lucide-react';
 import { CURRENCY_DOT, CURRENCY_SHORT, KIND_ICON, KIND_TINT } from '../lib/game';
 import { fmt, signed, signed1 } from '../lib/format';
 import { collapseRepeats } from '../lib/repeat';
@@ -66,6 +72,47 @@ function GainBadge({ group }: { group: StepGroup }) {
 }
 
 /**
+ * Commandes prévues pour une période à venir : simulées avec la collection d'aujourd'hui, à
+ * titre indicatif (le plan sera recalculé quand la période arrivera).
+ */
+function Preview({ reserve }: { reserve: PlanReserve }) {
+  if (reserve.preview.length === 0) return null;
+  return (
+    <div className="mt-2 ml-5 space-y-2 border-l border-white/[0.12] pl-3">
+      <p className="text-xs text-white/60">
+        Prévision faite avec ta collection d'aujourd'hui : à refaire quand{' '}
+        {reserve.kind === 'vortex'
+          ? 'le Vortex ouvrira'
+          : reserve.kind === 'event'
+            ? "l'évènement commencera"
+            : 'les essais seront crédités'}
+        .
+      </p>
+      <ol className="space-y-2">
+        {collapseRepeats(reserve.preview).map(({ group, repeat, first }) => (
+          <li key={first} className="space-y-1">
+            <p className="text-xs font-medium text-white/80">
+              {group.title}
+              {repeat > 1 && <span className="ml-1.5 font-mono text-zu-400">×{repeat}</span>}
+            </p>
+            <code className="block overflow-x-auto font-mono text-xs whitespace-nowrap text-white/70 [scrollbar-width:thin]">
+              {group.command}
+            </code>
+            {group.cards.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {group.cards.slice(0, MAX_CHIPS).map((c) => (
+                  <CardChip key={`${c.itemId}:${c.shiny}`} card={c} />
+                ))}
+              </div>
+            )}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+/**
  * Monnaies que le plan garde pour plus tard (option « Anticiper ») : en tête du plan, pour
  * comprendre tout de suite pourquoi il ne dépense pas tout.
  */
@@ -79,13 +126,22 @@ function Reserves({ plan, className }: { plan: PlanResult; className: string }) 
       </p>
       <ul className="space-y-1.5 text-sm">
         {reserves.map((r, i) => (
-          <li key={i} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="inline-flex items-center gap-1.5 font-semibold tabular-nums">
-              <span className={`size-1.5 rounded-full ${CURRENCY_DOT[r.currency]}`} />
-              {fmt(r.amount)} {CURRENCY_SHORT[r.currency]}
-            </span>
-            <span className="text-white/75">{reserveLabel(r)}</span>
-            <span className="text-xs text-zu-400 tabular-nums">~{signed(r.value)} pts</span>
+          <li key={i}>
+            <details className="group">
+              <summary className="flex cursor-pointer list-none flex-wrap items-baseline gap-x-2 gap-y-0.5 [&::-webkit-details-marker]:hidden">
+                <ChevronRight className="size-3.5 shrink-0 self-center text-white/45 transition group-open:rotate-90" />
+                <span className="inline-flex items-center gap-1.5 font-semibold tabular-nums">
+                  <span className={`size-1.5 rounded-full ${CURRENCY_DOT[r.currency]}`} />
+                  {fmt(r.amount)} {CURRENCY_SHORT[r.currency]}
+                </span>
+                <span className="text-white/75">{reserveLabel(r)}</span>
+                <span className="text-xs text-zu-400 tabular-nums">~{signed(r.value)} pts</span>
+                <span className="text-xs text-white/45 underline-offset-2 group-hover:underline">
+                  voir le plan prévu
+                </span>
+              </summary>
+              <Preview reserve={r} />
+            </details>
           </li>
         ))}
       </ul>

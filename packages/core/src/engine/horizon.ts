@@ -19,7 +19,7 @@ import {
   type Player,
   type Season,
 } from '../model/types';
-import { applyAction } from './actions';
+import { applyAction, type Action } from './actions';
 import { buildContext, rarityConfig, type Context, type PlannerOptions } from './context';
 import { holdCurve, type HoldCurves, type HoldSource, type HoldStep, type Horizon } from './hold';
 import { closure, rollout, type LedgerEntry } from './planner';
@@ -58,7 +58,10 @@ export function withHorizon(ctx: Context): Context {
 }
 
 /** Paliers d'une source, avant d'être fondus dans la courbe de sa monnaie. */
-type Entries = { amount: number; value: number }[];
+type Entries = { amount: number; value: number; actions: Action[] }[];
+
+/** Actions gardées au plus par période pour l'aperçu de ce qui y est prévu. */
+const PREVIEW_ACTIONS = 60;
 
 /**
  * Valeur de garde des monnaies depuis l'état de départ du plan (actions sans regret faites).
@@ -83,12 +86,16 @@ export function buildHorizon(ctx: Context, root: State): Horizon {
   const offsets: Partial<Balances> = {};
   const stats = { windows: 0, skipped: 0, durationMs: 0 };
 
-  const add = (source: HoldSource, entries: Entries, income: Partial<Balances>) => {
+  const add = (
+    source: Omit<HoldSource, 'actions'>,
+    entries: Entries,
+    income: Partial<Balances>,
+  ) => {
     const kept = entries.filter((e) => e.amount > 0 && e.value > 0);
     if (kept.length === 0) return;
     const index = sources.length;
-    sources.push(source);
-    for (const e of kept) steps.push({ ...e, source: index });
+    sources.push({ ...source, actions: kept.flatMap((e) => e.actions).slice(0, PREVIEW_ACTIONS) });
+    for (const { amount, value } of kept) steps.push({ amount, value, source: index });
     // Revenu certain avant la première période qui a besoin de cette monnaie.
     const c = source.currency;
     offsets[c] = Math.min(offsets[c] ?? Infinity, income[c] ?? 0);
@@ -209,7 +216,7 @@ export function buildHorizon(ctx: Context, root: State): Horizon {
 const weighted = (ledger: LedgerEntry[], currency: Currency, weight: number): Entries =>
   ledger
     .filter((e) => e.currency === currency && e.net > 0)
-    .map((e) => ({ amount: e.amount, value: (weight * e.net) / e.amount }));
+    .map((e) => ({ amount: e.amount, value: (weight * e.net) / e.amount, actions: e.actions }));
 
 /**
  * Premier Vortex d'un groupe dans l'horizon : sa saison la plus probable, la probabilité qu'il
@@ -276,9 +283,13 @@ function ascensionSource(ctx: Context, root: State) {
     if (!applied) break;
     state = applied.state;
     const net = (ev + newCards * newCardBonus) * evFactor - ASCENSION_COST * weights.loreDust;
-    entries.push({ amount: ASCENSION_COST, value: net / ASCENSION_COST });
+    entries.push({
+      amount: ASCENSION_COST,
+      value: net / ASCENSION_COST,
+      actions: [{ kind: 'ascension' }],
+    });
   }
-  const source: HoldSource = {
+  const source: Omit<HoldSource, 'actions'> = {
     currency: 'loreDust',
     kind: 'ascension',
     label: season.towerName,
@@ -398,7 +409,7 @@ const shortDate = (date: string) => date.slice(5, 10).split('-').reverse().join(
  * « 14 essais d'ascension d'ici le 18/10 », « évènement « zerator » du 13/10 ». Même texte dans
  * l'interface, sur Discord et en console.
  */
-export function reserveLabel(r: HoldSource): string {
+export function reserveLabel(r: Omit<HoldSource, 'actions'>): string {
   switch (r.kind) {
     case 'vortex': {
       const chance = r.probability < 0.9 ? ` · ${Math.round(r.probability * 100)} %` : '';
