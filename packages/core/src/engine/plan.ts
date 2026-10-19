@@ -11,7 +11,6 @@ import {
   WEEKLY_EVERY_DAILIES,
 } from '../rules/constants';
 import {
-  CURRENCY_LABEL,
   SHINY_SUFFIX,
   type Balances,
   type Catalog,
@@ -567,10 +566,7 @@ function buildAdvice(ctx: Context, before: State, after: State): string[] {
     );
   }
 
-  const balanceLine = (Object.keys(after.balances) as Currency[])
-    .map((c) => `${CURRENCY_LABEL[c]} ${fmt(after.balances[c])}`)
-    .join(' · ');
-  advice.push(`Solde après le plan : ${balanceLine}.`);
+  // Le solde après le plan n'est pas un conseil : l'interface et Discord l'affichent déjà.
   return advice;
 }
 
