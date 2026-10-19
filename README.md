@@ -90,6 +90,9 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
 | `KEEP_FOR_GOLDEN`            | `true`         | Garde les exemplaires normaux à enchanter pour la constellation dorée, même si elle n'est pas rentable aujourd'hui. `false` : seuls ceux que le plan du jour enchante sont gardés. |
 | `KEEP_FOR_GOLDEN_FUSIONS`    | `true`         | Garde aussi les exemplaires normaux à enchanter pour les fusions dorées encore à faire (les 100 pièces du puzzle doré, par exemple).                                               |
 | `HORIZON`                    | `false`        | Anticipe les prochains Vortex, les essais d'ascension à venir et les évènements annoncés (voir [Anticipation](#anticipation-option-horizon)).                                      |
+| `HORIZON_DISCOUNT`           | `0.9`          | Anticipation : ce que vaut un gain une saison de Vortex plus tard, face au même gain aujourd'hui (de `0` à `1`).                                                                   |
+| `HORIZON_SEASONS`            | `4`            | Anticipation : saisons de Vortex à venir examinées (de `1` à `8`, `4` = une rotation complète des groupes).                                                                        |
+| `HORIZON_EVENT_DAYS`         | `28`           | Anticipation : jours à l'avance où un évènement annoncé peut faire garder des monnaies (de `0` à `56`).                                                                            |
 | `SKIP_ACTIONS`               | —              | Actions que le plan ne propose jamais, séparées par des virgules (ex : `recycle,invoke` ; liste dans [API](#api)).                                                                 |
 | `DRY_RUN`                    | `false`        | Calcule sans rien envoyer.                                                                                                                                                         |
 | `PORT`                       | `8080`         | Port HTTP.                                                                                                                                                                         |
@@ -103,7 +106,8 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
   - `strategy` (`equilibre`, `prudent`, `epargne`, `vortex` ou `collectionneur`) ;
   - `beamWidth`, `branching` et `keepExtra` ;
   - `keepForGolden` et `keepForGoldenFusions` (`1` ou `0`) ;
-  - `horizon` (`1` ou `0`) pour l'anticipation ;
+  - `horizon` (`1` ou `0`) pour l'anticipation, et ses réglages `horizonDiscount`, `horizonSeasons`
+    et `horizonEventDays` ;
   - `skip`, les actions refusées séparées par des virgules (`recycle`, `craft`, `enchant`,
     `fusion`, `constellation`, `invoke`, `ascension`, `evolution`). Présent même vide, il remplace
     `SKIP_ACTIONS` : `skip=` les autorise toutes ;
@@ -223,7 +227,7 @@ joueur dans `ZU_USERS`.
 
 Les réglages explicites l'emportent toujours sur la stratégie : avec
 `?strategy=epargne&wBalance=0.002`, la ZUMonnaie garde sa valeur par défaut. Côté serveur,
-`KEEP_EXTRA`, `KEEP_FOR_GOLDEN`, `KEEP_FOR_GOLDEN_FUSIONS`, `HORIZON`, `SKIP_ACTIONS`, `BEAM_WIDTH`
+`KEEP_EXTRA`, `KEEP_FOR_GOLDEN`, `KEEP_FOR_GOLDEN_FUSIONS`, `HORIZON` (et ses réglages), `SKIP_ACTIONS`, `BEAM_WIDTH`
 et `BRANCHING` s'appliquent aussi par-dessus la stratégie.
 
 ## Comment fonctionne le planificateur
@@ -316,6 +320,15 @@ plus tard, et seulement pour la part qui sera vraiment dépensée : au-delà, un
 poids. Les conseils disent ce qui est gardé et pour quoi, et signalent les échéances proches (fin du
 Vortex et de sa forge, fin d'un évènement ou des défis de la semaine). L'étude complète, avec ses
 limites, est dans [`docs/planification-temporelle.md`](docs/planification-temporelle.md).
+
+Trois réglages, dans le panneau « Réglages » de l'interface, l'API ou les variables d'environnement :
+
+- **Valeur de l'avenir** (`horizonDiscount`, 0,9) : ce que vaut un gain une saison de Vortex plus
+  tard, face au même gain aujourd'hui. Plus elle est haute, plus le plan attend ;
+- **Saisons examinées** (`horizonSeasons`, 4) : prochains Vortex pris en compte. 4 couvre une
+  rotation complète des groupes, 1 n'attend que le prochain Vortex ;
+- **Évènements annoncés** (`horizonEventDays`, 28) : jours à l'avance où un évènement annoncé peut
+  faire garder de la ZUMonnaie.
 
 ## Développement
 

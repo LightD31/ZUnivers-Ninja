@@ -1,4 +1,9 @@
-import { CURRENCY_LABEL, type Currency } from '@zuninja/core';
+import {
+  CURRENCY_LABEL,
+  HORIZON_EVENT_DAYS_MAX,
+  HORIZON_SEASONS_MAX,
+  type Currency,
+} from '@zuninja/core';
 import { RotateCcw, X } from 'lucide-react';
 import { useEffect } from 'react';
 import { DEFAULT_SETTINGS, withStrategy, type Settings } from '../lib/settings';
@@ -16,18 +21,24 @@ function Slider(props: {
   value: number;
   min: number;
   max: number;
+  step?: number;
+  /** Valeur affichée, si elle diffère de celle du curseur (pourcentage, unité…). */
+  format?: (v: number) => string;
   onChange: (v: number) => void;
 }) {
   return (
     <label className="block space-y-1.5">
       <span className="flex items-baseline justify-between text-sm font-medium">
         {props.label}
-        <span className="font-mono text-xs text-white/60">{props.value}</span>
+        <span className="font-mono text-xs text-white/60">
+          {props.format ? props.format(props.value) : props.value}
+        </span>
       </span>
       <input
         type="range"
         min={props.min}
         max={props.max}
+        step={props.step ?? 1}
         value={props.value}
         onChange={(e) => props.onChange(Number(e.target.value))}
         className="w-full accent-zu-500"
@@ -109,6 +120,42 @@ export function SettingsDrawer({ open, settings, onChange, onClose }: Props) {
                 />
               </label>
             ))}
+          </fieldset>
+          <fieldset className="space-y-4">
+            <legend className="text-sm font-medium">Anticipation</legend>
+            <p className="text-xs text-white/60">
+              S'appliquent quand « Anticiper » est cochée sous la recherche : le plan garde les
+              monnaies qui rapporteront plus au prochain Vortex ou à un évènement annoncé.
+            </p>
+            <Slider
+              label="Valeur de l'avenir"
+              hint="Ce que vaut un gain une saison de Vortex plus tard, face au même gain aujourd'hui. Plus c'est haut, plus le plan attend ; 100 % fait entièrement confiance aux prévisions."
+              // Curseur en pour cent, valeur gardée entre 0 et 1.
+              value={Math.round(settings.horizonDiscount * 100)}
+              min={50}
+              max={100}
+              step={5}
+              format={(v) => `${v} %`}
+              onChange={(v) => onChange({ ...settings, horizonDiscount: v / 100 })}
+            />
+            <Slider
+              label="Saisons examinées"
+              hint="Prochains Vortex pris en compte. 4 couvre une rotation complète des groupes ; 1 n'attend que le prochain Vortex."
+              value={settings.horizonSeasons}
+              min={1}
+              max={HORIZON_SEASONS_MAX}
+              onChange={(horizonSeasons) => onChange({ ...settings, horizonSeasons })}
+            />
+            <Slider
+              label="Évènements annoncés"
+              hint="Jours à l'avance où un évènement annoncé peut faire garder de la ZUMonnaie. 0 : aucun."
+              value={settings.horizonEventDays}
+              min={0}
+              max={HORIZON_EVENT_DAYS_MAX}
+              step={7}
+              format={(v) => `${v} j`}
+              onChange={(horizonEventDays) => onChange({ ...settings, horizonEventDays })}
+            />
           </fieldset>
         </div>
         <button

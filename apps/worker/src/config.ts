@@ -71,6 +71,10 @@ const EnvSchema = z.object({
   KEEP_FOR_GOLDEN_FUSIONS: optionalBool,
   /** Anticipe les prochains Vortex et évènements annoncés (option `horizon`). */
   HORIZON: optionalBool,
+  /** Anticipation : valeur d'un gain une saison plus tard (0 à 1), saisons examinées, jours d'avance. */
+  HORIZON_DISCOUNT: optionalNumber,
+  HORIZON_SEASONS: optionalNumber,
+  HORIZON_EVENT_DAYS: optionalNumber,
   /** Actions que le plan ne propose jamais, séparées par des virgules. */
   SKIP_ACTIONS: z
     .string()
@@ -178,6 +182,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
         ? { keepForGoldenFusions: e.KEEP_FOR_GOLDEN_FUSIONS }
         : {}),
       ...(e.HORIZON !== undefined ? { horizon: e.HORIZON } : {}),
+      ...(e.HORIZON_DISCOUNT !== undefined ? { horizonDiscount: e.HORIZON_DISCOUNT } : {}),
+      ...(e.HORIZON_SEASONS !== undefined ? { horizonSeasons: e.HORIZON_SEASONS } : {}),
+      ...(e.HORIZON_EVENT_DAYS !== undefined ? { horizonEventDays: e.HORIZON_EVENT_DAYS } : {}),
       ...(e.SKIP_ACTIONS.length > 0 ? { allow: allowExcept(e.SKIP_ACTIONS) } : {}),
     },
     threads: e.PLANNER_THREADS,

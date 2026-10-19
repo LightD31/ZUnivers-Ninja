@@ -59,6 +59,15 @@ export interface PlannerOptions {
    * la garde (voir `horizon.ts`).
    */
   horizon: boolean;
+  /**
+   * Anticipation : ce que vaut un gain une saison de Vortex plus tard face au même gain aujourd'hui
+   * (de 0 à 1). L'inventaire aura changé d'ici là, et le groupe du Vortex n'est qu'une prévision.
+   */
+  horizonDiscount: number;
+  /** Anticipation : saisons de Vortex à venir examinées (4 = une rotation complète des groupes). */
+  horizonSeasons: number;
+  /** Anticipation : jours à l'avance où un évènement annoncé peut faire garder des monnaies. */
+  horizonEventDays: number;
   /** Actions autorisées. */
   allow: {
     recycle: boolean;
@@ -89,6 +98,9 @@ export const DEFAULT_OPTIONS: PlannerOptions = {
   keepForGolden: true,
   keepForGoldenFusions: true,
   horizon: false,
+  horizonDiscount: 0.9,
+  horizonSeasons: 4,
+  horizonEventDays: 28,
   allow: {
     recycle: true,
     craft: true,
@@ -120,6 +132,11 @@ export type PlannerOptionsInput = Partial<Omit<PlannerOptions, 'weights' | 'allo
   allow?: Partial<PlannerOptions['allow']>;
 };
 
+/** Saisons de Vortex examinées au plus par l'anticipation : deux rotations complètes. */
+export const HORIZON_SEASONS_MAX = 8;
+/** Jours à l'avance au plus pour attendre un évènement annoncé : deux saisons de Vortex. */
+export const HORIZON_EVENT_DAYS_MAX = 56;
+
 const finite = (value: number | undefined, fallback: number) =>
   value !== undefined && Number.isFinite(value) ? value : fallback;
 
@@ -149,6 +166,15 @@ export function resolveOptions(input: PlannerOptionsInput = {}): PlannerOptions 
     reputationWeight: Math.max(0, finite(input.reputationWeight, base.reputationWeight)),
     evFactor: Math.min(1, Math.max(0, finite(input.evFactor, base.evFactor))),
     newCardBonus: Math.max(0, finite(input.newCardBonus, base.newCardBonus)),
+    horizonDiscount: Math.min(1, Math.max(0, finite(input.horizonDiscount, base.horizonDiscount))),
+    horizonSeasons: Math.min(
+      HORIZON_SEASONS_MAX,
+      Math.max(1, Math.floor(finite(input.horizonSeasons, base.horizonSeasons))),
+    ),
+    horizonEventDays: Math.min(
+      HORIZON_EVENT_DAYS_MAX,
+      Math.max(0, Math.floor(finite(input.horizonEventDays, base.horizonEventDays))),
+    ),
     weights: { ...base.weights, ...input.weights },
     allow: { ...base.allow, ...input.allow },
   };
