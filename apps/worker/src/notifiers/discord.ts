@@ -18,6 +18,8 @@ const FIELD_LIMIT = 1024;
 const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR');
 const signed = (n: number) => `${Math.round(n) > 0 ? '+' : ''}${fmt(n)}`;
 const clip = (s: string, max: number) => (s.length <= max ? s : `${s.slice(0, max - 1)}…`);
+/** AAAA-MM-JJ → JJ/MM */
+const day = (date: string) => date.slice(5, 10).split('-').reverse().join('/');
 
 export interface DiscordOptions {
   webUrl?: string | undefined;
@@ -66,6 +68,17 @@ export function buildDiscordMessage(
         ? `🏆 **${a.name}** débloqué (+${fmt(a.score)} points) : ${a.description}`
         : `${a.name} : \`${a.before}/${a.max}\` → \`${a.after}/${a.max}\``,
     );
+  // Option `horizon` : monnaies gardées pour plus tard, sinon un plan qui attend paraît incomplet.
+  const reserves = (plan.horizon?.reserves ?? []).map(
+    (r) =>
+      `${CURRENCY_LABEL[r.currency]} : \`${fmt(r.amount)}\` pour ${
+        r.kind === 'vortex'
+          ? `le Vortex « ${r.label} » du ${day(r.begin)}`
+          : r.kind === 'ascension'
+            ? `${r.count} essais d'ascension à venir`
+            : `l'évènement « ${r.label} » du ${day(r.begin)}`
+      } (~+${fmt(r.value)} points)`,
+  );
 
   const fields = [
     {
@@ -81,6 +94,7 @@ export function buildDiscordMessage(
     ...(achievements.length
       ? [{ name: 'Succès', value: achievements.join('\n'), inline: false }]
       : []),
+    ...(reserves.length ? [{ name: 'À garder', value: reserves.join('\n'), inline: false }] : []),
   ].map((f) => ({ ...f, value: clip(f.value, FIELD_LIMIT) }));
 
   // Le lien ouvre le plan avec la même stratégie (paramètre omis pour la stratégie par défaut).

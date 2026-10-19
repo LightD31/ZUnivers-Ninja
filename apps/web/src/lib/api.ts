@@ -25,6 +25,7 @@ async function fetchFromServer(
     keepExtra: String(settings.keepExtra),
     keepForGolden: settings.keepForGolden ? '1' : '0',
     keepForGoldenFusions: settings.keepForGoldenFusions ? '1' : '0',
+    horizon: settings.horizon ? '1' : '0',
     skip: settings.skip.join(','),
     wBalance: String(settings.weights.balance),
     wLoreDust: String(settings.weights.loreDust),

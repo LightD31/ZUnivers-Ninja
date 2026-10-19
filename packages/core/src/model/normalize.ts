@@ -32,6 +32,7 @@ import {
   type Player,
   type Season,
   type Shiny,
+  type TowerSeasonLog,
 } from './types';
 
 const toShiny = (n: number | null | undefined): Shiny => (n === 1 ? 1 : n === 2 ? 2 : 0);
@@ -212,6 +213,7 @@ export function normalizeChallenge(raw: ApiChallenge): Challenge {
     current: Math.min(progress.current, progress.max),
     max: progress.max,
     action: challengeActionFor(raw.challenge.type, raw.challenge.description),
+    ...(raw.endDate ? { end: raw.endDate } : {}),
   };
 }
 
@@ -285,6 +287,24 @@ export interface RawPlayer {
 
 const FINAL_EVOLUTION_SCORE = 600;
 
+/** Saisons de Vortex du joueur, triées par index (celles sans index ni tour sont ignorées). */
+export function normalizeTowerHistory(raw: ApiUserTower): TowerSeasonLog[] {
+  return raw.towerStats
+    .flatMap((s) =>
+      s.towerSeasonIndex != null && s.towerName
+        ? [
+            {
+              index: s.towerSeasonIndex,
+              towerName: s.towerName,
+              begin: s.towerSeasonBeginDate.slice(0, 10),
+              end: s.towerSeasonEndDate.slice(0, 10),
+            },
+          ]
+        : [],
+    )
+    .sort((a, b) => a.index - b.index);
+}
+
 export function normalizePlayer(raw: RawPlayer, ruleSet = 'NORMAL'): Player {
   const u = raw.user;
   const currentTower = raw.tower.towerStats.find((s) => s.isCurrentTowerSeason);
@@ -324,6 +344,7 @@ export function normalizePlayer(raw: RawPlayer, ruleSet = 'NORMAL'): Player {
           logCount: currentTower.towerLogCount,
         }
       : null,
+    towerHistory: normalizeTowerHistory(raw.tower),
     evolution:
       evoItems.length > 0
         ? {

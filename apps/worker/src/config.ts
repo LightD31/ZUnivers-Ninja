@@ -69,6 +69,8 @@ const EnvSchema = z.object({
   KEEP_EXTRA: optionalNumber,
   KEEP_FOR_GOLDEN: optionalBool,
   KEEP_FOR_GOLDEN_FUSIONS: optionalBool,
+  /** Anticipe les prochains Vortex et évènements annoncés (option `horizon`). */
+  HORIZON: optionalBool,
   /** Actions que le plan ne propose jamais, séparées par des virgules. */
   SKIP_ACTIONS: z
     .string()
@@ -175,6 +177,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       ...(e.KEEP_FOR_GOLDEN_FUSIONS !== undefined
         ? { keepForGoldenFusions: e.KEEP_FOR_GOLDEN_FUSIONS }
         : {}),
+      ...(e.HORIZON !== undefined ? { horizon: e.HORIZON } : {}),
       ...(e.SKIP_ACTIONS.length > 0 ? { allow: allowExcept(e.SKIP_ACTIONS) } : {}),
     },
     threads: e.PLANNER_THREADS,

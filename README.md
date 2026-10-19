@@ -39,6 +39,10 @@ La v2 est une réécriture complète : TypeScript, aucune base de données, une 
   pour l'échange, si les cartes à enchanter pour les constellations et fusions dorées sont gardées,
   et les actions que tu ne veux pas faire (le recyclage, par exemple) : le plan est alors calculé
   sans elles, avec les monnaies que tu as déjà.
+- **Anticipation** (option expérimentale, désactivée par défaut) : le plan tient compte du prochain
+  Vortex (son groupe est prévu d'après ton historique), des essais d'ascension encore à venir et des
+  évènements déjà annoncés. Une monnaie qui rapportera plus plus tard est gardée, et les conseils
+  disent pour quoi (voir [Anticipation](#anticipation-option-horizon)).
 - **Notifications Discord** : le plan n'est envoyé que s'il a changé depuis le dernier envoi. Un
   webhook JSON générique est aussi disponible pour tes propres intégrations.
 - **Robustesse** :
@@ -85,6 +89,7 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
 | `KEEP_EXTRA`                 | `0`            | Exemplaires gardés en plus pour les échanges.                                                                                                                                      |
 | `KEEP_FOR_GOLDEN`            | `true`         | Garde les exemplaires normaux à enchanter pour la constellation dorée, même si elle n'est pas rentable aujourd'hui. `false` : seuls ceux que le plan du jour enchante sont gardés. |
 | `KEEP_FOR_GOLDEN_FUSIONS`    | `true`         | Garde aussi les exemplaires normaux à enchanter pour les fusions dorées encore à faire (les 100 pièces du puzzle doré, par exemple).                                               |
+| `HORIZON`                    | `false`        | Anticipe les prochains Vortex, les essais d'ascension à venir et les évènements annoncés (voir [Anticipation](#anticipation-option-horizon)).                                      |
 | `SKIP_ACTIONS`               | —              | Actions que le plan ne propose jamais, séparées par des virgules (ex : `recycle,invoke` ; liste dans [API](#api)).                                                                 |
 | `DRY_RUN`                    | `false`        | Calcule sans rien envoyer.                                                                                                                                                         |
 | `PORT`                       | `8080`         | Port HTTP.                                                                                                                                                                         |
@@ -98,6 +103,7 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
   - `strategy` (`equilibre`, `prudent`, `epargne`, `vortex` ou `collectionneur`) ;
   - `beamWidth`, `branching` et `keepExtra` ;
   - `keepForGolden` et `keepForGoldenFusions` (`1` ou `0`) ;
+  - `horizon` (`1` ou `0`) pour l'anticipation ;
   - `skip`, les actions refusées séparées par des virgules (`recycle`, `craft`, `enchant`,
     `fusion`, `constellation`, `invoke`, `ascension`, `evolution`). Présent même vide, il remplace
     `SKIP_ACTIONS` : `skip=` les autorise toutes ;
@@ -217,8 +223,8 @@ joueur dans `ZU_USERS`.
 
 Les réglages explicites l'emportent toujours sur la stratégie : avec
 `?strategy=epargne&wBalance=0.002`, la ZUMonnaie garde sa valeur par défaut. Côté serveur,
-`KEEP_EXTRA`, `KEEP_FOR_GOLDEN`, `KEEP_FOR_GOLDEN_FUSIONS`, `SKIP_ACTIONS`, `BEAM_WIDTH` et
-`BRANCHING` s'appliquent aussi par-dessus la stratégie.
+`KEEP_EXTRA`, `KEEP_FOR_GOLDEN`, `KEEP_FOR_GOLDEN_FUSIONS`, `HORIZON`, `SKIP_ACTIONS`, `BEAM_WIDTH`
+et `BRANCHING` s'appliquent aussi par-dessus la stratégie.
 
 ## Comment fonctionne le planificateur
 
@@ -292,6 +298,24 @@ Pour les invocations, deux règles du jeu s'ajoutent :
 Une carte forgée après des invocations ne compte pas deux fois : les invocations la comptaient déjà
 comme nouvelle avec une certaine probabilité, et cette part de leur espérance redevient un doublon.
 L'ordre des invocations et des créations ne change donc pas la valeur d'un plan.
+
+### Anticipation (option `horizon`)
+
+Le planificateur ne cherche que le plan du jour. Avec l'option `horizon` (case « Anticiper » sous
+la recherche, `?horizon=1` dans l'API ou `HORIZON=true`), les monnaies gardées ne valent plus
+seulement leur poids fixe, mais aussi ce qu'elles rapporteront plus tard :
+
+- **cristaux** : les cartes d'évènement ne se forgent que pendant le Vortex de leur groupe. Le groupe
+  des prochains Vortex est prévu d'après ton historique (ordre observé : Classique, Autres, ZLAN,
+  ZEvent), et la forge de chacun est simulée avec ta collection ;
+- **poudre** : les essais d'ascension encore à créditer d'ici la fin du Vortex (deux par midi) ;
+- **ZUMonnaie** : un évènement que l'API annonce avant son début.
+
+Une dépense n'est faite aujourd'hui que si elle rapporte plus que ce que ses monnaies rapporteraient
+plus tard, et seulement pour la part qui sera vraiment dépensée : au-delà, une monnaie retrouve son
+poids. Les conseils disent ce qui est gardé et pour quoi, et signalent les échéances proches (fin du
+Vortex et de sa forge, fin d'un évènement ou des défis de la semaine). L'étude complète, avec ses
+limites, est dans [`docs/planification-temporelle.md`](docs/planification-temporelle.md).
 
 ## Développement
 

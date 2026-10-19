@@ -16,6 +16,16 @@ export const ASCENSION_FAIL_REFUND = 4;
 export const ASCENSIONS_PER_DAY = 2;
 export const ASCENSION_CREDIT_HOUR = 12;
 
+/** Une saison de Vortex dure deux semaines, du lundi au lundi (source : /public/tower/season). */
+export const SEASON_DAYS = 14;
+
+/**
+ * Ordre des groupes de Vortex observé depuis la saison 93 (13/10/2025) : 16 transitions sur 18,
+ * les deux autres à l'arrivée de la tour ZLAN 2026. L'API ne donne que la saison en cours : cet
+ * ordre sert de règle par défaut quand l'historique du joueur ne suffit pas à prévoir la suite.
+ */
+export const VORTEX_ROTATION: readonly string[] = ['Classique', 'Autres', 'ZLAN', 'ZEvent'];
+
 /** Réputation gagnée par tentative (non cumulable) : /as, /as réussie, étage 6 atteint (source : /vortex). */
 export const REPUTATION_ATTEMPT = 50;
 export const REPUTATION_SUCCESS = 300;

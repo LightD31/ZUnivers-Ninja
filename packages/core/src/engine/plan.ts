@@ -1,4 +1,6 @@
+import { likelyGroup, seasonLastDay } from '../rules/calendar';
 import { boosterOptions, invocationEV } from '../rules/random';
+import { daysBetween, gameClock } from '../rules/time';
 import {
   BOOSTERS,
   FEATURE,
@@ -28,6 +30,7 @@ import {
   type Context,
   type PlannerOptionsInput,
 } from './context';
+import { horizonReserves, withHorizon, type HorizonReserve } from './horizon';
 import { nodeSteps, regroup, search, type Step } from './planner';
 import { getCard, initialState, stateValue, type State } from './state';
 import { STRATEGIES, type StrategyId } from './strategies';
@@ -115,6 +118,14 @@ export interface Insights {
   missing: MissingCard[];
 }
 
+/** Anticipation (option `horizon`) : prochains Vortex prévus et monnaies gardées pour plus tard. */
+export interface PlanHorizon {
+  /** Prochains Vortex : dates (fin exclue), groupe le plus probable et sa probabilité. */
+  seasons: { begin: string; end: string; group: string; probability: number }[];
+  /** Monnaies que le plan garde pour une période à venir. */
+  reserves: HorizonReserve[];
+}
+
 export interface PlanResult {
   version: 1;
   generatedAt: string;
@@ -155,6 +166,8 @@ export interface PlanResult {
     summit: boolean;
   } | null;
   insights: Insights;
+  /** Anticipation, quand l'option `horizon` est active. */
+  horizon: PlanHorizon | null;
   stats: {
     explored: number;
     durationMs: number;
@@ -162,6 +175,8 @@ export interface PlanResult {
     branching: number;
     /** Limite de temps atteinte : la fin du plan a été cherchée en glouton. */
     timedOut: boolean;
+    /** Anticipation : périodes à venir simulées, écartées, et temps passé. */
+    horizon?: { windows: number; skipped: number; durationMs: number };
   };
   /** Empreinte des commandes, pour ne notifier que les changements. */
   hash: string;
@@ -438,6 +453,83 @@ const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR');
 /** AAAA-MM-JJ → JJ/MM/AAAA */
 const frDate = (date: string) => date.slice(0, 10).split('-').reverse().join('/');
 
+/** Points espérés au moins pour signaler une monnaie gardée pour plus tard. */
+const RESERVE_MIN_POINTS = 1;
+/** Monnaies dans une phrase (« Garde 300 poudres… »). */
+const CURRENCY_WORD: Record<Currency, string> = {
+  balance: 'ZUMonnaie',
+  loreDust: 'poudres',
+  loreFragment: "cristaux d'histoire",
+  upgradeDust: "éclats d'étoile",
+};
+
+/** Monnaies gardées pour plus tard qui valent d'être signalées. */
+const shownReserves = (ctx: Context, after: State) =>
+  ctx.horizon
+    ? horizonReserves(ctx.horizon, after.balances).filter(
+        (r) => r.amount >= 1 && r.value >= RESERVE_MIN_POINTS,
+      )
+    : [];
+
+/**
+ * Conseils de l'anticipation : monnaies gardées pour une période à venir, puis échéances proches
+ * (fin du Vortex et de sa forge, évènement, défis de la semaine).
+ */
+function horizonAdvice(ctx: Context, after: State): string[] {
+  const advice: string[] = [];
+  const percent = (p: number) => (p < 0.9 ? ` (prévision : ${Math.round(p * 100)} %)` : '');
+  for (const r of shownReserves(ctx, after)) {
+    const gain = `~+${fmt(r.value)} points espérés`;
+    const amount = `${fmt(r.amount)} ${CURRENCY_WORD[r.currency]}`;
+    if (r.kind === 'vortex')
+      advice.push(
+        `Garde ${amount} pour le Vortex « ${r.label} » prévu du ${frDate(r.begin)} au ${frDate(seasonLastDay(r))}${percent(r.probability)} : ${gain}.`,
+      );
+    else if (r.kind === 'ascension')
+      advice.push(
+        `Garde ${amount} pour les ${r.count} essais d'ascension encore à venir d'ici le ${frDate(seasonLastDay(r))} : ${gain}.`,
+      );
+    else
+      advice.push(
+        `Garde ${amount} pour l'évènement « ${r.label} » qui commence le ${frDate(r.begin)} : ${gain}.`,
+      );
+  }
+
+  const today = gameClock(ctx.now).date;
+  const when = (left: number) => (left === 0 ? 'ce soir' : 'demain soir');
+  const season = ctx.catalog.season;
+  if (season) {
+    const left = daysBetween(today, seasonLastDay(season));
+    const opens = [...ctx.forgeablePacks].some((id) =>
+      ctx.itemList.some((i) => i.packId === id && !i.isClassic),
+    );
+    if (left >= 0 && left <= 1 && opens) {
+      const next = ctx.horizon?.forecasts.find((f) => likelyGroup(f) === season.group);
+      advice.push(
+        `Le Vortex « ${season.towerName} » se termine ${when(left)} : ${left === 0 ? 'dernier jour' : 'plus que deux jours'} pour forger les cartes du groupe « ${season.group} »${next ? ` (prochain Vortex « ${season.group} » prévu le ${frDate(next.begin)})` : ''}.`,
+      );
+    }
+    if (left === 0 && after.ascensionsLeft > 0)
+      advice.push(
+        `${after.ascensionsLeft} essai(s) d'ascension non utilisé(s) seront perdus ce soir, à la fin du Vortex.`,
+      );
+  }
+  for (const event of ctx.catalog.events) {
+    const end = event.end.slice(0, 10);
+    if (!event.active || event.begin.slice(0, 10) > today || end < today) continue;
+    const left = daysBetween(today, end);
+    if (left <= 1) advice.push(`L'évènement « ${event.name} » se termine ${when(left)}.`);
+  }
+  const ends = new Map(ctx.player.challenges.map((c) => [c.id, c.end?.slice(0, 10)]));
+  const open = after.challenges.filter((c) => c.current < c.max);
+  const end = open.map((c) => ends.get(c.id)).find((e) => e !== undefined);
+  if (end && daysBetween(today, end) >= 0 && daysBetween(today, end) <= 1)
+    advice.push(
+      `Défis de la semaine : ${open.length} pas encore terminé(s), ils se terminent ${when(daysBetween(today, end))}.`,
+    );
+  return advice;
+}
+
 function buildAdvice(ctx: Context, before: State, after: State): string[] {
   const advice: string[] = [];
   const { player } = ctx;
@@ -487,6 +579,8 @@ function buildAdvice(ctx: Context, before: State, after: State): string[] {
       );
     }
   }
+
+  if (ctx.horizon) advice.push(...horizonAdvice(ctx, after));
 
   const unspent = (Object.keys(after.balances) as Currency[]).filter(
     (c) => c !== 'upgradeDust' && after.balances[c] > 0 && ctx.options.weights[c] > 0,
@@ -609,8 +703,9 @@ export function createPlan({
   now = new Date(),
 }: CreatePlanInput): PlanResult {
   const started = performance.now();
-  const ctx = buildContext(catalog, player, now, resolveOptions(options));
   const closed = catalog.settings.closed === true;
+  // Option `horizon` : valeur de garde des monnaies, calculée une fois pour toute la recherche.
+  const ctx = withHorizon(buildContext(catalog, player, now, resolveOptions(options)));
   const start = initialState(ctx);
   // Pas de saison Hardcore en cours : aucune commande ne peut être jouée, même pas /journa.
   const { best, explored, timedOut } = closed
@@ -695,6 +790,15 @@ export function createPlan({
     achievements: buildAchievements(ctx, finalState),
     advice: buildAdvice(ctx, before, finalState),
     insights: buildInsights(ctx, finalState),
+    horizon: ctx.horizon
+      ? {
+          seasons: ctx.horizon.forecasts.slice(0, 3).map((f) => {
+            const group = likelyGroup(f);
+            return { begin: f.begin, end: f.end, group, probability: f.groups[group] ?? 0 };
+          }),
+          reserves: shownReserves(ctx, finalState),
+        }
+      : null,
     season: season
       ? {
           name: season.towerName,
@@ -711,6 +815,7 @@ export function createPlan({
       beamWidth: ctx.options.beamWidth,
       branching: ctx.options.branching,
       timedOut,
+      ...(ctx.horizon ? { horizon: ctx.horizon.stats } : {}),
     },
     hash: fnv1a(commands.join('\n')),
   };
