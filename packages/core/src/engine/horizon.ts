@@ -38,18 +38,12 @@ import { fork, initialState, stateValue, type State } from './state';
  * elle rapporte plus que ce que ses monnaies rapporteraient plus tard.
  */
 
-/** Rabais par saison d'attente : l'inventaire aura changé, et le groupe n'est qu'une prévision. */
-export const HORIZON_DISCOUNT = 0.9;
-/** Saisons à venir examinées : une rotation complète des groupes de Vortex. */
-const HORIZON_SEASONS = 4;
 /** En deçà de ce poids (probabilité × rabais), une période à venir est ignorée. */
 const MIN_WEIGHT = 0.05;
 /** Dépenses simulées au plus par période à venir. */
 const HORIZON_STEPS = 120;
 /** Part de la limite de temps du plan accordée à l'anticipation. */
 const HORIZON_BUDGET = 0.15;
-/** Un évènement annoncé plus loin que ça n'est pas attendu. */
-const EVENT_DAYS = 2 * SEASON_DAYS;
 
 /** Contexte avec la valeur de garde des monnaies, quand l'option `horizon` est active. */
 export function withHorizon(ctx: Context): Context {
@@ -82,7 +76,8 @@ export function buildHorizon(ctx: Context, root: State): Horizon {
   const deadline =
     ctx.options.timeLimitMs > 0 ? started + ctx.options.timeLimitMs * HORIZON_BUDGET : Infinity;
   const inBudget = () => performance.now() < deadline;
-  const forecasts = forecastSeasons(ctx.catalog, ctx.player.towerHistory, HORIZON_SEASONS);
+  const { allow, evFactor, horizonDiscount, horizonSeasons, horizonEventDays } = ctx.options;
+  const forecasts = forecastSeasons(ctx.catalog, ctx.player.towerHistory, horizonSeasons);
   const sources: HoldSource[] = [];
   const steps: HoldStep[] = [];
   const offsets: Partial<Balances> = {};
@@ -108,7 +103,6 @@ export function buildHorizon(ctx: Context, root: State): Horizon {
 
   // Vortex des autres groupes : leurs packs s'ouvrent à la forge, payée en cristaux.
   const season = ctx.catalog.season;
-  const { allow, evFactor } = ctx.options;
   if (season && (allow.craft || allow.enchant) && ctx.features.has(FEATURE.craft)) {
     const classic = new Set(ctx.itemList.filter((i) => i.isClassic).map((i) => i.packId));
     for (const group of vortexGroups(ctx.catalog)) {
@@ -119,7 +113,7 @@ export function buildHorizon(ctx: Context, root: State): Horizon {
           .map((t) => t.packId)
           .filter((id) => !classic.has(id) && !ctx.forgeablePacks.has(id)),
       );
-      const window = firstWindow(forecasts, group);
+      const window = firstWindow(forecasts, group, horizonDiscount);
       const future = window && predictedSeason(ctx.catalog, ctx.player.towerHistory, window, group);
       if (
         packs.size === 0 ||
@@ -166,7 +160,7 @@ export function buildHorizon(ctx: Context, root: State): Horizon {
       const available: Balances = { ...root.balances };
       for (const c of CURRENCIES) available[c] += income[c] ?? 0;
       if (
-        days > EVENT_DAYS ||
+        days > horizonEventDays ||
         available.balance < event.balanceCost ||
         available.loreDust < event.loreDustCost ||
         !inBudget()
@@ -182,7 +176,7 @@ export function buildHorizon(ctx: Context, root: State): Horizon {
         events: [{ ...event, active: true }],
         balances: { balance: available.balance, loreDust: available.loreDust },
       });
-      const weight = HORIZON_DISCOUNT ** (days / SEASON_DAYS);
+      const weight = horizonDiscount ** (days / SEASON_DAYS);
       for (const currency of ['balance', 'loreDust'] as const)
         add(
           {
@@ -221,7 +215,7 @@ const weighted = (ledger: LedgerEntry[], currency: Currency, weight: number): En
  * Premier Vortex d'un groupe dans l'horizon : sa saison la plus probable, la probabilité qu'il
  * revienne dans l'horizon, et son poids (probabilité × rabais, saison par saison).
  */
-function firstWindow(forecasts: SeasonForecast[], group: string) {
+function firstWindow(forecasts: SeasonForecast[], group: string, discount: number) {
   let notYet = 1;
   let weight = 0;
   let probability = 0;
@@ -230,7 +224,7 @@ function firstWindow(forecasts: SeasonForecast[], group: string) {
   for (const f of forecasts) {
     const p = f.groups[group] ?? 0;
     const chance = notYet * p;
-    weight += chance * HORIZON_DISCOUNT ** f.ahead;
+    weight += chance * discount ** f.ahead;
     probability += chance;
     if (chance > bestChance) {
       bestChance = chance;

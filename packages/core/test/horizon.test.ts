@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createPlan,
   curveValue,
+  resolveOptions,
   withHorizon,
   type GameEvent,
   type Item,
@@ -130,6 +131,15 @@ describe('cristaux et prochain Vortex', () => {
     expect(plan.steps.some((s) => s.kind === 'enchant')).toBe(true);
     expect(plan.after.balances.loreFragment).toBe(0);
   });
+
+  it("ne garde rien quand l'avenir ne vaut rien (horizonDiscount : 0)", () => {
+    const plan = createPlan({
+      ...input(400, true),
+      options: { horizon: true, horizonDiscount: 0 },
+    });
+    expect(crafts(plan)).toBe(3);
+    expect(plan.horizon?.reserves).toEqual([]);
+  });
 });
 
 describe('poudre et ascensions à venir', () => {
@@ -234,6 +244,12 @@ describe('évènement annoncé', () => {
       ),
     );
   });
+
+  it("n'attend pas un évènement annoncé au-delà de horizonEventDays", () => {
+    const plan = createPlan({ ...input(true), options: { horizon: true, horizonEventDays: 1 } });
+    expect(plan.commands).toContain('/im');
+    expect(plan.stats.horizon).toMatchObject({ windows: 0, skipped: 1 });
+  });
 });
 
 describe('heuristiques', () => {
@@ -243,12 +259,12 @@ describe('heuristiques', () => {
   const towers = [...TOWERS, { name: 'Boss', group: 'Boss', packId: 'pack-boss' }];
 
   it('ne simule ni le Classique, ni un groupe improbable, ni un Vortex sans monnaie à y dépenser', () => {
-    const ctx = (loreFragment: number) =>
+    const ctx = (loreFragment: number, horizonSeasons?: number) =>
       withHorizon(
         makeContext(
           makeCatalog([zlan, zevent, boss], { season: season('Autres'), towers }),
           makePlayer({ balances: cristaux(loreFragment) }),
-          { horizon: true },
+          { horizon: true, ...(horizonSeasons ? { horizonSeasons } : {}) },
         ),
       );
     // Classique (rien de nouveau à forger), Boss (absent de la rotation), ZLAN et ZEvent sans
@@ -257,6 +273,24 @@ describe('heuristiques', () => {
     // Avec des cristaux : ZLAN et ZEvent sont simulés, pas le Classique ni Boss.
     expect(ctx(1000).horizon?.stats).toMatchObject({ windows: 2, skipped: 2 });
     expect(ctx(1000).horizon?.sources.map((s) => s.label)).toEqual(['ZLAN', 'ZEvent']);
+    // Une seule saison examinée : le Vortex ZLAN (le prochain), pas le ZEvent (dans deux saisons).
+    expect(ctx(1000, 1).horizon?.stats).toMatchObject({ windows: 1, skipped: 3 });
+    expect(ctx(1000, 1).horizon?.sources.map((s) => s.label)).toEqual(['ZLAN']);
+    expect(ctx(1000, 1).horizon?.forecasts).toHaveLength(1);
+  });
+
+  it('borne les réglages de l’anticipation', () => {
+    expect(resolveOptions({})).toMatchObject({
+      horizonDiscount: 0.9,
+      horizonSeasons: 4,
+      horizonEventDays: 28,
+    });
+    expect(
+      resolveOptions({ horizonDiscount: 2, horizonSeasons: 0, horizonEventDays: 1000 }),
+    ).toMatchObject({ horizonDiscount: 1, horizonSeasons: 1, horizonEventDays: 56 });
+    expect(
+      resolveOptions({ horizonDiscount: -1, horizonSeasons: 3.7, horizonEventDays: NaN }),
+    ).toMatchObject({ horizonDiscount: 0, horizonSeasons: 3, horizonEventDays: 28 });
   });
 
   it("n'est calculée qu'avec l'option", () => {

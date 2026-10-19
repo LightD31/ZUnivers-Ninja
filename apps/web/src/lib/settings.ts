@@ -25,6 +25,10 @@ export interface Settings {
   keepForGoldenFusions: boolean;
   /** Anticipe les prochains Vortex et évènements : un choix du joueur, gardé d'une stratégie à l'autre. */
   horizon: boolean;
+  /** Réglages de l'anticipation, eux aussi gardés d'une stratégie à l'autre (voir `PlannerOptions`). */
+  horizonDiscount: number;
+  horizonSeasons: number;
+  horizonEventDays: number;
   /** Actions que le joueur ne veut pas faire : le plan ne les propose jamais. */
   skip: OptionalAction[];
   weights: Balances;
@@ -39,6 +43,9 @@ export const DEFAULT_SETTINGS: Settings = {
   keepForGolden: DEFAULT_OPTIONS.keepForGolden,
   keepForGoldenFusions: DEFAULT_OPTIONS.keepForGoldenFusions,
   horizon: DEFAULT_OPTIONS.horizon,
+  horizonDiscount: DEFAULT_OPTIONS.horizonDiscount,
+  horizonSeasons: DEFAULT_OPTIONS.horizonSeasons,
+  horizonEventDays: DEFAULT_OPTIONS.horizonEventDays,
   skip: [],
   weights: { ...DEFAULT_OPTIONS.weights },
 };
@@ -81,6 +88,9 @@ export function isCustomized(s: Settings): boolean {
     s.keepForGolden !== preset.keepForGolden ||
     s.keepForGoldenFusions !== preset.keepForGoldenFusions ||
     s.horizon !== preset.horizon ||
+    s.horizonDiscount !== preset.horizonDiscount ||
+    s.horizonSeasons !== preset.horizonSeasons ||
+    s.horizonEventDays !== preset.horizonEventDays ||
     OPTIONAL_ACTIONS.some((a) => s.skip.includes(a) === preset.allow[a]) ||
     CURRENCIES.some((c) => s.weights[c] !== preset.weights[c])
   );
@@ -95,6 +105,9 @@ export function plannerOptions(s: Settings): PlannerOptionsInput {
     keepForGolden: s.keepForGolden,
     keepForGoldenFusions: s.keepForGoldenFusions,
     horizon: s.horizon,
+    horizonDiscount: s.horizonDiscount,
+    horizonSeasons: s.horizonSeasons,
+    horizonEventDays: s.horizonEventDays,
     allow: allowExcept(s.skip),
     weights: s.weights,
   };

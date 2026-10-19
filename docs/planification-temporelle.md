@@ -113,12 +113,14 @@ d'opportunité des monnaies), depuis l'état de départ du plan. Seules ses nouv
 
 - **Vortex d'un autre groupe** : les packs qu'il ouvre à la forge, avec les cristaux du joueur.
   - Chaque dépense vaut son gain par cristal × probabilité × rabais.
-  - Le rabais est de 0,9 par saison d'attente : l'inventaire aura changé, et le groupe n'est qu'une
-    prévision.
-  - La probabilité est celle que le groupe revienne dans les 4 prochaines saisons, saison par saison.
+  - Le rabais est de 0,9 par saison d'attente (option `horizonDiscount`) : l'inventaire aura
+    changé, et le groupe n'est qu'une prévision.
+  - La probabilité est celle que le groupe revienne dans les 4 prochaines saisons (option
+    `horizonSeasons`), saison par saison.
 - **Essais d'ascension à venir** : chaque essai vaut ce que rapporte une ascension à l'étage où le
   joueur en sera, avec les mêmes termes que le candidat d'ascension de la recherche.
-- **Évènement annoncé** (début après aujourd'hui, dans les 4 semaines) : ses invocations, avec la
+- **Évènement annoncé** (début après aujourd'hui, dans les 28 jours : option `horizonEventDays`) :
+  ses invocations, avec la
   ZUMonnaie (et la poudre) du joueur plus ses récompenses d'ici là.
 
 ### 4.4 Dans la recherche
