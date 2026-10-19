@@ -163,7 +163,7 @@ export function StrategyPicker({ settings, onChange }: Props) {
           <span>
             <span className="block text-white/70">Garder les normales à enchanter</span>
             <span className="block text-xs text-white/50">
-              pour monter les constellations dorées au lieu de les recycler
+              pour les constellations et fusions dorées, au lieu de les recycler
             </span>
           </span>
         </label>
