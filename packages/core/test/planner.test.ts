@@ -8,12 +8,13 @@ import {
   resolveOptions,
   search,
   nodeSteps,
+  type Action,
   type PlanResult,
 } from '../src';
 import { reserveFor, reserveTotal } from '../src/rules/reserve';
 import { getCard } from '../src/engine/state';
 import { regroup, type Step } from '../src/engine/planner';
-import { makeCatalog, makeItem, makePlayer, owned, TEST_NOW } from './factory';
+import { makeCatalog, makeContext, makeItem, makePlayer, owned, TEST_NOW } from './factory';
 import { fixtureCatalog, fixturePlayer, NOW } from './helpers';
 
 const catalog = fixtureCatalog();
@@ -157,6 +158,33 @@ describe('regroupement des commandes', () => {
     const runs = (list: Step[]) =>
       list.filter((s, i) => i === 0 || s.action.kind !== list[i - 1]!.action.kind).length;
     expect(runs(regrouped)).toBeLessThan(runs(steps));
+  });
+
+  it('à défaut, ne fait passer aucune action devant une plus ancienne qui touche les mêmes cartes', () => {
+    // Avancer l'enchantement de 1001 avec les autres prendrait la normale qu'attend la fusion :
+    // il reste après elle, les autres enchantements se suivent quand même.
+    const [a, b, c, d] = [makeItem(1001), makeItem(1002), makeItem(1003), makeItem(1004)];
+    const result = makeItem(5001, { isFusion: true });
+    const ctx = makeContext(
+      makeCatalog([a, b, c, d, result], {
+        fusions: [{ resultId: result.id, inputs: [{ itemId: a.id, quantity: 1 }] }],
+      }),
+      makePlayer({
+        balances: { balance: 0, loreDust: 2000, loreFragment: 0, upgradeDust: 0 },
+        inventory: Object.fromEntries([owned(a.id, 0, 2), owned(b.id, 0, 1), owned(d.id, 0, 1)]),
+      }),
+    );
+    const step = (action: Action): Step => ({ action, gain: 0, balanceDelta: {}, auto: false });
+    const steps = [
+      step({ kind: 'enchant', itemId: b.id }),
+      step({ kind: 'craft', itemId: c.id }),
+      step({ kind: 'enchant', itemId: d.id }),
+      step({ kind: 'fusion', itemId: result.id, shiny: 0 }),
+      step({ kind: 'enchant', itemId: a.id }),
+    ];
+    expect(regroup(ctx, steps).map((s) => s.action)).toEqual(
+      [0, 2, 1, 3, 4].map((i) => steps[i]!.action),
+    );
   });
 });
 

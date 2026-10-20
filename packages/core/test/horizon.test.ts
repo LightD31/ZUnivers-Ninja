@@ -162,6 +162,31 @@ describe('cristaux et prochain Vortex', () => {
   });
 });
 
+describe("aperçu d'un Vortex à venir", () => {
+  // Au Vortex ZLAN, le glouton enchante 1101, crée 2101, 2102 et 4101, enchante 4101, puis recrée
+  // 1101 : une commande à chaque changement, comme le plan avant `regroup`.
+  const enchants = [1101, 4101].map((id) =>
+    eventItem(id, 'pack-zlan', { upgradable: false, recyclable: false }),
+  );
+  const crafts = [2101, 2102].map((id) => eventItem(id, 'pack-zlan', plain));
+
+  it('regroupe ses commandes comme le plan', () => {
+    const plan = createPlan({
+      catalog: makeCatalog([...enchants, ...crafts], { season: season('Autres'), towers: TOWERS }),
+      player: makePlayer({
+        balances: cristaux(20000),
+        inventory: Object.fromEntries(enchants.map((e) => owned(e.id, 0, 1))),
+      }),
+      now: TEST_NOW,
+      options: { horizon: true },
+    });
+    expect(plan.horizon!.reserves[0]!.preview.map((g) => g.command)).toEqual([
+      '/enchantement carte:1101 + 4101',
+      '/création carte:2101 + 2102 + 4101 + 1101',
+    ]);
+  });
+});
+
 describe('poudre et ascensions à venir', () => {
   // Vortex Classique : 14 essais encore à venir d'ici le 18/10 (deux par midi), aucun aujourd'hui.
   // Une ascension rapporte bien plus par poudre qu'une création ★.

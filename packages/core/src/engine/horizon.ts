@@ -14,7 +14,7 @@ import { CURRENCIES, type Balances, type Currency, type Player, type Season } fr
 import { applyAction, type Action } from './actions';
 import { buildContext, rarityConfig, type Context, type PlannerOptions } from './context';
 import { holdCurve, type HoldCurves, type HoldSource, type HoldStep, type Horizon } from './hold';
-import { closure, rollout, type LedgerEntry } from './planner';
+import { closure, nodeSteps, regroup, rollout, type LedgerEntry } from './planner';
 import { fork, initialState, stateValue, type State } from './state';
 
 /**
@@ -82,11 +82,14 @@ export function buildHorizon(ctx: Context, root: State): Horizon {
     source: Omit<HoldSource, 'actions'>,
     entries: Entries,
     income: Partial<Balances>,
+    // Aperçu de la période : par défaut, ses dépenses dans l'ordre où elles ont été simulées.
+    preview?: Action[],
   ) => {
     const kept = entries.filter((e) => e.amount > 0 && e.value > 0);
     if (kept.length === 0) return;
     const index = sources.length;
-    sources.push({ ...source, actions: kept.flatMap((e) => e.actions).slice(0, PREVIEW_ACTIONS) });
+    const actions = preview ?? kept.flatMap((e) => e.actions);
+    sources.push({ ...source, actions: actions.slice(0, PREVIEW_ACTIONS) });
     for (const { amount, value } of kept) steps.push({ amount, value, source: index });
     // Revenu certain avant la première période qui a besoin de cette monnaie.
     const c = source.currency;
@@ -126,7 +129,7 @@ export function buildHorizon(ctx: Context, root: State): Horizon {
         continue;
       }
       stats.windows++;
-      const ledger = simulate(ctx, root, {
+      const { ledger, actions } = simulate(ctx, root, {
         season: future,
         date: window.begin,
         packs,
@@ -143,6 +146,7 @@ export function buildHorizon(ctx: Context, root: State): Horizon {
         },
         weighted(ledger, 'loreFragment', window.weight),
         {},
+        actions,
       );
     }
   }
@@ -252,7 +256,8 @@ function ascensionSource(ctx: Context, root: State) {
  * Dépenses gloutonnes d'une période à venir, depuis l'inventaire d'aujourd'hui (actions sans
  * regret faites), avec les seules monnaies données : seules ses nouveautés sont proposées
  * (`futureWindow`). Pas de recyclage ni de récompense : on mesure ce que rapportent les monnaies
- * gardées, pas celles gagnées d'ici là.
+ * gardées, pas celles gagnées d'ici là. `actions` en donne l'aperçu : les `PREVIEW_ACTIONS`
+ * premières dépenses, dans l'ordre de leurs commandes (voir `regroup`).
  */
 function simulate(
   ctx: Context,
@@ -263,7 +268,7 @@ function simulate(
     packs: Set<string>;
     balances: Partial<Balances>;
   },
-): LedgerEntry[] {
+): { ledger: LedgerEntry[]; actions: Action[] } {
   const player: Player = {
     ...ctx.player,
     inventory: Object.fromEntries(root.cards.entries()),
@@ -305,8 +310,17 @@ function simulate(
     'all',
   );
   const ledger: LedgerEntry[] = [];
-  rollout(future, start, { ledger, maxSteps: HORIZON_STEPS });
-  return ledger;
+  const { node } = rollout(future, start, { ledger, maxSteps: HORIZON_STEPS });
+  // Aperçu : les dépenses les plus rentables, que le glouton fait d'abord en alternant « créer X,
+  // enchanter Y, créer Z… », regroupées comme les commandes du plan du jour.
+  const path = nodeSteps(node);
+  let end = 0;
+  for (let shown = 0; end < path.length && shown < PREVIEW_ACTIONS; end++)
+    if (!path[end]!.auto) shown++;
+  const actions = regroup(future, path.slice(0, end))
+    .filter((s) => !s.auto)
+    .map((s) => s.action);
+  return { ledger, actions };
 }
 
 /** Monnaies gardées pour une période à venir, et ce qu'elles y rapporteront en espérance. */
