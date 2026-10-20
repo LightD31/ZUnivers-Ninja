@@ -1,9 +1,10 @@
 import { likelyGroup, seasonLastDay } from '../rules/calendar';
-import { boosterOptions, invocationEV } from '../rules/random';
+import { boosterOptions, invocationEV, type BoosterOption } from '../rules/random';
 import { daysBetween, gameClock } from '../rules/time';
 import {
   BOOSTERS,
   FEATURE,
+  type BoosterSpec,
   SUBSCRIPTION_COST_LORE_DUST,
   SUBSCRIPTION_DAYS,
   SUBSCRIPTION_LOOT_BONUS,
@@ -276,7 +277,9 @@ function describe(ctx: Context, step: Step, achievements: string[]): PlanStep {
         [],
         option?.param ?? '',
         option?.label ?? TITLE.invoke,
-        'Gain espéré (tirage aléatoire)',
+        step.note
+          ? `Gain espéré (tirage aléatoire) : ${step.note}`
+          : 'Gain espéré (tirage aléatoire)',
       );
     }
     case 'evolution': {
@@ -287,6 +290,42 @@ function describe(ctx: Context, step: Step, achievements: string[]): PlanStep {
     default:
       return make([], '');
   }
+}
+
+const SHINY_PLURAL = { golden: 'dorées', chroma: 'chromas' } as const;
+
+/** Part des cartes d'une invocation tirées dorées ou chromas. */
+const shinyShare = (spec: BoosterSpec, shiny: keyof typeof SHINY_PLURAL) =>
+  spec.rarity.reduce((sum, p, i) => sum + p * spec[shiny][i]!, 0);
+
+/** 2 → « 2 », 2,67 → « 2,7 ». */
+const ratio = (n: number) => n.toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+
+/**
+ * Invocation dorée ou chroma : ce qu'elle rapporte par ZUMonnaie face à la basique, moins chère.
+ * Le planificateur compare les packs par ZUMonnaie dépensée, pas par invocation : sans le dire,
+ * une chroma conseillée au double du prix d'une basique passait pour une erreur.
+ */
+function invocationNote(ctx: Context, state: State, booster: string): string | undefined {
+  const options = boosterOptions(ctx);
+  const option = options.find((o) => o.key === booster);
+  const basic = options.find((o) => o.key === BOOSTERS.basic.kind);
+  // Les invocations d'évènement ont les taux de la basique : seul leur pack change.
+  const shiny = option?.spec.kind;
+  if (!option || !basic || !shiny || shiny === 'basic') return undefined;
+  // Même valeur que celle comparée par le planificateur (voir `candidates`).
+  const perCoin = (o: BoosterOption) => {
+    const { ev, newCards } = invocationEV(ctx, state, o);
+    return (ev + newCards * ctx.options.newCardBonus) / o.spec.cost;
+  };
+  const reference = perCoin(basic);
+  if (reference <= 0) return undefined;
+  const percent = Math.round((perCoin(option) / reference - 1) * 100);
+  // Moins rentable que la basique : le pack n'a servi qu'à finir le solde, rien à expliquer.
+  if (percent < 1) return undefined;
+  const price = ratio(option.spec.cost / basic.spec.cost);
+  const more = ratio(shinyShare(option.spec, shiny) / shinyShare(basic.spec, shiny));
+  return `${price} fois le prix de l'invocation basique pour ${more} fois plus de ${SHINY_PLURAL[shiny]}, soit ~${percent} % de points en plus par ZUMonnaie`;
 }
 
 export interface StepGroup {
@@ -664,7 +703,7 @@ function buildInsights(ctx: Context, state: State): Insights {
 export function replay(
   ctx: Context,
   actions: Action[],
-  onStep?: (before: State, after: State) => void,
+  onStep?: (before: State, after: State, action: Action) => void,
 ): State {
   let state = initialState(ctx);
   for (const action of actions) {
@@ -673,7 +712,7 @@ export function replay(
     for (const [c, v] of Object.entries(applied.state.balances)) {
       if (v < 0) throw new Error(`Plan invalide : ${c} négatif après ${JSON.stringify(action)}`);
     }
-    onStep?.(state, applied.state);
+    onStep?.(state, applied.state, action);
     state = applied.state;
   }
   return state;
@@ -708,21 +747,28 @@ export function createPlan({
     : search(ctx);
   // Commandes regroupées : les créations à la suite, puis les enchantements… (voir `regroup`).
   const steps = sortInvocations(regroup(ctx, nodeSteps(best)));
-  // Succès débloqués à chaque étape, pour les signaler sur la commande qui les obtient.
+  // Succès débloqués à chaque étape, pour les signaler sur la commande qui les obtient, et
+  // invocations dorées ou chromas comparées à la basique dans l'état où elles sont faites.
   const unlocked: string[][] = [];
+  const notes: (string | undefined)[] = [];
   const finalState = replay(
     ctx,
     steps.map((s) => s.action),
-    (from, to) =>
+    (from, to, action) => {
       unlocked.push(
         ctx.achievements
           .filter((a, i) => from.achievements[i]! < a.max && to.achievements[i]! >= a.max)
           .map((a) => a.name),
-      ),
+      );
+      notes.push(action.kind === 'invoke' ? invocationNote(ctx, from, action.booster) : undefined);
+    },
   );
   const before = start;
 
-  const planSteps = steps.map((s, i) => describe(ctx, s, unlocked[i] ?? []));
+  const planSteps = steps.map((s, i) => {
+    const note = notes[i];
+    return describe(ctx, note ? { ...s, note } : s, unlocked[i] ?? []);
+  });
   const groups = groupSteps(planSteps);
   const commands = groups.map((g) => g.command);
   const afterSnapshot = snapshot(ctx, finalState);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   boosterOptions,
+  createPlan,
   invocationEV,
   nodeSteps,
   normalizePlayer,
@@ -13,7 +14,7 @@ import { initialState, stateValue } from '../src/engine/state';
 import { PITY_CARDS } from '../src/rules/constants';
 import { pityStep } from '../src/rules/random';
 import { makeCatalog, makeContext, makeItem, makePlayer, owned } from './factory';
-import { rawPlayer } from './helpers';
+import { fixtureCatalog, fixturePlayer, NOW, rawPlayer } from './helpers';
 import type { Action } from '../src/engine/actions';
 
 const at = (d: number) => {
@@ -127,6 +128,21 @@ describe('choix du pack', () => {
       0,
     );
     expect(spent).toBe(600_000);
+  });
+
+  it('dit pourquoi une chroma passe avant la basique, deux fois moins chère', () => {
+    // Joueur réel : il lui manque surtout des chromas, et la chroma en donne 2,7 fois plus.
+    const fixture = fixturePlayer();
+    const plan = createPlan({
+      catalog: fixtureCatalog(),
+      player: { ...fixture, balances: { ...fixture.balances, balance: 6000 } },
+      now: NOW,
+    });
+    const detail = (command: string) => plan.groups.find((g) => g.command === command)?.detail;
+    expect(detail('/im évènement:chroma')).toMatch(
+      /^Gain espéré \(tirage aléatoire\) : 2 fois le prix de l'invocation basique pour 2,7 fois plus de chromas, soit ~\d+ % de points en plus par ZUMonnaie$/,
+    );
+    expect(detail('/im')).toBe('Gain espéré (tirage aléatoire)');
   });
 });
 
