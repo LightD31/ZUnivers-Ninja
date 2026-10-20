@@ -524,7 +524,7 @@ function horizonAdvice(ctx: Context, after: State): string[] {
   return advice;
 }
 
-function buildAdvice(ctx: Context, before: State, after: State): string[] {
+function buildAdvice(ctx: Context, before: State, after: State, invokes: boolean): string[] {
   const advice: string[] = [];
   const { player } = ctx;
 
@@ -537,6 +537,14 @@ function buildAdvice(ctx: Context, before: State, after: State): string[] {
     const left = player.invokeBeforePity;
     advice.push(
       `Bienveillance : carte 4 ★ garantie dans ${left} carte${left > 1 ? 's' : ''} invoquée${left > 1 ? 's' : ''} (${Math.ceil(left / 10)} invocation${left > 10 ? 's' : ''}).`,
+    );
+  }
+
+  // Les doublons tirés n'arrivent qu'après les invocations : le plan compte ce qu'ils rapporteront
+  // (voir `withDuplicateValue`), mais seul le plan suivant peut les utiliser.
+  if (invokes) {
+    advice.push(
+      'Après tes invocations, relance le plan : il placera tes nouveaux doublons en constellations ou les recyclera, et dépensera leur poudre.',
     );
   }
 
@@ -782,7 +790,12 @@ export function createPlan({
     },
     challenges,
     achievements: buildAchievements(ctx, finalState),
-    advice: buildAdvice(ctx, before, finalState),
+    advice: buildAdvice(
+      ctx,
+      before,
+      finalState,
+      steps.some((s) => s.action.kind === 'invoke'),
+    ),
     insights: buildInsights(ctx, finalState),
     horizon: ctx.horizon
       ? {
