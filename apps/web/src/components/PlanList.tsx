@@ -81,12 +81,7 @@ function Preview({ reserve }: { reserve: PlanReserve }) {
     <div className="mt-2 ml-5 space-y-2 border-l border-white/[0.12] pl-3">
       <p className="text-xs text-white/60">
         Prévision faite avec ta collection d'aujourd'hui : à refaire quand{' '}
-        {reserve.kind === 'vortex'
-          ? 'le Vortex ouvrira'
-          : reserve.kind === 'event'
-            ? "l'évènement commencera"
-            : 'les essais seront crédités'}
-        .
+        {reserve.kind === 'vortex' ? 'le Vortex ouvrira' : 'les essais seront crédités'}.
       </p>
       <ol className="space-y-2">
         {collapseRepeats(reserve.preview).map(({ group, repeat, first }) => (

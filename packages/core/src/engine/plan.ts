@@ -475,17 +475,9 @@ const shownReserves = (ctx: Context, after: State) =>
 /** Monnaies gardées pour plus tard, avec les commandes prévues pour chaque période. */
 function planReserves(ctx: Context, after: State): PlanReserve[] {
   return shownReserves(ctx, after).map(({ actions, ...reserve }) => {
-    const steps = actions.map((action) => {
-      const step = describe(ctx, { action, gain: 0, balanceDelta: {}, auto: false }, []);
-      // L'évènement annoncé n'est pas encore proposé aujourd'hui : `describe` ne le trouve pas.
-      return action.kind === 'invoke' && reserve.kind === 'event'
-        ? {
-            ...step,
-            title: `Invocation « ${reserve.label} »`,
-            command: commandLine('invoke', reserve.label),
-          }
-        : step;
-    });
+    const steps = actions.map((action) =>
+      describe(ctx, { action, gain: 0, balanceDelta: {}, auto: false }, []),
+    );
     return { ...reserve, preview: groupSteps(steps) };
   });
 }

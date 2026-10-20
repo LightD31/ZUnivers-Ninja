@@ -1,9 +1,4 @@
-import {
-  CURRENCY_LABEL,
-  HORIZON_EVENT_DAYS_MAX,
-  HORIZON_SEASONS_MAX,
-  type Currency,
-} from '@zuninja/core';
+import { CURRENCY_LABEL, HORIZON_SEASONS_MAX, type Currency } from '@zuninja/core';
 import { RotateCcw, X } from 'lucide-react';
 import { useEffect } from 'react';
 import { DEFAULT_SETTINGS, withStrategy, type Settings } from '../lib/settings';
@@ -125,7 +120,7 @@ export function SettingsDrawer({ open, settings, onChange, onClose }: Props) {
             <legend className="text-sm font-medium">Anticipation</legend>
             <p className="text-xs text-white/60">
               S'appliquent quand « Anticiper » est cochée sous la recherche : le plan garde les
-              monnaies qui rapporteront plus au prochain Vortex ou à un évènement annoncé.
+              monnaies qui rapporteront plus au prochain Vortex ou aux essais d'ascension à venir.
             </p>
             <Slider
               label="Valeur de l'avenir"
@@ -145,16 +140,6 @@ export function SettingsDrawer({ open, settings, onChange, onClose }: Props) {
               min={1}
               max={HORIZON_SEASONS_MAX}
               onChange={(horizonSeasons) => onChange({ ...settings, horizonSeasons })}
-            />
-            <Slider
-              label="Évènements annoncés"
-              hint="Jours à l'avance où un évènement annoncé peut faire garder de la ZUMonnaie. 0 : aucun."
-              value={settings.horizonEventDays}
-              min={0}
-              max={HORIZON_EVENT_DAYS_MAX}
-              step={7}
-              format={(v) => `${v} j`}
-              onChange={(horizonEventDays) => onChange({ ...settings, horizonEventDays })}
             />
           </fieldset>
         </div>

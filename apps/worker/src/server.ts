@@ -3,7 +3,6 @@ import { join, relative } from 'node:path';
 import { serveStatic } from '@hono/node-server/serve-static';
 import {
   DEFAULT_STRATEGY,
-  HORIZON_EVENT_DAYS_MAX,
   HORIZON_SEASONS_MAX,
   STRATEGIES,
   STRATEGY_IDS,
@@ -63,10 +62,8 @@ export function parsePlannerQuery(query: Record<string, string | undefined>): Pl
   if (query.horizon === '0' || query.horizon === '1') options.horizon = query.horizon === '1';
   const horizonDiscount = clamp(query.horizonDiscount, 0, 1);
   const horizonSeasons = clamp(query.horizonSeasons, 1, HORIZON_SEASONS_MAX);
-  const horizonEventDays = clamp(query.horizonEventDays, 0, HORIZON_EVENT_DAYS_MAX);
   if (horizonDiscount !== undefined) options.horizonDiscount = horizonDiscount;
   if (horizonSeasons !== undefined) options.horizonSeasons = horizonSeasons;
-  if (horizonEventDays !== undefined) options.horizonEventDays = horizonEventDays;
   // Actions refusées, séparées par des virgules. Présent (même vide), il remplace celles du
   // serveur : `skip=` les autorise toutes.
   if (query.skip !== undefined)

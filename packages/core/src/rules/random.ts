@@ -175,11 +175,9 @@ export function boosterOptions(ctx: Context): BoosterOption[] {
 }
 
 function listBoosterOptions(ctx: Context): BoosterOption[] {
-  if (!ctx.features.has(FEATURE.invoke)) return [];
-  // Période à venir simulée (option `horizon`) : seul l'évènement annoncé compte, les invocations
-  // permanentes sont déjà proposées aujourd'hui.
-  const future = ctx.futureWindow;
-  const options: BoosterOption[] = (future ? [] : Object.values(BOOSTERS)).map((spec) => ({
+  // Période à venir simulée (option `horizon`) : les invocations sont déjà proposées aujourd'hui.
+  if (!ctx.features.has(FEATURE.invoke) || ctx.futureWindow) return [];
+  const options: BoosterOption[] = Object.values(BOOSTERS).map((spec) => ({
     key: spec.kind,
     label: spec.label,
     param: spec.param,
@@ -192,7 +190,7 @@ function listBoosterOptions(ctx: Context): BoosterOption[] {
   // Les dates d'évènement sont en heure française, sans fuseau : on compare au jour près.
   const today = gameClock(ctx.now).date;
   for (const event of ctx.catalog.events) {
-    if (!event.active || (future && !future.events.has(event.id))) continue;
+    if (!event.active) continue;
     if (event.begin.slice(0, 10) > today || event.end.slice(0, 10) < today) continue;
     const classic = !event.packId || event.packSlug === 'classique';
     const cost: Partial<Balances> = {};

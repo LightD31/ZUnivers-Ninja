@@ -22,7 +22,6 @@ export { reserveFor, reserveTotal, type Reserve } from './rules/reserve';
 export { boosterOptions, invocationEV, ascensionEV, type BoosterOption } from './rules/random';
 export {
   DEFAULT_OPTIONS,
-  HORIZON_EVENT_DAYS_MAX,
   HORIZON_SEASONS_MAX,
   OPTIONAL_ACTIONS,
   allowExcept,
