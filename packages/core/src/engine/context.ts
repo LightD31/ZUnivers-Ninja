@@ -194,6 +194,11 @@ export interface Context {
   /** Valeur de garde des monnaies (option `horizon`), calculée une fois par plan. */
   horizon?: Horizon;
   /**
+   * Valeur d'une unité de monnaie rapportée par le recyclage d'un doublon d'invocation, calculée
+   * une fois par plan (voir `withDuplicateValue`). Sinon, le poids.
+   */
+  duplicateWeights?: Balances;
+  /**
    * Simulation d'une période à venir (voir `horizon.ts`) : seules ses nouveautés sont proposées,
    * les packs que le Vortex prévu ouvre à la forge.
    */

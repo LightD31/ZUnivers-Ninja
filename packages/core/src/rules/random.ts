@@ -31,12 +31,22 @@ type Pool = Map<string, PoolBucket>;
 const bucketKey = (pool: string, rarity: number, shiny: Shiny) => `${pool}|${rarity}|${shiny}`;
 const poolCache = new WeakMap<Context, Map<string, Pool>>();
 
-function weightedValue(ctx: Context, gain: Partial<Balances>): number {
+function weightedValue(weights: Balances, gain: Partial<Balances>): number {
   let v = 0;
-  for (const c of CURRENCIES) v += (gain[c] ?? 0) * ctx.options.weights[c];
+  for (const c of CURRENCIES) v += (gain[c] ?? 0) * weights[c];
   return v;
 }
 
+/**
+ * Valeur d'une unité de monnaie rapportée par un doublon. Une invocation se paie en ZUMonnaie et
+ * ses doublons rapportent de la poudre, comptée à ce qu'elle achète (voir `withDuplicateValue`).
+ * Une ascension se paie en poudre, comptée à son poids : ses doublons aussi, sinon elle semblait
+ * rendre plus de poudre qu'elle n'en coûte.
+ */
+const duplicateWeights = (ctx: Context, invocation: boolean) =>
+  (invocation && ctx.duplicateWeights) || ctx.options.weights;
+
+/** Réserve d'une invocation (cartes invocables) ou d'une ascension (toutes les cartes du pack). */
 function getPool(ctx: Context, packId: string | null, invocableOnly: boolean): Pool {
   let cache = poolCache.get(ctx);
   if (!cache) poolCache.set(ctx, (cache = new Map()));
@@ -51,13 +61,13 @@ function getPool(ctx: Context, packId: string | null, invocableOnly: boolean): P
       !item.isFusion &&
       !item.isStar,
   );
-  const pool = buildPool(ctx, key, items);
+  const pool = buildPool(ctx, key, items, duplicateWeights(ctx, invocableOnly));
   cache.set(key, pool);
   return pool;
 }
 
 /** Seaux d'une réserve de tirage, par rareté et brillance, avec la valeur moyenne d'un doublon. */
-function buildPool(ctx: Context, key: string, items: Item[]): Pool {
+function buildPool(ctx: Context, key: string, items: Item[], weights: Balances): Pool {
   const pool: Pool = new Map();
   for (const item of items) {
     for (const shiny of [0, 1, 2] as Shiny[]) {
@@ -71,7 +81,7 @@ function buildPool(ctx: Context, key: string, items: Item[]): Pool {
   for (const [k, bucket] of pool) {
     const shiny = Number(k.split('|').at(-1)) as Shiny;
     const total = bucket.items.reduce(
-      (sum, it) => sum + (it.recyclable ? weightedValue(ctx, recycleGain(ctx, it, shiny)) : 0),
+      (sum, it) => sum + (it.recyclable ? weightedValue(weights, recycleGain(ctx, it, shiny)) : 0),
       0,
     );
     bucket.dupValue = bucket.items.length > 0 ? total / bucket.items.length : 0;
@@ -225,7 +235,12 @@ function featuredPool(ctx: Context, option: BoosterOption): Pool | null {
   if (!option.featured) return null;
   let pool = featuredPools.get(option);
   if (!pool) {
-    pool = buildPool(ctx, option.key, [...option.featured.values()].flat());
+    pool = buildPool(
+      ctx,
+      option.key,
+      [...option.featured.values()].flat(),
+      duplicateWeights(ctx, true),
+    );
     featuredPools.set(option, pool);
   }
   return pool;
