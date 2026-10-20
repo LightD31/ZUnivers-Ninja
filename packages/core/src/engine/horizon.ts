@@ -1,5 +1,4 @@
 import {
-  addDays,
   forecastSeasons,
   lootUntil,
   predictedSeason,
@@ -8,17 +7,10 @@ import {
   vortexGroups,
   type SeasonForecast,
 } from '../rules/calendar';
-import { ASCENSION_COST, FEATURE, SEASON_DAYS } from '../rules/constants';
+import { ASCENSION_COST, FEATURE } from '../rules/constants';
 import { ascensionEV } from '../rules/random';
-import { daysBetween, gameClock } from '../rules/time';
-import {
-  CURRENCIES,
-  type Balances,
-  type Currency,
-  type GameEvent,
-  type Player,
-  type Season,
-} from '../model/types';
+import { gameClock } from '../rules/time';
+import { CURRENCIES, type Balances, type Currency, type Player, type Season } from '../model/types';
 import { applyAction, type Action } from './actions';
 import { buildContext, rarityConfig, type Context, type PlannerOptions } from './context';
 import { holdCurve, type HoldCurves, type HoldSource, type HoldStep, type Horizon } from './hold';
@@ -29,8 +21,8 @@ import { fork, initialState, stateValue, type State } from './state';
  * Anticipation (option `horizon`). Le planificateur ne cherche que le plan du jour : il est
  * recalculé chaque jour, et une recherche sur plusieurs jours exploserait sans rien savoir de plus
  * de l'avenir. Il lui manquait seulement ce que vaudront plus tard les monnaies qu'il garde : un
- * poids fixe ne voit ni le prochain Vortex, ni les essais d'ascension encore à venir, ni un
- * évènement annoncé.
+ * poids fixe ne voit ni le prochain Vortex, ni les essais d'ascension encore à venir. Les
+ * évènements, eux, ne sont jamais annoncés par l'API avant leur début : rien à anticiper.
  *
  * Chaque période à venir qui ouvre quelque chose de nouveau est simulée une fois, en glouton, avec
  * l'inventaire d'aujourd'hui : ses dépenses les plus rentables, par unité de monnaie, donnent une
@@ -67,7 +59,7 @@ const PREVIEW_ACTIONS = 60;
  * Valeur de garde des monnaies depuis l'état de départ du plan (actions sans regret faites).
  * Heuristiques pour ne simuler que les périodes qui peuvent changer le plan du jour :
  * - seules les nouveautés comptent : un Vortex du groupe en cours ou du groupe Classique n'ouvre
- *   rien à la forge qui ne le soit déjà, un évènement en cours est déjà proposé aujourd'hui ;
+ *   rien à la forge qui ne le soit déjà ;
  * - une période improbable ou lointaine (probabilité × rabais sous `MIN_WEIGHT`) est ignorée ;
  * - pas de simulation sans assez de monnaie pour la moindre dépense de la période ;
  * - une seule simulation par groupe, quelle que soit la saison où il revient, limitée au stock du
@@ -79,7 +71,7 @@ export function buildHorizon(ctx: Context, root: State): Horizon {
   const deadline =
     ctx.options.timeLimitMs > 0 ? started + ctx.options.timeLimitMs * HORIZON_BUDGET : Infinity;
   const inBudget = () => performance.now() < deadline;
-  const { allow, evFactor, horizonDiscount, horizonSeasons, horizonEventDays } = ctx.options;
+  const { allow, horizonDiscount, horizonSeasons } = ctx.options;
   const forecasts = forecastSeasons(ctx.catalog, ctx.player.towerHistory, horizonSeasons);
   const sources: HoldSource[] = [];
   const steps: HoldStep[] = [];
@@ -138,7 +130,6 @@ export function buildHorizon(ctx: Context, root: State): Horizon {
         season: future,
         date: window.begin,
         packs,
-        events: [],
         balances: { loreFragment: root.balances.loreFragment },
       });
       add(
@@ -153,50 +144,6 @@ export function buildHorizon(ctx: Context, root: State): Horizon {
         weighted(ledger, 'loreFragment', window.weight),
         {},
       );
-    }
-  }
-
-  // Évènements annoncés : l'API les liste parfois avant leur début.
-  if (allow.invoke && evFactor > 0 && ctx.features.has(FEATURE.invoke)) {
-    const today = gameClock(ctx.now).date;
-    for (const event of ctx.catalog.events) {
-      const begin = event.begin.slice(0, 10);
-      if (begin <= today) continue;
-      const days = daysBetween(today, begin);
-      const income = lootUntil(ctx, root, begin);
-      const available: Balances = { ...root.balances };
-      for (const c of CURRENCIES) available[c] += income[c] ?? 0;
-      if (
-        days > horizonEventDays ||
-        available.balance < event.balanceCost ||
-        available.loreDust < event.loreDustCost ||
-        !inBudget()
-      ) {
-        stats.skipped++;
-        continue;
-      }
-      stats.windows++;
-      const ledger = simulate(ctx, root, {
-        season,
-        date: begin,
-        packs: new Set(),
-        events: [{ ...event, active: true }],
-        balances: { balance: available.balance, loreDust: available.loreDust },
-      });
-      const weight = horizonDiscount ** (days / SEASON_DAYS);
-      for (const currency of ['balance', 'loreDust'] as const)
-        add(
-          {
-            currency,
-            kind: 'event',
-            label: event.name,
-            begin,
-            end: addDays(event.end.slice(0, 10), 1),
-            probability: 1,
-          },
-          weighted(ledger, currency, weight),
-          income,
-        );
     }
   }
 
@@ -311,10 +258,9 @@ function simulate(
   ctx: Context,
   root: State,
   window: {
-    season: Season | null;
+    season: Season;
     date: string;
     packs: Set<string>;
-    events: GameEvent[];
     balances: Partial<Balances>;
   },
 ): LedgerEntry[] {
@@ -338,17 +284,17 @@ function simulate(
       recycle: false,
       ascension: false,
       evolution: false,
-      invoke: ctx.options.allow.invoke && window.events.length > 0,
+      invoke: false,
     },
   };
   const future: Context = {
     ...buildContext(
-      { ...ctx.catalog, season: window.season, events: window.events },
+      { ...ctx.catalog, season: window.season, events: [] },
       player,
       new Date(`${window.date}T12:00:00Z`),
       options,
     ),
-    futureWindow: { packs: window.packs, events: new Set(window.events.map((e) => e.id)) },
+    futureWindow: { packs: window.packs },
   };
   // État de départ neuf (nouvelle couche d'inventaire) : les caches indexés par inventaire ne
   // mélangent pas les candidats d'aujourd'hui et ceux de la période simulée.
@@ -405,9 +351,8 @@ export function horizonReserves(horizon: Horizon, balances: Balances): HorizonRe
 const shortDate = (date: string) => date.slice(5, 10).split('-').reverse().join('/');
 
 /**
- * Pour quoi une monnaie est gardée, en quelques mots : « Vortex « ZLAN » du 02/11 (prévu) »,
- * « 14 essais d'ascension d'ici le 18/10 », « évènement « zerator » du 13/10 ». Même texte dans
- * l'interface, sur Discord et en console.
+ * Pour quoi une monnaie est gardée, en quelques mots : « Vortex « ZLAN » du 02/11 (prévu) » ou
+ * « 14 essais d'ascension d'ici le 18/10 ». Même texte dans l'interface, sur Discord et en console.
  */
 export function reserveLabel(r: Omit<HoldSource, 'actions'>): string {
   switch (r.kind) {
@@ -417,7 +362,5 @@ export function reserveLabel(r: Omit<HoldSource, 'actions'>): string {
     }
     case 'ascension':
       return `${r.count ?? 0} essais d'ascension d'ici le ${shortDate(seasonLastDay(r))}`;
-    case 'event':
-      return `évènement « ${r.label} » du ${shortDate(r.begin)}`;
   }
 }

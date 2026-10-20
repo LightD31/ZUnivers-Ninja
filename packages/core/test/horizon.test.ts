@@ -5,7 +5,6 @@ import {
   reserveLabel,
   resolveOptions,
   withHorizon,
-  type GameEvent,
   type Item,
   type Season,
   type TowerInfo,
@@ -202,76 +201,6 @@ describe('poudre et ascensions à venir', () => {
   });
 });
 
-describe('évènement annoncé', () => {
-  // Les cartes ★ sont toutes possédées : une invocation basique rapporte surtout des dorées et des
-  // chromas. L'évènement, annoncé pour le 13/10, garantit qu'une ★★★★ tirée est l'une des quatre
-  // qui manquent.
-  const r1 = Array.from({ length: 20 }, (_, i) => makeItem(1001 + i));
-  const featured = Array.from({ length: 4 }, (_, i) => makeItem(4001 + i));
-  const r4 = Array.from({ length: 20 }, (_, i) => makeItem(4101 + i));
-  const event: GameEvent = {
-    id: 'evt',
-    name: 'zerator',
-    packId: null,
-    packSlug: null,
-    packName: null,
-    balanceCost: 1000,
-    loreDustCost: 0,
-    oneTime: false,
-    active: true,
-    invokeCount: 10,
-    begin: '2026-10-13T00:00:00',
-    end: '2026-10-19T23:59:59',
-    itemIds: featured.map((i) => i.id),
-  };
-  const input = (horizon: boolean) => ({
-    catalog: makeCatalog([...r1, ...featured, ...r4], {
-      events: [event],
-      // Sans /journa : seule la ZUMonnaie déjà gagnée paie l'invocation de l'évènement.
-      settings: {
-        dailyReward: 1000,
-        weeklyReward: 1000,
-        dailyLoreDust: 10,
-        features: ['INVOKE', 'CRAFT', 'RECYCLE', 'UPGRADE', 'FUSION'],
-      },
-    }),
-    player: makePlayer({
-      balances: { balance: 1000, loreDust: 0, loreFragment: 0, upgradeDust: 0 },
-      inventory: Object.fromEntries([...r1, ...r4].map((i) => owned(i.id, 0, 1, i.rarity))),
-    }),
-    now: TEST_NOW,
-    options: { horizon },
-  });
-
-  it('sans anticipation, invoque tout de suite', () => {
-    expect(createPlan(input(false)).commands).toContain('/im');
-  });
-
-  it("avec anticipation, garde la ZUMonnaie pour l'évènement", () => {
-    const plan = createPlan(input(true));
-    expect(plan.commands.some((c) => c.startsWith('/im'))).toBe(false);
-    expect(plan.horizon?.reserves).toEqual([
-      expect.objectContaining({
-        currency: 'balance',
-        kind: 'event',
-        label: 'zerator',
-        amount: 1000,
-      }),
-    ]);
-    expect(reserveLabel(plan.horizon!.reserves[0]!)).toBe('évènement « zerator » du 13/10');
-    expect(plan.horizon!.reserves[0]!.preview[0]).toMatchObject({
-      command: '/im évènement:zerator',
-      title: 'Invocation « zerator »',
-    });
-  });
-
-  it("n'attend pas un évènement annoncé au-delà de horizonEventDays", () => {
-    const plan = createPlan({ ...input(true), options: { horizon: true, horizonEventDays: 1 } });
-    expect(plan.commands).toContain('/im');
-    expect(plan.stats.horizon).toMatchObject({ windows: 0, skipped: 1 });
-  });
-});
-
 describe('heuristiques', () => {
   const zlan = eventItem(1101, 'pack-zlan');
   const zevent = eventItem(1201, 'pack-zevent');
@@ -300,17 +229,15 @@ describe('heuristiques', () => {
   });
 
   it('borne les réglages de l’anticipation', () => {
-    expect(resolveOptions({})).toMatchObject({
-      horizonDiscount: 0.9,
-      horizonSeasons: 4,
-      horizonEventDays: 28,
+    expect(resolveOptions({})).toMatchObject({ horizonDiscount: 0.9, horizonSeasons: 4 });
+    expect(resolveOptions({ horizonDiscount: 2, horizonSeasons: 0 })).toMatchObject({
+      horizonDiscount: 1,
+      horizonSeasons: 1,
     });
-    expect(
-      resolveOptions({ horizonDiscount: 2, horizonSeasons: 0, horizonEventDays: 1000 }),
-    ).toMatchObject({ horizonDiscount: 1, horizonSeasons: 1, horizonEventDays: 56 });
-    expect(
-      resolveOptions({ horizonDiscount: -1, horizonSeasons: 3.7, horizonEventDays: NaN }),
-    ).toMatchObject({ horizonDiscount: 0, horizonSeasons: 3, horizonEventDays: 28 });
+    expect(resolveOptions({ horizonDiscount: -1, horizonSeasons: 3.7 })).toMatchObject({
+      horizonDiscount: 0,
+      horizonSeasons: 3,
+    });
   });
 
   it("n'est calculée qu'avec l'option", () => {

@@ -28,7 +28,6 @@ async function fetchFromServer(
     horizon: settings.horizon ? '1' : '0',
     horizonDiscount: String(settings.horizonDiscount),
     horizonSeasons: String(settings.horizonSeasons),
-    horizonEventDays: String(settings.horizonEventDays),
     skip: settings.skip.join(','),
     wBalance: String(settings.weights.balance),
     wLoreDust: String(settings.weights.loreDust),

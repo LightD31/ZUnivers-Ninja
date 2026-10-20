@@ -6,8 +6,8 @@
 ## En bref
 
 - Le planificateur ne cherche que **le plan du jour**. Les monnaies qu'il garde valent un poids fixe :
-  il ne sait pas que le Vortex change dans trois jours, que des essais d'ascension arriveront
-  jusqu'à la fin de la saison, ni qu'un évènement est annoncé.
+  il ne sait pas que le Vortex change dans trois jours, ni que des essais d'ascension arriveront
+  jusqu'à la fin de la saison.
 - L'API ne donne que **le présent** : la saison de Vortex en cours et les évènements en cours. Le
   reste se déduit :
   - les saisons durent 14 jours ;
@@ -27,14 +27,14 @@
 
 Vérifié sur l'API le 19/10/2026 :
 
-| Information                       | Source                                                                   | Connue d'avance ?                                                                    |
-| --------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| Fin du Vortex en cours            | `/public/tower/season` (`endDate`)                                       | Oui. 14 jours, du lundi au lundi : la fin est le premier jour de la saison suivante. |
-| Groupe du prochain Vortex         | Rien dans l'API. Historique du joueur : `/public/tower/{pseudo}`         | Prévisible (voir ci-dessous).                                                        |
-| Essais d'ascension à venir        | Règle du jeu : deux par jour à midi, cumulables jusqu'à la fin du Vortex | Oui.                                                                                 |
-| Récompenses `/journa` et `/bonus` | `/app/settings`, corporation, abonnement                                 | Oui.                                                                                 |
-| Fin des défis de la semaine       | `/public/challenge/{pseudo}` (`endDate`)                                 | Oui. Les défis de la semaine suivante, non.                                          |
-| Évènements à venir                | `/public/event/current` : seulement ceux en cours                        | Non. `/public/event` ne donne que des noms ; `/upcoming`, `/next`, `/{nom}` : 404.   |
+| Information                       | Source                                                                   | Connue d'avance ?                                                                                                                          |
+| --------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Fin du Vortex en cours            | `/public/tower/season` (`endDate`)                                       | Oui. 14 jours, du lundi au lundi : la fin est le premier jour de la saison suivante.                                                       |
+| Groupe du prochain Vortex         | Rien dans l'API. Historique du joueur : `/public/tower/{pseudo}`         | Prévisible (voir ci-dessous).                                                                                                              |
+| Essais d'ascension à venir        | Règle du jeu : deux par jour à midi, cumulables jusqu'à la fin du Vortex | Oui.                                                                                                                                       |
+| Récompenses `/journa` et `/bonus` | `/app/settings`, corporation, abonnement                                 | Oui.                                                                                                                                       |
+| Fin des défis de la semaine       | `/public/challenge/{pseudo}` (`endDate`)                                 | Oui. Les défis de la semaine suivante, non.                                                                                                |
+| Évènements à venir                | `/public/event/current` : seulement ceux en cours                        | Non. `/public/event` ne donne que des noms ; `/upcoming`, `/next`, `/{nom}` : 404. Le site officiel n'utilise que `/public/event/current`. |
 
 **Rotation des Vortex.** La saison en cours ouvre à la forge les packs de tout son groupe
 (Classique, Autres, ZLAN, ZEvent). D'après l'historique des fixtures (saisons 0 à 111) et l'API
@@ -53,14 +53,14 @@ Depuis la saison 118, elle donne Autres (100 %), puis ZLAN (99 %), puis ZEvent (
 
 ## 2. Les décisions qui dépendent du temps
 
-| Décision                                          | Pourquoi                                                                                                                                                                                                                                                                  | Faisabilité                     |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| **Cristaux d'un Vortex à l'autre**                | Les cristaux ne paient que les cartes d'évènement, forgeables 2 semaines sur 8. Une ★ normale coûte 50 cristaux pour 1 point (0,02 point par cristal), une normale enchantée pour monter une constellation dorée ★ coûte 400 cristaux pour 120 points (0,30 par cristal). | Prévision du groupe.            |
-| **Poudre pour les ascensions à venir**            | 20 poudres par `/as`. Les essais arrivent jusqu'à la fin du Vortex, avant midi ceux du jour ne sont pas encore crédités.                                                                                                                                                  | Déterministe.                   |
-| **Échéances**                                     | Dernier jour pour forger les cartes du groupe, essais perdus, fin d'un évènement, fin des défis.                                                                                                                                                                          | Déterministe, simples conseils. |
-| **Évènements annoncés**                           | Garder la ZUMonnaie pour un évènement dont les cartes mises en avant manquent.                                                                                                                                                                                            | Seulement s'il est annoncé.     |
-| Poudre pour les ascensions du **prochain** Vortex | Les essais ne se reportent pas d'une saison à l'autre, la poudre si.                                                                                                                                                                                                      | Écarté (voir section 8).        |
-| Défis de la semaine suivante                      | Leur type n'est connu qu'au lundi.                                                                                                                                                                                                                                        | Non.                            |
+| Décision                                          | Pourquoi                                                                                                                                                                                                                                                                  | Faisabilité                       |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| **Cristaux d'un Vortex à l'autre**                | Les cristaux ne paient que les cartes d'évènement, forgeables 2 semaines sur 8. Une ★ normale coûte 50 cristaux pour 1 point (0,02 point par cristal), une normale enchantée pour monter une constellation dorée ★ coûte 400 cristaux pour 120 points (0,30 par cristal). | Prévision du groupe.              |
+| **Poudre pour les ascensions à venir**            | 20 poudres par `/as`. Les essais arrivent jusqu'à la fin du Vortex, avant midi ceux du jour ne sont pas encore crédités.                                                                                                                                                  | Déterministe.                     |
+| **Échéances**                                     | Dernier jour pour forger les cartes du groupe, essais perdus, fin d'un évènement, fin des défis.                                                                                                                                                                          | Déterministe, simples conseils.   |
+| Poudre pour les ascensions du **prochain** Vortex | Les essais ne se reportent pas d'une saison à l'autre, la poudre si.                                                                                                                                                                                                      | Écarté (voir section 8).          |
+| Évènements à venir                                | Garder la ZUMonnaie pour un évènement dont les cartes mises en avant manquent.                                                                                                                                                                                            | Non : jamais annoncés à l'avance. |
+| Défis de la semaine suivante                      | Leur type n'est connu qu'au lundi.                                                                                                                                                                                                                                        | Non.                              |
 
 ## 3. Pourquoi pas une recherche sur plusieurs jours
 
@@ -119,9 +119,6 @@ d'opportunité des monnaies), depuis l'état de départ du plan. Seules ses nouv
     `horizonSeasons`), saison par saison.
 - **Essais d'ascension à venir** : chaque essai vaut ce que rapporte une ascension à l'étage où le
   joueur en sera, avec les mêmes termes que le candidat d'ascension de la recherche.
-- **Évènement annoncé** (début après aujourd'hui, dans les 28 jours : option `horizonEventDays`) :
-  ses invocations, avec la
-  ZUMonnaie (et la poudre) du joueur plus ses récompenses d'ici là.
 
 ### 4.4 Dans la recherche
 
@@ -153,12 +150,11 @@ Les « branches » de l'avenir sont les périodes à venir. Chacune n'est simul�
 changer le plan du jour :
 
 1. **Seulement ce qui est nouveau.** Le Vortex du groupe en cours, ou un Vortex Classique, n'ouvre
-   rien qui ne soit déjà forgeable. Un évènement en cours est déjà proposé aujourd'hui. Les essais
-   d'ascension ne sont pas simulés une fois le sommet atteint.
+   rien qui ne soit déjà forgeable. Les essais d'ascension ne sont pas simulés une fois le sommet
+   atteint.
 2. **Seulement si la monnaie le permet.** Il faut assez de cristaux pour la moindre création ou
-   enchantement de la période, et assez de monnaies pour une invocation de l'évènement. La période est
-   aussi écartée si le joueur a refusé l'action (`allow`), si la stratégie ne compte pas les tirages
-   (Prudent), ou si le mode de jeu est fermé.
+   enchantement de la période. La période est aussi écartée si le joueur a refusé l'action
+   (`allow`), si la stratégie ne compte pas les tirages (Prudent), ou si le mode de jeu est fermé.
 3. **Seulement si c'est probable.** Une période dont le poids (probabilité × rabais) est sous 5 %
    est écartée, comme un groupe qui ne suit pas la rotation.
 4. **Une seule simulation par groupe**, quelle que soit la saison où il revient. Elle s'arrête quand
@@ -181,7 +177,6 @@ tout le plan.
 | Même cas avec 550 cristaux                                               | 3 créations                  | 3 créations, garde 400                      |
 | Vortex ZLAN en cours                                                     | Constellation dorée          | Constellation dorée (aujourd'hui)           |
 | 100 poudres, 14 essais d'ascension à venir                               | 2 créations ★                | Garde les 100 poudres                       |
-| Évènement annoncé dans 2 jours, ★★★★ mises en avant manquantes           | `/im` aujourd'hui            | Garde 1 000 ZUMonnaie                       |
 | Joueur des tests                                                         | —                            | Même plan, prévision Autres → ZLAN → ZEvent |
 
 ### Simulation sur 8 semaines
@@ -210,7 +205,6 @@ ZLAN, ZEvent, Classique) :
 - La poudre pour les ascensions ne change rien pour ce joueur, avec ou sans 2 000 poudres en plus,
   en Équilibré comme en Vortex : elle ne lui manque pas. Les invocations (`--draws`) ne changent pas
   ces écarts.
-- Aucun évènement annoncé à l'avance dans les données : ce cas n'est vérifié que par les tests.
 
 Ces mesures ne portent que sur un joueur, peu riche. Pour mesurer sur de vrais joueurs :
 
@@ -234,8 +228,8 @@ pnpm tsx packages/core/scripts/horizon-eval.ts --truth reverse --give loreFragme
   défis. Le plan garde donc un peu trop plutôt que pas assez.
 - **Ascensions** : chaque essai est estimé à l'étage moyen attendu. Le remboursement d'un échec
   (4 poudres) compte dans sa valeur, pas dans son prix.
-- **Évènements** : une invocation payée en deux monnaies n'est pas simulée (la `rollout` ne compte
-  que les dépenses d'une seule monnaie). L'évènement « annoncé » n'a jamais été vu dans l'API.
+- **Évènements** : l'API ne les annonce jamais avant leur début. Leur anticipation (option
+  `horizonEventDays`) a donc été retirée : elle ne se déclenchait jamais.
 - **Fin de saison** : `ascensionCredits` (avant cette étude) compte encore le jour de fin comme dans
   la saison. C'est sans effet, l'API passant à la saison suivante ce jour-là.
 
@@ -247,7 +241,7 @@ pnpm tsx packages/core/scripts/horizon-eval.ts --truth reverse --give loreFragme
    le catalogue, et le gain semble faible en Équilibré.
 4. Bienveillance : faire tomber la 4 ★ garantie pendant un évènement dont les cartes mises en avant
    manquent.
-5. Réserve manuelle (« garder 5 000 ZUMonnaie pour un évènement »), tant que l'API n'annonce pas les
+5. Réserve manuelle (« garder 5 000 ZUMonnaie pour un évènement »), puisque l'API n'annonce pas les
    évènements.
 6. Garder côté serveur la trace des évènements vus, pour apprendre ceux qui reviennent.
 7. Hardcore : vérifier si les monnaies perdent leur valeur à la fin d'une saison. Si oui, la valeur de

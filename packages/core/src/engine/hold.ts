@@ -36,8 +36,8 @@ export type HoldCurves = Partial<Record<Currency, HoldCurve>>;
 /** Période à venir qui donne de la valeur aux monnaies gardées. */
 export interface HoldSource {
   currency: Currency;
-  kind: 'vortex' | 'ascension' | 'event';
-  /** Groupe du Vortex, nom de l'évènement… */
+  kind: 'vortex' | 'ascension';
+  /** Groupe du Vortex prévu, ou tour du Vortex en cours (essais d'ascension). */
   label: string;
   /** Dates AAAA-MM-JJ de la période, fin exclue. */
   begin: string;

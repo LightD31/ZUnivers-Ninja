@@ -197,7 +197,7 @@ export function StrategyPicker({ settings, onChange }: Props) {
       <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Anticipation">
         <span className={LABEL}>Anticiper</span>
         <label
-          title="Simule les prochains Vortex (groupe prévu d'après ton historique), les essais d'ascension encore à venir et les évènements déjà annoncés : une monnaie qui y rapportera plus est gardée au lieu d'être dépensée aujourd'hui."
+          title="Simule les prochains Vortex (groupe prévu d'après ton historique) et les essais d'ascension encore à venir : une monnaie qui y rapportera plus est gardée au lieu d'être dépensée aujourd'hui."
           className={`${choice(settings.horizon)} inline-flex cursor-pointer items-center gap-1.5`}
         >
           <input
@@ -206,12 +206,12 @@ export function StrategyPicker({ settings, onChange }: Props) {
             onChange={(e) => onChange({ ...settings, horizon: e.target.checked })}
             className="size-3.5 accent-zu-500"
           />
-          Prochains Vortex et évènements
+          Prochains Vortex et ascensions
         </label>
       </div>
       <p className="text-xs text-white/60">
         {settings.horizon
-          ? "Expérimental : le plan garde les monnaies qui rapporteront plus au prochain Vortex, aux essais d'ascension à venir ou à un évènement annoncé."
+          ? "Expérimental : le plan garde les monnaies qui rapporteront plus au prochain Vortex ou aux essais d'ascension à venir."
           : "Coche pour garder les monnaies qui rapporteront plus plus tard au lieu de les dépenser aujourd'hui."}
       </p>
     </div>

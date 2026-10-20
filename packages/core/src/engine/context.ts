@@ -66,8 +66,6 @@ export interface PlannerOptions {
   horizonDiscount: number;
   /** Anticipation : saisons de Vortex à venir examinées (4 = une rotation complète des groupes). */
   horizonSeasons: number;
-  /** Anticipation : jours à l'avance où un évènement annoncé peut faire garder des monnaies. */
-  horizonEventDays: number;
   /** Actions autorisées. */
   allow: {
     recycle: boolean;
@@ -100,7 +98,6 @@ export const DEFAULT_OPTIONS: PlannerOptions = {
   horizon: false,
   horizonDiscount: 0.9,
   horizonSeasons: 4,
-  horizonEventDays: 28,
   allow: {
     recycle: true,
     craft: true,
@@ -134,8 +131,6 @@ export type PlannerOptionsInput = Partial<Omit<PlannerOptions, 'weights' | 'allo
 
 /** Saisons de Vortex examinées au plus par l'anticipation : deux rotations complètes. */
 export const HORIZON_SEASONS_MAX = 8;
-/** Jours à l'avance au plus pour attendre un évènement annoncé : deux saisons de Vortex. */
-export const HORIZON_EVENT_DAYS_MAX = 56;
 
 const finite = (value: number | undefined, fallback: number) =>
   value !== undefined && Number.isFinite(value) ? value : fallback;
@@ -171,10 +166,6 @@ export function resolveOptions(input: PlannerOptionsInput = {}): PlannerOptions 
       HORIZON_SEASONS_MAX,
       Math.max(1, Math.floor(finite(input.horizonSeasons, base.horizonSeasons))),
     ),
-    horizonEventDays: Math.min(
-      HORIZON_EVENT_DAYS_MAX,
-      Math.max(0, Math.floor(finite(input.horizonEventDays, base.horizonEventDays))),
-    ),
     weights: { ...base.weights, ...input.weights },
     allow: { ...base.allow, ...input.allow },
   };
@@ -204,9 +195,9 @@ export interface Context {
   horizon?: Horizon;
   /**
    * Simulation d'une période à venir (voir `horizon.ts`) : seules ses nouveautés sont proposées,
-   * les packs que le Vortex prévu ouvre à la forge et l'évènement annoncé.
+   * les packs que le Vortex prévu ouvre à la forge.
    */
-  futureWindow?: { packs: Set<string>; events: Set<string> };
+  futureWindow?: { packs: Set<string> };
 }
 
 export function buildContext(

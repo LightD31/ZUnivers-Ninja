@@ -42,10 +42,10 @@ describe('configuration', () => {
     expect(loadConfig({}).planner.strategy).toBeUndefined();
     expect(loadConfig({}).planner.horizon).toBeUndefined();
     expect(loadConfig({ HORIZON: 'true' }).planner.horizon).toBe(true);
-    expect(
-      loadConfig({ HORIZON_DISCOUNT: '0.8', HORIZON_SEASONS: '2', HORIZON_EVENT_DAYS: '14' })
-        .planner,
-    ).toMatchObject({ horizonDiscount: 0.8, horizonSeasons: 2, horizonEventDays: 14 });
+    expect(loadConfig({ HORIZON_DISCOUNT: '0.8', HORIZON_SEASONS: '2' }).planner).toMatchObject({
+      horizonDiscount: 0.8,
+      horizonSeasons: 2,
+    });
   });
 
   it('refuse une stratégie inconnue', () => {
@@ -368,7 +368,6 @@ describe('API HTTP', () => {
         horizon: '1',
         horizonDiscount: '1.5',
         horizonSeasons: '2',
-        horizonEventDays: '100',
         wLoreDust: '0.02',
       }),
     ).toEqual({
@@ -379,7 +378,6 @@ describe('API HTTP', () => {
       horizon: true,
       horizonDiscount: 1,
       horizonSeasons: 2,
-      horizonEventDays: 56,
       weights: { loreDust: 0.02 },
     });
     expect(
