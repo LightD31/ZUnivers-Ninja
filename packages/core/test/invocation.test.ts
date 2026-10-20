@@ -197,6 +197,20 @@ describe('valeur des doublons', () => {
     expect(invocations).not.toContain('/im évènement:chroma');
   });
 
+  it('dit de relancer le plan après les invocations, et seulement quand il en a', () => {
+    // Les doublons tirés ne peuvent servir qu'au plan suivant.
+    const rerun = (strategy: 'equilibre' | 'prudent') =>
+      createPlan({
+        catalog,
+        player: withBalances({ balance: 20_000 }),
+        now: NOW,
+        options: { strategy },
+      }).advice.some((a) => a.startsWith('Après tes invocations, relance le plan'));
+    expect(rerun('equilibre')).toBe(true);
+    // Prudent : aucune invocation.
+    expect(rerun('prudent')).toBe(false);
+  });
+
   it('garde les doublons d’ascension au poids de la poudre', () => {
     // L'ascension se paie en poudre comptée à son poids : ses doublons aussi, sinon elle semblait
     // rendre plus de poudre qu'elle n'en coûte.
