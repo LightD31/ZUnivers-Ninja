@@ -103,10 +103,13 @@ interface BucketCards {
   score: number;
   fresh: number;
   /**
-   * Cartes possédées à qui il reste des niveaux de constellation, par nombre de niveaux restants
-   * (indice 1 à 4) : leur nombre et la somme des points qu'un niveau leur rapporte.
+   * Cartes à qui il reste des niveaux de constellation, par nombre de niveaux restants (indice 1 à
+   * 4) : leur nombre et la somme des points qu'un niveau leur rapporte. Possédées (`open`), chaque
+   * doublon tiré peut monter un niveau ; non possédées (`openUnowned`), chaque tirage après le
+   * premier, qui donne la carte.
    */
   open: { count: number; points: number }[];
+  openUnowned: { count: number; points: number }[];
 }
 
 /** La carte était-elle dans la collection au début du plan ? */
@@ -132,16 +135,18 @@ function unownedIn(
   const cacheKey = `${writes}|${key}`;
   let entry = cache.get(cacheKey);
   if (!entry) {
-    entry = { unowned: 0, score: 0, fresh: 0, open: [] };
+    entry = { unowned: 0, score: 0, fresh: 0, open: [], openUnowned: [] };
     for (const item of bucket.items) {
       const card = getCard(state, item.id, shiny);
       if (card.copies === 0) {
         entry.unowned++;
         entry.score += item.scores[shiny];
         if (!ownedAtStart(ctx, item, shiny)) entry.fresh++;
-      } else if (item.upgradable && shiny <= 1 && card.constellation < item.rarity) {
+      }
+      if (item.upgradable && shiny <= 1 && card.constellation < item.rarity) {
         const levels = item.rarity - card.constellation;
-        const open = (entry.open[levels] ??= { count: 0, points: 0 });
+        const list = card.copies === 0 ? entry.openUnowned : entry.open;
+        const open = (list[levels] ??= { count: 0, points: 0 });
         open.count++;
         open.points += item.scores[shiny] * CONSTELLATION_POINTS_FACTOR;
       }
@@ -171,6 +176,17 @@ function levelsFilled(draws: number, levels: number): number {
   for (let k = 1; k <= levels; k++) filled += 1 - fewerDraws(draws, k);
   return filled;
 }
+
+/** Comme `levelsFilled`, pour une carte non possédée : son premier tirage la donne. */
+const levelsFilledAfterFirst = (draws: number, levels: number) =>
+  levelsFilled(draws, levels + 1) - levelsFilled(draws, 1);
+
+/**
+ * Niveaux de plus quand une carte entre dans la collection : son premier tirage aussi devient un
+ * doublon. E[min(X, n)] - E[min(X - 1, n)] = P(1 ≤ X ≤ n).
+ */
+const levelsOnceOwned = (draws: number, levels: number) =>
+  fewerDraws(draws, levels + 1) - fewerDraws(draws, 1);
 
 /**
  * Ce qu'un niveau de constellation rapporte de plus que le recyclage du doublon qui le monte :
@@ -208,7 +224,13 @@ function cardEV(
 ): { value: number; pNew: number; pFresh: number; key: string; size: number } {
   const key = bucketKey(poolKey, rarity, shiny);
   if (!bucket || bucket.items.length === 0) return { value: 0, pNew: 0, pFresh: 0, key, size: 0 };
-  const { unowned, score: unownedScore, fresh, open } = unownedIn(ctx, state, key, bucket, shiny);
+  const {
+    unowned,
+    score: unownedScore,
+    fresh,
+    open,
+    openUnowned,
+  } = unownedIn(ctx, state, key, bucket, shiny);
   const size = bucket.items.length;
   const effective = Math.max(0, unowned - (state.expectedNew[key] ?? 0));
   const pNew = effective / size;
@@ -219,6 +241,10 @@ function cardEV(
     const step = drawn / size;
     open.forEach((o, n) => {
       const filled = levelsFilled(before + step, n) - levelsFilled(before, n);
+      levels += (filled / step) * levelGain(ctx, bucket, o.count, o.points);
+    });
+    openUnowned.forEach((o, n) => {
+      const filled = levelsFilledAfterFirst(before + step, n) - levelsFilledAfterFirst(before, n);
       levels += (filled / step) * levelGain(ctx, bucket, o.count, o.points);
     });
   }
@@ -537,22 +563,69 @@ export function settleExpectedLevels(ctx: Context, state: State, item: Item, shi
 }
 
 /**
- * Une carte qui entre dans la collection après des invocations simulées : leurs tirages de cette
- * carte, qui redeviennent des doublons (voir `settleExpectedNew`), montent ses constellations comme
- * si elle avait déjà été possédée, soit E[min(X, n)] de ses `n` niveaux. Sans ça, créer une carte
- * avant d'invoquer valait plus que l'inverse. À appeler avant que la carte n'entre dans la
- * collection.
+ * Niveaux que les invocations simulées montent de plus (ou de moins) quand une carte entre dans
+ * la collection (ou en sort) : non possédée, son premier tirage la donnait et les suivants
+ * montaient ses niveaux ; possédée, tous ses tirages sont des doublons. Sans ça, créer une carte
+ * que les invocations allaient sans doute donner semblait rapporter les niveaux que ses doublons
+ * monteraient de toute façon, et le plan dépensait sa poudre à forger ces cartes.
  */
-export function creditExpectedLevels(ctx: Context, state: State, item: Item, shiny: Shiny): void {
+function shiftExpectedLevels(
+  ctx: Context,
+  state: State,
+  item: Item,
+  shiny: Shiny,
+  sign: 1 | -1,
+): void {
   const card = getCard(state, item.id, shiny);
-  if (card.copies > 0 || !item.upgradable || shiny > 1 || card.constellation >= item.rarity) return;
+  if (!item.upgradable || shiny > 1 || card.constellation >= item.rarity) return;
   const levels = item.rarity - card.constellation;
   const points = item.scores[shiny] * CONSTELLATION_POINTS_FACTOR;
   for (const { key, bucket } of bucketsOf(ctx, item, shiny)) {
     const draws = state.drawsPerCard[key] ?? 0;
     if (draws <= 0) continue;
-    state.ev += levelsFilled(draws, levels) * levelGain(ctx, bucket, 1, points);
+    state.ev += sign * levelsOnceOwned(draws, levels) * levelGain(ctx, bucket, 1, points);
   }
+}
+
+/**
+ * Variation de l'espérance des invocations simulées quand une carte entre dans la collection
+ * (`obtained`, voir `creditExpectedLevels`) puis monte `constellations` niveaux à coup sûr (voir
+ * `settleExpectedLevels`), sans rien appliquer : pour estimer un candidat de forge. Sans ça, une
+ * chaîne « enchanter, constellation » sur une dorée que les invocations allaient monter semblait
+ * rapporter tout son niveau, et ces chaînes évinçaient du faisceau les dépenses qui rapportaient.
+ */
+export function expectedLevelsShift(
+  ctx: Context,
+  state: State,
+  item: Item,
+  shiny: Shiny,
+  obtained: boolean,
+  constellations: number,
+): number {
+  const card = getCard(state, item.id, shiny);
+  if (!item.upgradable || shiny > 1 || card.constellation >= item.rarity) return 0;
+  const levels = item.rarity - card.constellation;
+  const points = item.scores[shiny] * CONSTELLATION_POINTS_FACTOR;
+  let delta = 0;
+  for (const { key, bucket } of bucketsOf(ctx, item, shiny)) {
+    const draws = state.drawsPerCard[key] ?? 0;
+    if (draws <= 0) continue;
+    const gain = levelGain(ctx, bucket, 1, points);
+    if (obtained && card.copies === 0) delta += levelsOnceOwned(draws, levels) * gain;
+    for (let k = 0; k < Math.min(constellations, levels); k++)
+      delta -= (1 - fewerDraws(draws, levels - k)) * gain;
+  }
+  return delta;
+}
+
+/** À appeler avant qu'une carte non possédée n'entre dans la collection (voir `shiftExpectedLevels`). */
+export function creditExpectedLevels(ctx: Context, state: State, item: Item, shiny: Shiny): void {
+  if (getCard(state, item.id, shiny).copies === 0) shiftExpectedLevels(ctx, state, item, shiny, 1);
+}
+
+/** À appeler avant que le dernier exemplaire d'une carte ne quitte la collection. */
+export function releaseExpectedLevels(ctx: Context, state: State, item: Item, shiny: Shiny): void {
+  if (getCard(state, item.id, shiny).copies > 0) shiftExpectedLevels(ctx, state, item, shiny, -1);
 }
 
 /** Espérance (en points) d'une tentative d'ascension à l'étage courant, et cartes nouvelles attendues. */

@@ -248,6 +248,30 @@ describe('doublons qui montent une constellation', () => {
     expect(levels).toBeGreaterThan(0.85 * 20 * (2 * 60 - 1));
   });
 
+  it('ne fait pas forger une carte que les invocations donneront de toute façon', () => {
+    // Dorées non possédées, tirées 2,4 fois chacune en moyenne par 50 dorées : la première donne
+    // la carte, les suivantes montent son niveau. L'enchanter après ne rapporte que les tirages
+    // où elle ne serait pas venue (9 %) ou pas deux fois (22 %), pas le niveau que ses doublons
+    // monteront de toute façon (avant : ~110 points sur 120).
+    const ctx = makeContext(
+      catalog,
+      makePlayer({
+        balances: { balance: 100_000, loreDust: 10_000, loreFragment: 0, upgradeDust: 0 },
+        inventory: Object.fromEntries(items.map((i) => owned(i.id, 0, 2))),
+      }),
+    );
+    const many = Array<Action>(50).fill(golden);
+    const enchant: Action = { kind: 'enchant', itemId: items[0]!.id };
+    const value = (actions: Action[]) => {
+      let state = initialState(ctx);
+      for (const action of actions) state = applyAction(ctx, state, action)!.state;
+      return stateValue(ctx, state);
+    };
+    const marginal = value([...many, enchant]) - value(many);
+    expect(marginal).toBeGreaterThan(0);
+    expect(marginal).toBeLessThan(0.09 * 60 + 0.22 * 120 + 5);
+  });
+
   it('ne compte pas deux fois un niveau monté après les invocations', () => {
     // Le niveau monté à coup sûr ne peut plus l'être par un doublon tiré : l'ordre ne change rien.
     const ctx = context(0, 3);

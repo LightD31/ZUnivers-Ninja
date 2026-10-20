@@ -1,5 +1,11 @@
 import { ASCENSION_COST, CONSTELLATION_UPGRADE_DUST, FEATURE } from '../rules/constants';
-import { ascensionEV, boosterOptions, expectedDraws, invocationEV } from '../rules/random';
+import {
+  ascensionEV,
+  boosterOptions,
+  expectedDraws,
+  expectedLevelsShift,
+  invocationEV,
+} from '../rules/random';
 import { reserveBeforeConstellation, reserveFor, reserveTotal } from '../rules/reserve';
 import {
   CURRENCIES,
@@ -318,6 +324,8 @@ function candidate(
  * - après des invocations simulées, une carte qu'elles comptaient déjà comme probable rapporte
  *   d'autant moins (voir `settleExpectedNew`). Sans ça, le faisceau explorait des créations
  *   estimées rentables qui ne rapportaient plus rien, et s'arrêtait avec des monnaies à dépenser ;
+ *   de même pour les niveaux de constellation que leurs doublons comptaient monter (voir
+ *   `expectedLevelsShift`) ;
  * - une carte qui termine un succès de collection rapporte aussi ses points. Sans ça, la dernière
  *   carte d'un succès (une fusion ★★★★★, par exemple) semblait trop chère pour être explorée.
  */
@@ -329,8 +337,29 @@ function adjusted(
   drawn: Map<Item, number>[] | null,
   near: Set<number>,
 ): Candidate {
-  if (!c.obtains) return c;
   let delta = 0;
+  if (Object.keys(state.drawsPerCard).length > 0) {
+    // Cartes que la chaîne obtient et niveaux qu'elle leur monte.
+    const cards = new Map<
+      string,
+      { item: Item; shiny: Shiny; obtained: boolean; levels: number }
+    >();
+    const touch = (item: Item, shiny: Shiny) => {
+      const key = cardKey(item.id, shiny);
+      let entry = cards.get(key);
+      if (!entry) cards.set(key, (entry = { item, shiny, obtained: false, levels: 0 }));
+      return entry;
+    };
+    for (const [item, shiny] of c.obtains ?? []) touch(item, shiny).obtained = true;
+    for (const action of c.actions) {
+      const item = action.kind === 'constellation' ? ctx.items[action.itemId] : undefined;
+      if (item && action.kind === 'constellation') touch(item, action.shiny).levels++;
+    }
+    for (const { item, shiny, obtained, levels } of cards.values())
+      delta +=
+        expectedLevelsShift(ctx, state, item, shiny, obtained, levels) * ctx.options.evFactor;
+  }
+  if (!c.obtains) return delta !== 0 ? { ...c, gain: c.gain + delta } : c;
   if (drawn) {
     for (const [item, shiny] of c.obtains) {
       let lost = drawn[shiny]!.get(item);

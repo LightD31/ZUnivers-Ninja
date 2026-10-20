@@ -10,6 +10,7 @@ import {
   boosterOptions,
   creditExpectedLevels,
   invocationEV,
+  releaseExpectedLevels,
   settleExpectedLevels,
   settleExpectedNew,
 } from '../rules/random';
@@ -114,6 +115,13 @@ function obtain(ctx: Context, s: State, item: Item, shiny: Shiny): void {
   addCopies(ctx, s, item.id, shiny, 1);
 }
 
+/** Retire des exemplaires ; le dernier qui part change ce que les invocations simulées montent. */
+function remove(ctx: Context, s: State, itemId: string, shiny: Shiny, count: number): void {
+  const item = ctx.items[itemId];
+  if (item && getCard(s, itemId, shiny).copies <= count) releaseExpectedLevels(ctx, s, item, shiny);
+  addCopies(ctx, s, itemId, shiny, -count);
+}
+
 function applyInner(ctx: Context, s0: State, action: Action): Result {
   const { allow } = ctx.options;
   switch (action.kind) {
@@ -190,7 +198,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       const s = fork(s0);
       pay(s, price);
       const lastNormal = getCard(s0, item.id, 0).copies === 1;
-      addCopies(ctx, s, item.id, 0, -1);
+      remove(ctx, s, item.id, 0, 1);
       obtain(ctx, s, item, 1);
       progressChallenges(ctx, s, 'enchant', 1);
       return {
@@ -213,8 +221,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
         if (getCard(s0, input.itemId, action.shiny).copies < input.quantity + keep) return null;
       }
       const s = fork(s0);
-      for (const input of fusion.inputs)
-        addCopies(ctx, s, input.itemId, action.shiny, -input.quantity);
+      for (const input of fusion.inputs) remove(ctx, s, input.itemId, action.shiny, input.quantity);
       obtain(ctx, s, result, action.shiny);
       progressChallenges(ctx, s, 'fusion', 1);
       progressAchievements(ctx, s, 'fusion', 1);
@@ -299,7 +306,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       const s = fork(s0);
       s.balances.upgradeDust -= cost;
       const current = evolution.steps[index]!;
-      if (getCard(s, current.itemId, 0).copies > 0) addCopies(ctx, s, current.itemId, 0, -1);
+      if (getCard(s, current.itemId, 0).copies > 0) remove(ctx, s, current.itemId, 0, 1);
       const nextItem = ctx.items[next.itemId];
       if (nextItem) obtain(ctx, s, nextItem, 0);
       else addCopies(ctx, s, next.itemId, 0, 1);
