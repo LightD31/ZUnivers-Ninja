@@ -86,8 +86,11 @@ describe('cartes mises en avant par un évènement', () => {
     itemIds: featured.map((i) => i.id),
   };
   const catalog = makeCatalog([...featured, ...others], { events: [event] });
+  // Constellations au maximum : un doublon ne peut plus que se recycler.
   const ownedAll = (items: typeof featured) =>
-    Object.fromEntries(items.flatMap((i) => [0, 1, 2].map((s) => owned(i.id, s as 0 | 1 | 2, 1))));
+    Object.fromEntries(
+      items.flatMap((i) => [0, 1, 2].map((s) => owned(i.id, s as 0 | 1 | 2, 1, i.rarity))),
+    );
   const evs = (inventory: ReturnType<typeof ownedAll>) => {
     const ctx = makeContext(catalog, makePlayer({ inventory }));
     const state = initialState(ctx);
@@ -203,6 +206,62 @@ describe('valeur des doublons', () => {
     const ctx = context();
     const state = initialState(ctx);
     expect(ascensionEV(withDuplicateValue(ctx), state).ev).toBe(ascensionEV(ctx, state).ev);
+  });
+});
+
+describe('doublons qui montent une constellation', () => {
+  // 20 cartes 1 ★, normales et dorées possédées : un niveau de constellation chacune (dorée :
+  // 2 × 60 points), ouvert ou déjà monté.
+  const items = Array.from({ length: 20 }, (_, i) => makeItem(1001 + i));
+  const catalog = makeCatalog(items);
+  const context = (constellation: number, copies = 1) =>
+    makeContext(
+      catalog,
+      makePlayer({
+        balances: { balance: 100_000, loreDust: 0, loreFragment: 0, upgradeDust: 0 },
+        inventory: Object.fromEntries(
+          items.flatMap((i) => [
+            owned(i.id, 0, copies, constellation),
+            owned(i.id, 1, copies, constellation),
+          ]),
+        ),
+      }),
+    );
+  const golden: Action = { kind: 'invoke', booster: 'golden' };
+  const ev = (ctx: ReturnType<typeof context>, actions: Action[]) => {
+    let state = initialState(ctx);
+    for (const action of actions) state = applyAction(ctx, state, action)!.state;
+    return state.ev;
+  };
+
+  it('compte le niveau qu’un doublon monte au lieu de son recyclage', () => {
+    // Une dorée tirée sur dix est une dorée 1 ★ : presque une sur vingt monte un niveau de 120.
+    expect(ev(context(0), [golden])).toBeGreaterThan(ev(context(1), [golden]) + 100);
+  });
+
+  it('ne monte pas plus de niveaux qu’il n’en reste', () => {
+    // 50 dorées tirent chaque dorée 1 ★ 2,4 fois en moyenne : 91 % des niveaux montés, jamais plus.
+    const many = Array<Action>(50).fill(golden);
+    const levels = ev(context(0), many) - ev(context(1), many);
+    const all = 20 * (2 * 60) + 20 * (2 * 1);
+    expect(levels).toBeLessThan(all);
+    expect(levels).toBeGreaterThan(0.85 * 20 * (2 * 60 - 1));
+  });
+
+  it('ne compte pas deux fois un niveau monté après les invocations', () => {
+    // Le niveau monté à coup sûr ne peut plus l'être par un doublon tiré : l'ordre ne change rien.
+    const ctx = context(0, 3);
+    const constellation: Action = { kind: 'constellation', itemId: items[0]!.id, shiny: 1 };
+    const invocations = Array<Action>(10).fill(golden);
+    const gain = (actions: Action[]) => {
+      let state = initialState(ctx);
+      for (const action of actions) state = applyAction(ctx, state, action)!.state;
+      return stateValue(ctx, state);
+    };
+    expect(gain([...invocations, constellation])).toBeCloseTo(
+      gain([constellation, ...invocations]),
+      6,
+    );
   });
 });
 

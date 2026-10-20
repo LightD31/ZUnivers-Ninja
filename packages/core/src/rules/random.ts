@@ -5,6 +5,8 @@ import { CURRENCIES, cardKey, type Balances, type Item, type Shiny } from '../mo
 import {
   ASCENSION_FAIL_REFUND,
   BOOSTERS,
+  CONSTELLATION_POINTS_FACTOR,
+  CONSTELLATION_UPGRADE_DUST,
   FEATURE,
   PITY_CARDS,
   REPUTATION_ATTEMPT,
@@ -94,10 +96,18 @@ function buildPool(ctx: Context, key: string, items: Item[], weights: Balances):
  * des centaines d'invocations s'enchaînent sans changer l'inventaire, et ce parcours de tout le
  * seau dominait le temps de calcul.
  */
-const unownedCache = new WeakMap<
-  object,
-  Map<string, { unowned: number; score: number; fresh: number }>
->();
+const unownedCache = new WeakMap<object, Map<string, BucketCards>>();
+
+interface BucketCards {
+  unowned: number;
+  score: number;
+  fresh: number;
+  /**
+   * Cartes possédées à qui il reste des niveaux de constellation, par nombre de niveaux restants
+   * (indice 1 à 4) : leur nombre et la somme des points qu'un niveau leur rapporte.
+   */
+  open: { count: number; points: number }[];
+}
 
 /** La carte était-elle dans la collection au début du plan ? */
 const ownedAtStart = (ctx: Context, item: Item, shiny: Shiny) =>
@@ -106,21 +116,34 @@ const ownedAtStart = (ctx: Context, item: Item, shiny: Shiny) =>
 /**
  * Cartes non possédées d'un seau, leurs points, et combien d'entre elles le joueur n'avait pas au
  * début du plan (`fresh`) : une carte retirée de la collection pendant le plan (dernier exemplaire
- * normal enchanté) puis retirée n'est pas une carte jamais possédée.
+ * normal enchanté) puis retirée n'est pas une carte jamais possédée. Aussi, les cartes possédées
+ * dont un doublon monterait une constellation.
  */
-function unownedIn(ctx: Context, state: State, key: string, bucket: PoolBucket, shiny: Shiny) {
+function unownedIn(
+  ctx: Context,
+  state: State,
+  key: string,
+  bucket: PoolBucket,
+  shiny: Shiny,
+): BucketCards {
   const { layer, writes } = state.cards.snapshot();
   let cache = unownedCache.get(layer);
   if (!cache) unownedCache.set(layer, (cache = new Map()));
   const cacheKey = `${writes}|${key}`;
   let entry = cache.get(cacheKey);
   if (!entry) {
-    entry = { unowned: 0, score: 0, fresh: 0 };
+    entry = { unowned: 0, score: 0, fresh: 0, open: [] };
     for (const item of bucket.items) {
-      if (getCard(state, item.id, shiny).copies === 0) {
+      const card = getCard(state, item.id, shiny);
+      if (card.copies === 0) {
         entry.unowned++;
         entry.score += item.scores[shiny];
         if (!ownedAtStart(ctx, item, shiny)) entry.fresh++;
+      } else if (item.upgradable && shiny <= 1 && card.constellation < item.rarity) {
+        const levels = item.rarity - card.constellation;
+        const open = (entry.open[levels] ??= { count: 0, points: 0 });
+        open.count++;
+        open.points += item.scores[shiny] * CONSTELLATION_POINTS_FACTOR;
       }
     }
     cache.set(cacheKey, entry);
@@ -128,10 +151,51 @@ function unownedIn(ctx: Context, state: State, key: string, bucket: PoolBucket, 
   return entry;
 }
 
+/** Chance qu'une carte tirée en moyenne `draws` fois l'ait été moins de `levels` fois (Poisson). */
+function fewerDraws(draws: number, levels: number): number {
+  let term = Math.exp(-draws);
+  let p = 0;
+  for (let k = 0; k < levels; k++) {
+    p += term;
+    term *= draws / (k + 1);
+  }
+  return p;
+}
+
+/**
+ * Niveaux de constellation montés en espérance par les doublons d'une carte tirée en moyenne
+ * `draws` fois, à qui il reste `levels` niveaux : E[min(X, levels)], somme des P(X ≥ k).
+ */
+function levelsFilled(draws: number, levels: number): number {
+  let filled = 0;
+  for (let k = 1; k <= levels; k++) filled += 1 - fewerDraws(draws, k);
+  return filled;
+}
+
+/**
+ * Ce qu'un niveau de constellation rapporte de plus que le recyclage du doublon qui le monte :
+ * ses points et ses éclats, moins le recyclage. Les éclats valent comme les autres monnaies des
+ * doublons d'invocation (voir `withDuplicateValue`).
+ */
+const levelGain = (ctx: Context, bucket: PoolBucket, count: number, points: number) =>
+  Math.max(
+    0,
+    points +
+      count *
+        (CONSTELLATION_UPGRADE_DUST * duplicateWeights(ctx, true).upgradeDust - bucket.dupValue),
+  );
+
 /**
  * Espérance de valeur d'une carte tirée dans un seau, probabilité qu'elle soit nouvelle, et qu'elle
  * soit en plus une carte que le joueur n'avait pas au début du plan (`pFresh`, pour le bonus des
  * cartes nouvelles).
+ *
+ * Invocations (`drawn` : cartes tirées dans ce seau par l'invocation, en espérance) : le doublon
+ * d'une carte à qui il reste des niveaux de constellation en monte un au lieu d'être recyclé, tant
+ * que les tirages précédents du plan (`State.drawsPerCard`) ne les ont pas tous montés. Recyclé, il
+ * valait bien moins : un doublon de dorée 1 ★ monte 120 points, mais n'en rend qu'une vingtaine en
+ * poudre. Chaque invocation compte exactement les niveaux que ses tirages ajoutent : la somme ne
+ * dépend pas de la façon dont les tirages se répartissent entre invocations.
  */
 function cardEV(
   ctx: Context,
@@ -140,18 +204,30 @@ function cardEV(
   bucket: PoolBucket | undefined,
   rarity: number,
   shiny: Shiny,
-): { value: number; pNew: number; pFresh: number; key: string } {
+  drawn: number | null,
+): { value: number; pNew: number; pFresh: number; key: string; size: number } {
   const key = bucketKey(poolKey, rarity, shiny);
-  if (!bucket || bucket.items.length === 0) return { value: 0, pNew: 0, pFresh: 0, key };
-  const { unowned, score: unownedScore, fresh } = unownedIn(ctx, state, key, bucket, shiny);
+  if (!bucket || bucket.items.length === 0) return { value: 0, pNew: 0, pFresh: 0, key, size: 0 };
+  const { unowned, score: unownedScore, fresh, open } = unownedIn(ctx, state, key, bucket, shiny);
+  const size = bucket.items.length;
   const effective = Math.max(0, unowned - (state.expectedNew[key] ?? 0));
-  const pNew = effective / bucket.items.length;
+  const pNew = effective / size;
   const avgNewScore = unowned > 0 ? unownedScore / unowned : 0;
+  let levels = 0;
+  if (drawn) {
+    const before = state.drawsPerCard[key] ?? 0;
+    const step = drawn / size;
+    open.forEach((o, n) => {
+      const filled = levelsFilled(before + step, n) - levelsFilled(before, n);
+      levels += (filled / step) * levelGain(ctx, bucket, o.count, o.points);
+    });
+  }
   return {
-    value: pNew * avgNewScore + (1 - pNew) * bucket.dupValue,
+    value: pNew * avgNewScore + (1 - pNew) * bucket.dupValue + levels / size,
     pNew,
     pFresh: unowned > 0 ? (pNew * fresh) / unowned : 0,
     key,
+    size,
   };
 }
 
@@ -301,18 +377,21 @@ export function invocationEV(
   ev: number;
   newCards: number;
   expectedNew: Record<string, number>;
+  /** Tirages attendus de chaque carte, par seau (voir `State.drawsPerCard`). */
+  draws: Record<string, number>;
   pity: Float64Array | null;
 } {
   const pool = getPool(ctx, option.packId, true);
   const poolKey = `${option.packId ?? 'classic'}|true`;
   const featured = featuredPool(ctx, option);
   const expectedNew: Record<string, number> = {};
+  const draws: Record<string, number> = {};
   let perCard = 0;
   let perCardFresh = 0;
   // Tirage d'une carte 4 ★ (pour la bienveillance) : valeur, cartes nouvelles par seau.
   let r4Value = 0;
   let r4Fresh = 0;
-  const r4Buckets: [string, number][] = [];
+  const r4Buckets: [string, number, number][] = [];
   option.spec.rarity.forEach((pRarity, i) => {
     const rarity = i + 1;
     const pGolden = option.spec.golden[i] ?? 0;
@@ -328,17 +407,27 @@ export function invocationEV(
       const featuredBucket = option.featured?.has(rarity)
         ? featured?.get(bucketKey(option.key, rarity, shiny))
         : undefined;
-      const { value, pNew, pFresh, key } = featuredBucket
-        ? cardEV(ctx, state, option.key, featuredBucket, rarity, shiny)
-        : cardEV(ctx, state, poolKey, pool.get(bucketKey(poolKey, rarity, shiny)), rarity, shiny);
       const p = pRarity * pShiny;
+      const drawn = option.cards * p;
+      const { value, pNew, pFresh, key, size } = featuredBucket
+        ? cardEV(ctx, state, option.key, featuredBucket, rarity, shiny, drawn)
+        : cardEV(
+            ctx,
+            state,
+            poolKey,
+            pool.get(bucketKey(poolKey, rarity, shiny)),
+            rarity,
+            shiny,
+            drawn,
+          );
       perCard += p * value;
       perCardFresh += p * pFresh;
       expectedNew[key] = (expectedNew[key] ?? 0) + option.cards * p * pNew;
+      if (size > 0) draws[key] = (draws[key] ?? 0) + drawn / size;
       if (rarity === 4) {
         r4Value += pShiny * value;
         r4Fresh += pShiny * pFresh;
-        r4Buckets.push([key, pShiny * pNew]);
+        r4Buckets.push([key, pShiny * pNew, size > 0 ? pShiny / size : 0]);
       }
     }
   });
@@ -351,11 +440,13 @@ export function invocationEV(
     if (step.triggers > 0) {
       ev += step.triggers * (r4Value - perCard);
       newCards += step.triggers * (r4Fresh - perCardFresh);
-      for (const [key, pNew] of r4Buckets)
+      for (const [key, pNew, perCardDraws] of r4Buckets) {
         expectedNew[key] = (expectedNew[key] ?? 0) + step.triggers * pNew;
+        draws[key] = (draws[key] ?? 0) + step.triggers * perCardDraws;
+      }
     }
   }
-  return { ev, newCards, expectedNew, pity };
+  return { ev, newCards, expectedNew, draws, pity };
 }
 
 /** Seaux d'invocation contenant chaque carte (par brillance) : ne dépend que du catalogue. */
@@ -424,6 +515,46 @@ export function settleExpectedNew(ctx: Context, state: State, item: Item, shiny:
   }
 }
 
+/**
+ * Un niveau de constellation monté à coup sûr après des invocations simulées : leur espérance
+ * comptait déjà que leurs doublons de la carte le monteraient. Une carte tirée en moyenne `d` fois
+ * et à qui il restait `n` niveaux en montait E[min(X, n)], X suivant une loi de Poisson de moyenne
+ * `d` : avec un niveau de moins, E[min(X, n - 1)]. La différence, P(X ≥ n) niveaux, redevient du
+ * recyclage. L'ordre des invocations et des constellations ne change donc pas la valeur d'un plan.
+ * À appeler avant que le niveau ne monte.
+ */
+export function settleExpectedLevels(ctx: Context, state: State, item: Item, shiny: Shiny): void {
+  const card = getCard(state, item.id, shiny);
+  if (card.copies === 0 || !item.upgradable || shiny > 1 || card.constellation >= item.rarity)
+    return;
+  const levels = item.rarity - card.constellation;
+  const points = item.scores[shiny] * CONSTELLATION_POINTS_FACTOR;
+  for (const { key, bucket } of bucketsOf(ctx, item, shiny)) {
+    const draws = state.drawsPerCard[key] ?? 0;
+    if (draws <= 0) continue;
+    state.ev -= (1 - fewerDraws(draws, levels)) * levelGain(ctx, bucket, 1, points);
+  }
+}
+
+/**
+ * Une carte qui entre dans la collection après des invocations simulées : leurs tirages de cette
+ * carte, qui redeviennent des doublons (voir `settleExpectedNew`), montent ses constellations comme
+ * si elle avait déjà été possédée, soit E[min(X, n)] de ses `n` niveaux. Sans ça, créer une carte
+ * avant d'invoquer valait plus que l'inverse. À appeler avant que la carte n'entre dans la
+ * collection.
+ */
+export function creditExpectedLevels(ctx: Context, state: State, item: Item, shiny: Shiny): void {
+  const card = getCard(state, item.id, shiny);
+  if (card.copies > 0 || !item.upgradable || shiny > 1 || card.constellation >= item.rarity) return;
+  const levels = item.rarity - card.constellation;
+  const points = item.scores[shiny] * CONSTELLATION_POINTS_FACTOR;
+  for (const { key, bucket } of bucketsOf(ctx, item, shiny)) {
+    const draws = state.drawsPerCard[key] ?? 0;
+    if (draws <= 0) continue;
+    state.ev += levelsFilled(draws, levels) * levelGain(ctx, bucket, 1, points);
+  }
+}
+
 /** Espérance (en points) d'une tentative d'ascension à l'étage courant, et cartes nouvelles attendues. */
 export function ascensionEV(
   ctx: Context,
@@ -445,6 +576,7 @@ export function ascensionEV(
       pool.get(bucketKey(poolKey, drop.rarity, drop.shiny)),
       drop.rarity,
       drop.shiny,
+      null,
     );
     reward += drop.rate * value;
     pFreshReward += drop.rate * pFresh;
