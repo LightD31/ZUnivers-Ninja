@@ -65,6 +65,28 @@ describe('bienveillance', () => {
     ).toBe(160);
     expect(normalizePlayer(rawPlayer()).invokeBeforePity).toBeNull();
   });
+
+  it('ne fait qu’une basique pour la 4 ★ garantie, sans en enchaîner un lot', () => {
+    // Chromas 1 ★ manquantes : la chroma est le pack le plus rentable. La 4 ★ garantie tombe dans
+    // l'invocation suivante : une basique la prend pour moitié prix. Avant, avec un gros solde, un
+    // lot de quatre basiques comptait la 4 ★ garantie à chacune.
+    const ones = Array.from({ length: 20 }, (_, i) => makeItem(1001 + i));
+    const fours = Array.from({ length: 10 }, (_, i) => makeItem(4001 + i));
+    const ctx = makeContext(
+      makeCatalog([...ones, ...fours]),
+      makePlayer({
+        balances: { balance: 200_000, loreDust: 0, loreFragment: 0, upgradeDust: 0 },
+        invokeBeforePity: 5,
+        inventory: Object.fromEntries(
+          ones.flatMap((i) => [owned(i.id, 0, 1, 1), owned(i.id, 1, 1, 1)]),
+        ),
+      }),
+    );
+    const invocations = nodeSteps(search(ctx).best).flatMap((s) =>
+      s.action.kind === 'invoke' ? [s.action.booster] : [],
+    );
+    expect(invocations.slice(0, 2)).toEqual(['basic', 'chroma']);
+  });
 });
 
 describe('cartes mises en avant par un évènement', () => {

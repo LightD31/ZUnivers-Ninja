@@ -5,6 +5,7 @@ import {
   expectedDraws,
   expectedLevelsShift,
   invocationEV,
+  type BoosterOption,
 } from '../rules/random';
 import { reserveBeforeConstellation, reserveFor, reserveTotal } from '../rules/reserve';
 import {
@@ -668,30 +669,46 @@ export function candidates(ctx: Context, state: State, affordableOnly = true): C
   const allow = allowed(ctx);
 
   if (allow.invoke) {
-    const repeatable: Candidate[] = [];
+    const gainOf = (s: State, option: BoosterOption) => {
+      const { ev, newCards } = invocationEV(ctx, s, option);
+      return (ev + newCards * bonus) * evFactor - weighted(ctx, option.cost);
+    };
+    const repeatable: { option: BoosterOption; candidate: Candidate }[] = [];
     for (const option of boosterOptions(ctx)) {
       if (option.oneTime && option.eventId && (state.eventInvocations[option.eventId] ?? 0) > 0)
         continue;
-      const { ev, newCards } = invocationEV(ctx, state, option);
-      const gain = (ev + newCards * bonus) * evFactor - weighted(ctx, option.cost);
+      const gain = gainOf(state, option);
       const action: Action = { kind: 'invoke', booster: option.key };
       if (option.oneTime) push([action], gain, option.cost);
       else if (gain > EPSILON && payable(option.cost))
-        repeatable.push(candidate(ctx, [action], gain, option.cost));
+        repeatable.push({ option, candidate: candidate(ctx, [action], gain, option.cost) });
     }
     // Packs répétables : seul le plus rentable par monnaie dépensée est proposé. Le faisceau
     // compare des étapes, et à une invocation par étape le pack le plus cher l'emportait parce
     // qu'il fait plus de valeur par invocation, même quand il en fait moins par ZUMonnaie.
-    const best = repeatable.reduce<Candidate | null>(
-      (a, c) => (!a || c.gain * a.cost > a.gain * c.cost ? c : a),
-      null,
-    );
+    const mostEfficient = (list: Candidate[]) =>
+      list.reduce<Candidate | null>(
+        (a, c) => (!a || c.gain * a.cost > a.gain * c.cost ? c : a),
+        null,
+      );
+    const best = mostEfficient(repeatable.map((r) => r.candidate));
     const times = best ? timesAffordable(state, best.price) : 0;
     if (best && times < INVOKE_TAIL) {
       // Fin du solde : un autre pack peut mieux l'épuiser, le faisceau compare les combinaisons.
-      out.push(...repeatable);
+      out.push(...repeatable.map((r) => r.candidate));
     } else if (best) {
-      const count = Math.max(1, Math.floor(times / INVOKE_STEPS));
+      let count = Math.max(1, Math.floor(times / INVOKE_STEPS));
+      // La bienveillance ne vaut que pour l'invocation où tombe la 4 ★ garantie. Quand elle rend
+      // un pack plus rentable que celui choisi le reste du temps, ce pack n'est proposé qu'une
+      // fois : en lot, son gain la comptait à chaque invocation, et le plan enchaînait deux ou
+      // trois basiques avant de revenir au pack le plus rentable.
+      if (state.pity && count > 1) {
+        const calm = { ...state, pity: null };
+        const steady = mostEfficient(
+          repeatable.map(({ option, candidate: c }) => ({ ...c, gain: gainOf(calm, option) })),
+        );
+        if (steady && steady.key !== best.key) count = 1;
+      }
       const price: Partial<Balances> = {};
       for (const c of CURRENCIES) if (best.price[c]) price[c] = best.price[c] * count;
       out.push(candidate(ctx, Array(count).fill(best.actions[0]), best.gain * count, price));
