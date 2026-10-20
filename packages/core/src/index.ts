@@ -56,6 +56,7 @@ export {
   closure,
   nodeSteps,
   rollout,
+  withDuplicateValue,
   type LedgerEntry,
   type Step,
   type SearchNode,

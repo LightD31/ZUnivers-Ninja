@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ascensionEV,
   boosterOptions,
+  buildContext,
+  createPlan,
   invocationEV,
   nodeSteps,
   normalizePlayer,
+  resolveOptions,
   search,
   sortInvocations,
+  withDuplicateValue,
   type GameEvent,
 } from '../src';
 import { applyAction } from '../src/engine/actions';
@@ -13,7 +18,7 @@ import { initialState, stateValue } from '../src/engine/state';
 import { PITY_CARDS } from '../src/rules/constants';
 import { pityStep } from '../src/rules/random';
 import { makeCatalog, makeContext, makeItem, makePlayer, owned } from './factory';
-import { rawPlayer } from './helpers';
+import { fixtureCatalog, fixturePlayer, NOW, rawPlayer } from './helpers';
 import type { Action } from '../src/engine/actions';
 
 const at = (d: number) => {
@@ -159,6 +164,45 @@ describe('ordre des invocations', () => {
       'chroma',
       'basic',
     ]);
+  });
+});
+
+describe('valeur des doublons', () => {
+  const catalog = fixtureCatalog();
+  const fixture = fixturePlayer();
+  const withBalances = (balances: Partial<typeof fixture.balances>) => ({
+    ...fixture,
+    balances: { ...fixture.balances, ...balances },
+  });
+  const context = (player = fixture) => buildContext(catalog, player, NOW, resolveOptions({}));
+
+  it('compte la poudre des doublons d’invocation à ce qu’elle achète', () => {
+    // Joueur réel : peu de poudre et des constellations à monter. Une poudre de plus en rapporte
+    // bien plus que son poids.
+    const ctx = context();
+    expect(withDuplicateValue(ctx).duplicateWeights!.loreDust).toBeGreaterThan(
+      10 * ctx.options.weights.loreDust,
+    );
+    // Poudre en abondance : plus rien à acheter avec, elle ne vaut que son poids.
+    const rich = context(withBalances({ loreDust: 10_000_000 }));
+    expect(withDuplicateValue(rich).duplicateWeights!.loreDust).toBe(rich.options.weights.loreDust);
+  });
+
+  it('préfère les packs qui donnent le plus de cartes à recycler', () => {
+    // Avant, la chroma passait devant : plus de cartes nouvelles par ZUMonnaie, mais deux fois moins
+    // de cartes, donc de doublons à recycler en poudre, que les packs à 1 000.
+    const plan = createPlan({ catalog, player: withBalances({ balance: 20_000 }), now: NOW });
+    const invocations = plan.groups.filter((g) => g.kind === 'invoke').map((g) => g.command);
+    expect(invocations.length).toBeGreaterThan(0);
+    expect(invocations).not.toContain('/im évènement:chroma');
+  });
+
+  it('garde les doublons d’ascension au poids de la poudre', () => {
+    // L'ascension se paie en poudre comptée à son poids : ses doublons aussi, sinon elle semblait
+    // rendre plus de poudre qu'elle n'en coûte.
+    const ctx = context();
+    const state = initialState(ctx);
+    expect(ascensionEV(withDuplicateValue(ctx), state).ev).toBe(ascensionEV(ctx, state).ev);
   });
 });
 

@@ -985,6 +985,34 @@ export interface SearchResult {
 }
 
 /**
+ * Valeur des monnaies que rapporte le recyclage des doublons d'invocation : ce qu'elles achètent,
+ * pas leur poids. Un plan finit presque toujours sans poudre, et la poudre des doublons monte
+ * ensuite les constellations qu'il n'a pas pu payer. Comptés au poids, les doublons faisaient
+ * préférer la chroma, qui donne plus de cartes nouvelles par ZUMonnaie, à la basique, qui donne
+ * deux fois plus de cartes à recycler : sur 301 joueurs réels qui invoquaient, la même ZUMonnaie
+ * dépensée en basiques, poudre des doublons dépensée ensuite, rapportait plus pour 266 d'entre eux
+ * (médiane +765 points), et une poudre rendue après le plan valait 0,17 point au lieu de 0,01.
+ *
+ * Une unité vaut son poids plus son prix d'opportunité quand le plan glouton n'en a plus (voir
+ * `rollout`) : le gain par unité de la meilleure dépense que le solde ne permet plus. Rien de plus
+ * quand le solde suffit à tout acheter. Le plan ne dépense pas cette poudre : elle n'arrive qu'une
+ * fois les cartes tirées et recyclées.
+ */
+export function withDuplicateValue(ctx: Context): Context {
+  if (ctx.duplicateWeights || ctx.catalog.settings.closed) return ctx;
+  const start = initialState(ctx);
+  const root = closure(
+    ctx,
+    { state: start, value: stateValue(ctx, start), steps: null, signature: [], depth: 0 },
+    'all',
+  );
+  const { prices } = rollout(ctx, root);
+  const duplicateWeights = { ...ctx.options.weights };
+  for (const c of CURRENCIES) duplicateWeights[c] += prices[c];
+  return { ...ctx, duplicateWeights };
+}
+
+/**
  * Meilleur plan. Un succès rapporte beaucoup de points d'un coup : le faisceau peut alors remplir
  * toutes ses places avec des variantes du plan qui l'obtient, et perdre un plan qui dépense mieux
  * le même budget. La recherche est donc faite aussi sans les succès, et le meilleur des deux plans

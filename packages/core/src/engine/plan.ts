@@ -30,7 +30,7 @@ import {
   type PlannerOptionsInput,
 } from './context';
 import { horizonReserves, withHorizon, type HorizonReserve } from './horizon';
-import { nodeSteps, regroup, search, type Step } from './planner';
+import { nodeSteps, regroup, search, withDuplicateValue, type Step } from './planner';
 import { getCard, initialState, stateValue, type State } from './state';
 import { STRATEGIES, type StrategyId } from './strategies';
 
@@ -695,8 +695,11 @@ export function createPlan({
 }: CreatePlanInput): PlanResult {
   const started = performance.now();
   const closed = catalog.settings.closed === true;
-  // Option `horizon` : valeur de garde des monnaies, calculée une fois pour toute la recherche.
-  const ctx = withHorizon(buildContext(catalog, player, now, resolveOptions(options)));
+  // Option `horizon` : valeur de garde des monnaies, puis valeur de la poudre des doublons tirés,
+  // calculées une fois pour toute la recherche.
+  const ctx = withDuplicateValue(
+    withHorizon(buildContext(catalog, player, now, resolveOptions(options))),
+  );
   const start = initialState(ctx);
   // Pas de saison Hardcore en cours : aucune commande ne peut être jouée, même pas /journa.
   const { best, explored, timedOut } = closed

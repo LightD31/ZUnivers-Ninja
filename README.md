@@ -302,6 +302,13 @@ Une carte forgée après des invocations ne compte pas deux fois : les invocatio
 comme nouvelle avec une certaine probabilité, et cette part de leur espérance redevient un doublon.
 L'ordre des invocations et des créations ne change donc pas la valeur d'un plan.
 
+Les doublons tirés se recyclent en poudre, et cette poudre compte pour ce qu'elle achète. Quand le
+plan dépense toute ta poudre et qu'il reste des constellations à monter, une poudre de doublon vaut
+le gain par poudre de la prochaine dépense qu'il n'a pas pu payer (souvent 0,1 à 0,2 point), et pas
+seulement son poids. Pour la même ZUMonnaie, l'invocation basique donne deux fois plus de cartes à
+recycler que la chroma : elle est donc souvent conseillée. Le plan ne dépense pas cette poudre, qui
+n'arrive qu'une fois les cartes tirées : relance le plan après tes invocations pour la dépenser.
+
 ### Anticipation (option `horizon`)
 
 Le planificateur ne cherche que le plan du jour. Avec l'option `horizon` (case « Anticiper » sous
