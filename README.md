@@ -304,10 +304,11 @@ L'ordre des invocations et des créations ne change donc pas la valeur d'un plan
 
 Les doublons tirés se recyclent en poudre, et cette poudre compte pour ce qu'elle achète. Quand le
 plan dépense toute ta poudre et qu'il reste des constellations à monter, une poudre de doublon vaut
-le gain par poudre de la prochaine dépense qu'il n'a pas pu payer (souvent 0,1 à 0,2 point), et pas
-seulement son poids. Pour la même ZUMonnaie, l'invocation basique donne deux fois plus de cartes à
-recycler que la chroma : elle est donc souvent conseillée. Le plan ne dépense pas cette poudre, qui
-n'arrive qu'une fois les cartes tirées : relance le plan après tes invocations pour la dépenser.
+le gain moyen par poudre de ce que la poudre de tes invocations achèterait après le plan (souvent
+0,1 à 0,2 point), et pas seulement son poids. Pour la même ZUMonnaie, l'invocation basique donne
+deux fois plus de cartes à recycler que la chroma : elle est donc souvent conseillée. Le plan ne
+dépense pas cette poudre, qui n'arrive qu'une fois les cartes tirées : relance le plan après tes
+invocations pour la dépenser.
 
 Un doublon d'une carte normale ou dorée à qui il reste des niveaux de constellation n'est pas
 recyclé : il monte un niveau, et compte pour ses points. Le plan suit combien de fois il compte

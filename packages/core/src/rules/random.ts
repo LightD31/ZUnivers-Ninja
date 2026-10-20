@@ -1,7 +1,14 @@
 import type { Context } from '../engine/context';
 import { recycleGain } from '../engine/context';
 import { getCard, type State } from '../engine/state';
-import { CURRENCIES, cardKey, type Balances, type Item, type Shiny } from '../model/types';
+import {
+  CURRENCIES,
+  cardKey,
+  type Balances,
+  type Currency,
+  type Item,
+  type Shiny,
+} from '../model/types';
 import {
   ASCENSION_FAIL_REFUND,
   BOOSTERS,
@@ -473,6 +480,50 @@ export function invocationEV(
     }
   }
   return { ev, newCards, expectedNew, draws, pity };
+}
+
+/**
+ * Monnaies espérées du recyclage des doublons d'une invocation, comme si tous étaient recyclés
+ * (sans les niveaux de constellation qu'ils monteraient) : pour estimer ce que rapporteraient des
+ * invocations (voir `withDuplicateValue`).
+ */
+export function duplicateYield(
+  ctx: Context,
+  state: State,
+  option: BoosterOption,
+): Partial<Balances> {
+  const pool = getPool(ctx, option.packId, true);
+  const poolKey = `${option.packId ?? 'classic'}|true`;
+  const featured = featuredPool(ctx, option);
+  const out: Partial<Balances> = {};
+  option.spec.rarity.forEach((pRarity, i) => {
+    const rarity = i + 1;
+    const pGolden = option.spec.golden[i] ?? 0;
+    const pChroma = option.chroma ? (option.spec.chroma[i] ?? 0) : 0;
+    const shares: [Shiny, number][] = [
+      [0, 1 - pGolden - pChroma],
+      [1, pGolden],
+      [2, pChroma],
+    ];
+    for (const [shiny, pShiny] of shares) {
+      const featuredBucket = option.featured?.has(rarity)
+        ? featured?.get(bucketKey(option.key, rarity, shiny))
+        : undefined;
+      const key = bucketKey(featuredBucket ? option.key : poolKey, rarity, shiny);
+      const bucket = featuredBucket ?? pool.get(key);
+      if (pShiny <= 0 || !bucket || bucket.items.length === 0) continue;
+      const { unowned } = unownedIn(ctx, state, key, bucket, shiny);
+      const size = bucket.items.length;
+      const pDuplicate = 1 - Math.max(0, unowned - (state.expectedNew[key] ?? 0)) / size;
+      const perItem = (option.cards * pRarity * pShiny * pDuplicate) / size;
+      for (const item of bucket.items) {
+        if (!item.recyclable) continue;
+        for (const [c, v] of Object.entries(recycleGain(ctx, item, shiny)) as [Currency, number][])
+          out[c] = (out[c] ?? 0) + perItem * v;
+      }
+    }
+  });
+  return out;
 }
 
 /** Seaux d'invocation contenant chaque carte (par brillance) : ne dépend que du catalogue. */

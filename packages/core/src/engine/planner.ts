@@ -2,6 +2,7 @@ import { ASCENSION_COST, CONSTELLATION_UPGRADE_DUST, FEATURE } from '../rules/co
 import {
   ascensionEV,
   boosterOptions,
+  duplicateYield,
   expectedDraws,
   expectedLevelsShift,
   invocationEV,
@@ -21,7 +22,7 @@ import { actionKey, applyAction, type Action, type Applied, type RecycleEntry } 
 import { canRecycle, craftCost, enchantCost, forgeCurrency, type Context } from './context';
 import { CARD_SEPARATOR, COMMAND_MAX_LENGTH, cardsToken, commandPrefix } from './commands';
 import { holdCost } from './hold';
-import { getCard, initialState, stateValue, type State } from './state';
+import { fork, getCard, initialState, stateValue, type State } from './state';
 
 export interface Step {
   action: Action;
@@ -1022,22 +1023,45 @@ export interface SearchResult {
  * dépensée en basiques, poudre des doublons dépensée ensuite, rapportait plus pour 266 d'entre eux
  * (médiane +765 points), et une poudre rendue après le plan valait 0,17 point au lieu de 0,01.
  *
- * Une unité vaut son poids plus son prix d'opportunité quand le plan glouton n'en a plus (voir
- * `rollout`) : le gain par unité de la meilleure dépense que le solde ne permet plus. Rien de plus
- * quand le solde suffit à tout acheter. Le plan ne dépense pas cette poudre : elle n'arrive qu'une
- * fois les cartes tirées et recyclées.
+ * Une unité vaut, et au moins son poids, le gain moyen par unité de la poudre que les doublons
+ * rapporteraient si toute la ZUMonnaie partait au pack qui donne le plus à recycler, dépensée
+ * après le plan glouton (voir `rollout` et `finish`). Le gain de la première dépense que le solde
+ * ne permet plus ne suffisait pas : en Collectionneur, une carte manquante créée pour 50 poudre
+ * vaut 1 000 points, mais les suivantes coûtent bien plus, et la basique passait devant la dorée
+ * même pour qui manquait de dorées ; en Épargne, le plan dépensait la ZUMonnaie qu'il doit garder.
+ * Le plan ne dépense pas cette poudre : elle n'arrive qu'une fois les cartes tirées et recyclées.
  */
 export function withDuplicateValue(ctx: Context): Context {
   if (ctx.duplicateWeights || ctx.catalog.settings.closed) return ctx;
+  const duplicateWeights = { ...ctx.options.weights };
   const start = initialState(ctx);
   const root = closure(
     ctx,
     { state: start, value: stateValue(ctx, start), steps: null, signature: [], depth: 0 },
     'all',
   );
-  const { prices } = rollout(ctx, root);
-  const duplicateWeights = { ...ctx.options.weights };
-  for (const c of CURRENCIES) duplicateWeights[c] += prices[c];
+  const budget = root.state.balances.balance;
+  const packs = boosterOptions(ctx).filter(
+    (o) => !o.oneTime && (o.cost.balance ?? 0) > 0 && Object.keys(o.cost).length === 1,
+  );
+  if (budget <= 0 || packs.length === 0) return { ...ctx, duplicateWeights };
+  // Le plan glouton, terminé par tout ce qui rapporte encore : la référence. `rollout` s'arrête
+  // dès que la meilleure dépense d'une monnaie est trop chère, même s'il en reste d'abordables.
+  const end = rollout(ctx, root).node;
+  const without = stateValue(ctx, finish(ctx, end).state);
+  const yields = packs.map((o) => ({
+    cost: o.cost.balance!,
+    gain: duplicateYield(ctx, root.state, o),
+  }));
+  for (const c of CURRENCIES) {
+    const amount = Math.floor(budget * Math.max(...yields.map((y) => (y.gain[c] ?? 0) / y.cost)));
+    if (amount < 1) continue;
+    const richer = fork(end.state);
+    richer.balances[c] += amount;
+    const node = { ...end, state: richer, value: stateValue(ctx, richer) };
+    const average = (stateValue(ctx, finish(ctx, node).state) - without) / amount;
+    duplicateWeights[c] = Math.max(duplicateWeights[c], average);
+  }
   return { ...ctx, duplicateWeights };
 }
 

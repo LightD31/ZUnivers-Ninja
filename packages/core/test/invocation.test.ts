@@ -3,11 +3,13 @@ import {
   ascensionEV,
   boosterOptions,
   buildContext,
+  closure,
   createPlan,
   invocationEV,
   nodeSteps,
   normalizePlayer,
   resolveOptions,
+  rollout,
   search,
   sortInvocations,
   withDuplicateValue,
@@ -188,7 +190,39 @@ describe('valeur des doublons', () => {
     );
     // Poudre en abondance : plus rien à acheter avec, elle ne vaut que son poids.
     const rich = context(withBalances({ loreDust: 10_000_000 }));
-    expect(withDuplicateValue(rich).duplicateWeights!.loreDust).toBe(rich.options.weights.loreDust);
+    expect(withDuplicateValue(rich).duplicateWeights!.loreDust).toBeCloseTo(
+      rich.options.weights.loreDust,
+      6,
+    );
+  });
+
+  it('compte la poudre des doublons au gain moyen de ce qu’elle achèterait, pas au premier achat', () => {
+    // Collectionneur : deux cartes manquantes, créées pour 50 poudre, valent 1 000 points chacune.
+    // La poudre que 100 000 ZUMonnaie d'invocations rapporteraient n'en achète pas plus : au gain
+    // du premier achat (20 points la poudre), la basique passait devant tout, et en Épargne le plan
+    // dépensait la ZUMonnaie qu'il doit garder.
+    const ones = Array.from({ length: 20 }, (_, i) => makeItem(1001 + i));
+    const ctx = makeContext(
+      makeCatalog(ones),
+      makePlayer({
+        balances: { balance: 100_000, loreDust: 0, loreFragment: 0, upgradeDust: 0 },
+        inventory: Object.fromEntries(
+          ones
+            .slice(2)
+            .flatMap((i) => [owned(i.id, 0, 1, 1), owned(i.id, 1, 1, 1), owned(i.id, 2, 1)]),
+        ),
+      }),
+      { strategy: 'collectionneur' },
+    );
+    const start = initialState(ctx);
+    const root = closure(
+      ctx,
+      { state: start, value: stateValue(ctx, start), steps: null, signature: [], depth: 0 },
+      'all',
+    );
+    const firstPurchase = ctx.options.weights.loreDust + rollout(ctx, root).prices.loreDust;
+    expect(firstPurchase).toBeGreaterThan(10);
+    expect(withDuplicateValue(ctx).duplicateWeights!.loreDust).toBeLessThan(0.1);
   });
 
   it('préfère les packs qui donnent le plus de cartes à recycler', () => {
