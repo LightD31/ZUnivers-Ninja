@@ -1018,15 +1018,47 @@ const GROUPED = new Set<Action['kind']>(['recycle', 'craft', 'enchant', 'constel
  * plus de `REGROUP_TOLERANCE` de son gain, sinon l'ordre de la recherche est gardé.
  */
 export function regroup(ctx: Context, steps: Step[]): Step[] {
-  const original = rebuild(ctx, steps);
   const start = initialState(ctx);
-  let node: SearchNode = {
+  const root: SearchNode = {
     state: start,
     value: stateValue(ctx, start),
     steps: null,
     signature: [],
     depth: 0,
   };
+  // Plan rejoué dans son ordre : sa valeur, et les cartes que touche chaque étape.
+  const cards: string[][] = [];
+  let original = root;
+  for (const step of steps) {
+    const touched = new Set<string>();
+    const next = tryApply(ctx, original, step.action, step.auto, touched);
+    if (!next) return steps;
+    original = next;
+    cards.push([...touched]);
+  }
+  const gain = Math.abs(original.value - root.value);
+  const tolerance = Math.max(REGROUP_TOLERANCE_POINTS, REGROUP_TOLERANCE * gain);
+  // Avancer une action peut en bloquer une plus ancienne (enchanter la normale qu'attendait une
+  // fusion) : à défaut, les actions qui touchent les mêmes cartes gardent leur ordre entre elles.
+  for (const keep of [null, cards]) {
+    const node = reorder(ctx, root, steps, keep);
+    if (node && node.value >= original.value - tolerance) return nodeSteps(node);
+  }
+  return steps;
+}
+
+/**
+ * Rejoue les étapes dans l'ordre de `regroup`, ou null si l'une d'elles ne trouve plus de place.
+ * Avec `cards` (cartes touchées par chaque étape), une étape ne passe jamais devant une plus
+ * ancienne qui touche l'une de ses cartes.
+ */
+function reorder(
+  ctx: Context,
+  root: SearchNode,
+  steps: Step[],
+  cards: string[][] | null,
+): SearchNode | null {
+  let node = root;
   const done = steps.map(() => false);
   let first = 0;
   let kind: Action['kind'] | null = null;
@@ -1034,27 +1066,29 @@ export function regroup(ctx: Context, steps: Step[]): Step[] {
     let index = -1;
     let next: SearchNode | null = null;
     const place = (sameKind: boolean) => {
+      // Cartes des étapes plus anciennes encore à placer.
+      const waiting = new Set<string>();
       for (let i = first; i < steps.length; i++) {
+        if (done[i]) continue;
         const step = steps[i]!;
-        if (done[i] || (sameKind && step.action.kind !== kind)) continue;
-        next = tryApply(ctx, node, step.action, step.auto);
-        if (next) return i;
+        const mine = cards?.[i] ?? [];
+        if ((!sameKind || step.action.kind === kind) && !mine.some((id) => waiting.has(id))) {
+          next = tryApply(ctx, node, step.action, step.auto);
+          if (next) return i;
+        }
+        for (const id of mine) waiting.add(id);
       }
       return -1;
     };
     if (kind && GROUPED.has(kind)) index = place(true);
     if (index < 0) index = place(false);
-    if (index < 0 || !next) return steps;
+    if (index < 0 || !next) return null;
     done[index] = true;
     node = next;
     kind = steps[index]!.action.kind;
     while (first < steps.length && done[first]) first++;
   }
-  if (!original) return steps;
-  const gain = Math.abs(original.value - stateValue(ctx, start));
-  const tolerance = Math.max(REGROUP_TOLERANCE_POINTS, REGROUP_TOLERANCE * gain);
-  if (node.value < original.value - tolerance) return steps;
-  return nodeSteps(node);
+  return node;
 }
 
 /** Rejoue des étapes dans ce contexte : mêmes actions, gains recalculés. */
