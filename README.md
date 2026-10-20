@@ -309,6 +309,11 @@ seulement son poids. Pour la même ZUMonnaie, l'invocation basique donne deux fo
 recycler que la chroma : elle est donc souvent conseillée. Le plan ne dépense pas cette poudre, qui
 n'arrive qu'une fois les cartes tirées : relance le plan après tes invocations pour la dépenser.
 
+Un doublon d'une carte normale ou dorée à qui il reste des niveaux de constellation n'est pas
+recyclé : il monte un niveau, et compte pour ses points. Le plan suit combien de fois il compte
+tirer chaque carte, pour ne pas monter plus de niveaux qu'il n'en reste, et un niveau monté à coup
+sûr après des invocations n'est pas compté deux fois.
+
 ### Anticipation (option `horizon`)
 
 Le planificateur ne cherche que le plan du jour. Avec l'option `horizon` (case « Anticiper » sous

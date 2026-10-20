@@ -42,6 +42,11 @@ export interface State {
   /** Cartes nouvelles attendues des invocations simulées, par réserve de tirage. */
   expectedNew: Record<string, number>;
   /**
+   * Tirages attendus de chaque carte d'une réserve par les invocations simulées : toutes les cartes
+   * d'une réserve ont la même chance d'être tirées.
+   */
+  drawsPerCard: Record<string, number>;
+  /**
    * Cartes attendues des actions aléatoires simulées (invocations, ascensions) que le joueur n'avait
    * pas au début du plan : une carte retirée de la collection puis retirée ne compte pas.
    */
@@ -133,6 +138,7 @@ export function initialState(ctx: Context): State {
     evolutionIndex,
     eventInvocations: {},
     expectedNew: {},
+    drawsPerCard: {},
     expectedNewCards: 0,
     pity: initialPity(player.invokeBeforePity),
     owned,

@@ -5,7 +5,15 @@ import {
   SUBSCRIPTION_LOOT_BONUS,
   WEEKLY_EVERY_DAILIES,
 } from '../rules/constants';
-import { ascensionEV, boosterOptions, invocationEV, settleExpectedNew } from '../rules/random';
+import {
+  ascensionEV,
+  boosterOptions,
+  creditExpectedLevels,
+  invocationEV,
+  releaseExpectedLevels,
+  settleExpectedLevels,
+  settleExpectedNew,
+} from '../rules/random';
 import { reserveBeforeConstellation, reserveFor, reserveTotal } from '../rules/reserve';
 import type { Balances, Item, Shiny } from '../model/types';
 import {
@@ -100,8 +108,18 @@ type Result = Omit<Applied, 'balanceDelta'> | null;
 
 /** Ajoute un exemplaire obtenu à coup sûr, en soldant les tirages espérés de cette carte. */
 function obtain(ctx: Context, s: State, item: Item, shiny: Shiny): void {
-  if (getCard(s, item.id, shiny).copies === 0) settleExpectedNew(ctx, s, item, shiny);
+  if (getCard(s, item.id, shiny).copies === 0) {
+    settleExpectedNew(ctx, s, item, shiny);
+    creditExpectedLevels(ctx, s, item, shiny);
+  }
   addCopies(ctx, s, item.id, shiny, 1);
+}
+
+/** Retire des exemplaires ; le dernier qui part change ce que les invocations simulées montent. */
+function remove(ctx: Context, s: State, itemId: string, shiny: Shiny, count: number): void {
+  const item = ctx.items[itemId];
+  if (item && getCard(s, itemId, shiny).copies <= count) releaseExpectedLevels(ctx, s, item, shiny);
+  addCopies(ctx, s, itemId, shiny, -count);
 }
 
 function applyInner(ctx: Context, s0: State, action: Action): Result {
@@ -180,7 +198,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       const s = fork(s0);
       pay(s, price);
       const lastNormal = getCard(s0, item.id, 0).copies === 1;
-      addCopies(ctx, s, item.id, 0, -1);
+      remove(ctx, s, item.id, 0, 1);
       obtain(ctx, s, item, 1);
       progressChallenges(ctx, s, 'enchant', 1);
       return {
@@ -203,8 +221,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
         if (getCard(s0, input.itemId, action.shiny).copies < input.quantity + keep) return null;
       }
       const s = fork(s0);
-      for (const input of fusion.inputs)
-        addCopies(ctx, s, input.itemId, action.shiny, -input.quantity);
+      for (const input of fusion.inputs) remove(ctx, s, input.itemId, action.shiny, input.quantity);
       obtain(ctx, s, result, action.shiny);
       progressChallenges(ctx, s, 'fusion', 1);
       progressAchievements(ctx, s, 'fusion', 1);
@@ -221,6 +238,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       if (card.copies <= reserveBeforeConstellation(reserveFor(ctx, s0, item.id, action.shiny)))
         return null;
       const s = fork(s0);
+      settleExpectedLevels(ctx, s, item, action.shiny);
       putCard(ctx, s, { ...card, copies: card.copies - 1, constellation: card.constellation + 1 });
       s.balances.upgradeDust += CONSTELLATION_UPGRADE_DUST;
       progressChallenges(ctx, s, 'constellation', 1);
@@ -233,7 +251,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       if (!option || !canAfford(s0, option.cost)) return null;
       if (option.oneTime && option.eventId && (s0.eventInvocations[option.eventId] ?? 0) > 0)
         return null;
-      const { ev, newCards, expectedNew, pity } = invocationEV(ctx, s0, option);
+      const { ev, newCards, expectedNew, draws, pity } = invocationEV(ctx, s0, option);
       const s = fork(s0);
       pay(s, option.cost);
       s.ev += ev;
@@ -242,6 +260,8 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       s.expectedNew = { ...s.expectedNew };
       for (const [k, v] of Object.entries(expectedNew))
         s.expectedNew[k] = (s.expectedNew[k] ?? 0) + v;
+      s.drawsPerCard = { ...s.drawsPerCard };
+      for (const [k, v] of Object.entries(draws)) s.drawsPerCard[k] = (s.drawsPerCard[k] ?? 0) + v;
       if (option.eventId) {
         s.eventInvocations = {
           ...s.eventInvocations,
@@ -286,7 +306,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       const s = fork(s0);
       s.balances.upgradeDust -= cost;
       const current = evolution.steps[index]!;
-      if (getCard(s, current.itemId, 0).copies > 0) addCopies(ctx, s, current.itemId, 0, -1);
+      if (getCard(s, current.itemId, 0).copies > 0) remove(ctx, s, current.itemId, 0, 1);
       const nextItem = ctx.items[next.itemId];
       if (nextItem) obtain(ctx, s, nextItem, 0);
       else addCopies(ctx, s, next.itemId, 0, 1);
