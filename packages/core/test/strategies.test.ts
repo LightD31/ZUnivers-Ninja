@@ -101,8 +101,8 @@ describe('stratégies sur un joueur réel (fixtures)', () => {
   it('Vortex tente plus d’ascensions quand la poudre manque', () => {
     // Avec la poudre du joueur (et celle de ses recyclages), Équilibré fait déjà toutes ses
     // ascensions : on la limite pour qu'elles soient en concurrence avec les créations et
-    // enchantements.
-    const poor = { ...player, balances: { ...player.balances, loreDust: 500 } };
+    // enchantements (à 500, les 14 essais du joueur ne coûtent que 280 poudres).
+    const poor = { ...player, balances: { ...player.balances, loreDust: 250 } };
     const ascensions = (strategy: StrategyId) =>
       count(
         createPlan({

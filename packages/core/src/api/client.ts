@@ -7,11 +7,13 @@ import {
   EventsSchema,
   EvolutionSchema,
   FusionSchema,
+  InventoryLogsSchema,
   InventorySchema,
   ItemSchema,
   LootSchema,
   RecycleConfigSchema,
   SettingsSchema,
+  TowerSchema,
   TowerSeasonSchema,
   TowersSchema,
   UserSchema,
@@ -154,8 +156,16 @@ export function createClient(options: ClientOptions = {}) {
     events: () => get('/public/event/current', EventsSchema),
     towers: () => get('/public/tower', TowersSchema),
     towerSeason: () => getOptional('/public/tower/season', TowerSeasonSchema),
+    /** Tour du prochain Vortex, annoncée avant son ouverture. */
+    nextTower: () => getOptional('/public/tower/next', TowerSchema),
     user: (name: string) => get(`/public/user/${enc(name)}`, UserSchema),
     inventory: (name: string) => get(`/public/inventory/${enc(name)}`, InventorySchema),
+    /** Dernières cartes reçues d'une invocation (`/im <évènement>`), 50 opérations au plus. */
+    invocationLogs: (name: string, event: string) =>
+      getOptional(
+        `/public/inventory/${enc(name)}/logs?source=INVOKE&eventName=${enc(event)}&pageIndex=0&pageSize=50`,
+        InventoryLogsSchema,
+      ),
     challenges: (name: string) => get(`/public/challenge/${enc(name)}`, ChallengesSchema),
     loot: (name: string) => get(`/public/loot/${enc(name)}?year=0`, LootSchema),
     userTower: (name: string) => get(`/public/tower/${enc(name)}`, UserTowerSchema),

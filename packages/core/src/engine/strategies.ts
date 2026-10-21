@@ -34,7 +34,7 @@ export const STRATEGIES: Record<StrategyId, Strategy> = {
     id: 'prudent',
     label: 'Prudent',
     description:
-      'Aucun tirage : ni invocation ni ascension, seulement des points garantis. La ZUMonnaie est gardée.',
+      'Aucun tirage payant : ni invocation ni ascension, seulement des points garantis. La ZUMonnaie est gardée, les invocations gratuites (bons, premium) sont faites.',
     // Les tirages ne comptent pas : simplement réduire leur espérance ne changeait presque aucun
     // plan réel, la poudre allant déjà d'abord aux dépenses garanties.
     options: { evFactor: 0 },

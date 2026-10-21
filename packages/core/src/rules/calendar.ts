@@ -1,15 +1,17 @@
 import type { Context } from '../engine/context';
-import type { Balances, Catalog, Season, TowerInfo, TowerSeasonLog } from '../model/types';
+import type { Balances, Catalog, Player, Season, TowerInfo, TowerSeasonLog } from '../model/types';
 import {
   ASCENSIONS_PER_DAY,
   ASCENSION_CREDIT_HOUR,
   FEATURE,
   SEASON_DAYS,
   SUBSCRIPTION_LOOT_BONUS,
+  SUBSCRIPTION_PREMIUM_DAYS,
+  SUBSCRIPTION_PREMIUM_INVOCATIONS,
   VORTEX_ROTATION,
   WEEKLY_EVERY_DAILIES,
 } from './constants';
-import { daysBetween, gameClock } from './time';
+import { daysBetween, gameClock, gameDateTime } from './time';
 
 /**
  * Calendrier du jeu : ce qui est connu ou prévisible des jours à venir. La fin du Vortex, les
@@ -41,6 +43,34 @@ export function remainingAscensionCredits(
 }
 
 /**
+ * Date (AAAA-MM-JJTHH:MM:SS, heure française) de la prochaine invocation premium de l'abonné :
+ * trois par abonnement, la première dès son début, puis 10 jours d'attente entre deux (source :
+ * /abonnement). Vérifié sur l'historique de 50 abonnés : jamais deux à moins de 10 jours dans un
+ * même abonnement. `null` s'il n'en reste plus avant la fin de l'abonnement, ou si l'historique
+ * est inconnu : mieux vaut ne rien conseiller qu'une commande refusée.
+ */
+export function nextPremium(player: Pick<Player, 'subscription'>): string | null {
+  const subscription = player.subscription;
+  const dates = subscription?.premiumDates;
+  if (!subscription || !dates || dates.length >= SUBSCRIPTION_PREMIUM_INVOCATIONS) return null;
+  const last = dates.at(-1);
+  // Dates sans fuseau, en heure française : décalées telles quelles.
+  const ready = last
+    ? new Date(Date.parse(`${last}Z`) + SUBSCRIPTION_PREMIUM_DAYS * 86_400_000)
+        .toISOString()
+        .slice(0, 19)
+    : subscription.begin;
+  return ready < subscription.end ? ready : null;
+}
+
+/** L'invocation premium de l'abonné est-elle disponible maintenant ? (voir `nextPremium`) */
+export function premiumAvailable(player: Pick<Player, 'subscription'>, now: Date): boolean {
+  const next = nextPremium(player);
+  const clock = gameDateTime(now);
+  return next !== null && next <= clock && clock < player.subscription!.end;
+}
+
+/**
  * Récompenses /journa et /bonus encore à venir jusqu'au jour `until` compris : le seul revenu connu
  * d'avance. `today` décrit l'état du jour (journa déjà fait, journas depuis le dernier bonus).
  */
@@ -55,10 +85,20 @@ export function lootUntil(
   if (dailies === 0) return {};
   const weeklies = Math.floor((today.dailiesSinceWeekly + dailies) / WEEKLY_EVERY_DAILIES);
   const { dailyReward, weeklyReward, dailyLoreDust } = ctx.catalog.settings;
-  // Mêmes termes que `lootReward` : bonus de corporation et d'abonnement.
-  const bonus = ctx.corporation.loot + (ctx.player.subscribed ? SUBSCRIPTION_LOOT_BONUS : 0);
+  // Mêmes termes que `lootReward` : bonus de corporation, et d'abonnement au /journa seulement,
+  // jusqu'à la fin de l'abonnement.
+  const corporation = ctx.corporation.loot;
+  let subscribedDays = 0;
+  if (ctx.player.subscribed) {
+    const first = addDays(gameClock(ctx.now).date, today.dailyDone ? 1 : 0);
+    const end = ctx.player.subscription?.end.slice(0, 10);
+    subscribedDays = end ? Math.min(dailies, Math.max(0, daysBetween(first, end))) : dailies;
+  }
   return {
-    balance: dailies * (dailyReward + bonus) + weeklies * (weeklyReward + bonus),
+    balance:
+      dailies * (dailyReward + corporation) +
+      subscribedDays * SUBSCRIPTION_LOOT_BONUS +
+      weeklies * (weeklyReward + corporation),
     loreDust: (dailies + weeklies) * dailyLoreDust,
   };
 }
@@ -85,6 +125,7 @@ const ROTATION_PRIOR = 1;
 export function vortexGroups(catalog: Catalog): string[] {
   const groups = new Set(catalog.towers.map((t) => t.group).filter((g) => g));
   if (catalog.season) groups.add(catalog.season.group);
+  if (catalog.nextTower?.group) groups.add(catalog.nextTower.group);
   const rank = (g: string) => {
     const i = VORTEX_ROTATION.indexOf(g);
     return i < 0 ? VORTEX_ROTATION.length : i;
@@ -105,10 +146,11 @@ function knownSeasons(catalog: Catalog, history: TowerSeasonLog[]): Map<number, 
 }
 
 /**
- * Probabilité de chaque groupe pour les `count` prochaines saisons. L'API ne donne que la saison
- * en cours : l'ordre des groupes s'apprend sur les saisons consécutives de l'historique du joueur
- * (chaîne de Markov : le groupe suivant dépend du groupe en cours), en partant de l'ordre observé
- * `VORTEX_ROTATION`. Une saison manquée ne fausse rien : seules les paires consécutives comptent.
+ * Probabilité de chaque groupe pour les `count` prochaines saisons. L'API annonce la tour de la
+ * prochaine saison (`Catalog.nextTower`) : son groupe est sûr. Au-delà, l'ordre des groupes
+ * s'apprend sur les saisons consécutives de l'historique du joueur (chaîne de Markov : le groupe
+ * suivant dépend du groupe en cours), en partant de l'ordre observé `VORTEX_ROTATION`. Une saison
+ * manquée ne fausse rien : seules les paires consécutives comptent.
  */
 export function forecastSeasons(
   catalog: Catalog,
@@ -155,10 +197,13 @@ export function forecastSeasons(
 
   const forecasts: SeasonForecast[] = [];
   let dist = new Map([[season.group, 1]]);
+  const announced = catalog.nextTower?.group;
   for (let ahead = 1; ahead <= count; ahead++) {
-    const next = new Map<string, number>();
-    for (const [from, p] of dist)
-      for (const [to, q] of transition(from)) next.set(to, (next.get(to) ?? 0) + p * q);
+    let next = new Map<string, number>();
+    if (ahead === 1 && announced) next = new Map([[announced, 1]]);
+    else
+      for (const [from, p] of dist)
+        for (const [to, q] of transition(from)) next.set(to, (next.get(to) ?? 0) + p * q);
     dist = next;
     const begin = addDays(season.end, SEASON_DAYS * (ahead - 1));
     forecasts.push({
@@ -198,15 +243,18 @@ export function nextTower(
 
 /**
  * Saison prévue, pour simuler la forge de ce Vortex : la tour choisie importe peu, la forge ouvre
- * les packs de tout son groupe (voir `buildContext`). Ses étages sont inconnus : pas d'ascension.
+ * les packs de tout son groupe (voir `buildContext`). La prochaine saison a sa tour annoncée par
+ * l'API. Ses étages ne servent pas : pas d'ascension simulée.
  */
 export function predictedSeason(
   catalog: Catalog,
   history: TowerSeasonLog[],
-  forecast: Pick<SeasonForecast, 'index' | 'begin' | 'end'>,
+  forecast: Pick<SeasonForecast, 'index' | 'begin' | 'end'> & { ahead?: number },
   group: string,
 ): Season | null {
-  const tower = nextTower(catalog, history, group);
+  const announced =
+    forecast.ahead === 1 && catalog.nextTower?.group === group ? catalog.nextTower : undefined;
+  const tower = announced ?? nextTower(catalog, history, group);
   if (!tower) return null;
   return {
     id: `prévision:${forecast.index}:${group}`,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyAction,
   ascensionCredits,
+  ascensionEV,
   gameClock,
   initialState,
   reserveFor,
@@ -79,6 +80,17 @@ describe('/journa et /bonus', () => {
     expect(s2.balances.balance).toBe(2000);
     expect(s2.dailiesSinceWeekly).toBe(0);
   });
+
+  it("ne donne le bonus d'abonnement qu'au /journa (historique des récompenses)", () => {
+    const loot = ['04', '05', '06', '07', '08', '09', '10'].map((d) => ({
+      date: `2026-10-${d}`,
+      daily: 1,
+      weekly: 0,
+    }));
+    const ctx = makeContext(makeCatalog([r1]), makePlayer({ loot, subscribed: true }));
+    const s = apply(ctx, initialState(ctx), { kind: 'weekly' });
+    expect(s.balances.balance).toBe(1000);
+  });
 });
 
 describe('recyclage', () => {
@@ -89,6 +101,19 @@ describe('recyclage', () => {
     );
     expect(recycleGain(ctx, r4, 0)).toEqual({ loreDust: 440 });
     expect(recycleGain(ctx, r4, 1)).toEqual({ loreDust: 2200 });
+  });
+
+  it("arrondit le bonus de corporation à l'entier le plus proche, carte par carte", () => {
+    // Source : /corporations/info, « +10 % […] soit 0,5, arrondi […] un recyclage total de 6 ».
+    const corporation = (level: number) =>
+      makeContext(
+        makeCatalog([r1]),
+        makePlayer({
+          corporation: { id: 'c', name: 'Corpo', bonuses: { RECYCLE_LORE_DUST: level } },
+        }),
+      );
+    expect(recycleGain(corporation(4), r1, 0)).toEqual({ loreDust: 6 });
+    expect(recycleGain(corporation(3), r1, 0)).toEqual({ loreDust: 5 });
   });
 
   it("paie les cartes d'évènement en cristaux", () => {
@@ -421,5 +446,53 @@ describe('ascension', () => {
   it("ne propose plus d'ascension une fois le sommet atteint", () => {
     const c = ctx(6);
     expect(applyAction(c, initialState(c), { kind: 'ascension' })).toBeNull();
+  });
+
+  it('suit la probabilité de chaque étage, pas un étage moyen', () => {
+    const c = ctx(4);
+    const s1 = apply(c, initialState(c), { kind: 'ascension' });
+    expect(s1.tower).toEqual([0, 0, 0, 0, 0.5, 0.5, 0]);
+    const s2 = apply(c, s1, { kind: 'ascension' });
+    // Étage 5 réussi deux fois de suite, ou étage 5 raté puis réussi, ou deux échecs.
+    expect(s2.tower).toEqual([0, 0, 0, 0, 0.25, 0.5, 0.25]);
+    expect(applyAction(c, s1, { kind: 'ascension' })?.note).toBe(
+      'étage 5 le plus probable (50 %), 50 % de chances de monter',
+    );
+  });
+
+  it("compte les 4 cristaux d'un échec, et la poudre gardée au sommet", () => {
+    const c = makeContext(
+      makeCatalog([], { season: { ...season, floors: [{ rate: 0, drops: [] }] } }),
+      makePlayer({
+        balances: { balance: 0, loreDust: 1000, loreFragment: 0, upgradeDust: 0 },
+        tower: { floorsClimbed: 0, logCount: 0 },
+      }),
+      { reputationWeight: 0, weights: { loreFragment: 0.5, loreDust: 0.01 } },
+    );
+    expect(ascensionEV(c, initialState(c)).ev).toBeCloseTo(4 * 0.5);
+    const summit = { ...initialState(c), tower: [0.5, 0.5] };
+    expect(ascensionEV(c, summit).ev).toBeCloseTo(0.5 * 4 * 0.5 + 0.5 * 20 * 0.01);
+  });
+
+  it("vaut aussi les 1 000 de réputation qu'une saison sans étage gravi fait perdre", () => {
+    const one = {
+      ...season,
+      floors: [
+        { rate: 1, drops: [] },
+        { rate: 1, drops: [] },
+      ],
+    };
+    const c = (floorsClimbed: number) =>
+      makeContext(
+        makeCatalog([], { season: one }),
+        makePlayer({
+          balances: { balance: 0, loreDust: 1000, loreFragment: 0, upgradeDust: 0 },
+          tower: { floorsClimbed, logCount: 0 },
+        }),
+        { reputationWeight: 0.001 },
+      );
+    // Étage 1 : 300 de réussite + 1 000 de pénalité évitée ; étage 2 (sommet) : 1 000.
+    expect(ascensionEV(c(0), initialState(c(0))).ev).toBeCloseTo(1.3);
+    expect(ascensionEV(c(1), initialState(c(1))).ev).toBeCloseTo(1);
   });
 });

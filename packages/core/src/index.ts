@@ -5,14 +5,16 @@ export * from './model/types';
 export * from './model/normalize';
 export * from './model/fetch';
 export * from './rules/constants';
-export { gameClock, ascensionCredits } from './rules/time';
+export { gameClock, gameDateTime, ascensionCredits } from './rules/time';
 export {
   addDays,
   forecastSeasons,
   likelyGroup,
   lootUntil,
   nextTower,
+  nextPremium,
   predictedSeason,
+  premiumAvailable,
   remainingAscensionCredits,
   seasonLastDay,
   vortexGroups,
@@ -41,7 +43,7 @@ export {
   type Strategy,
   type StrategyId,
 } from './engine/strategies';
-export { initialState, stateValue, type State } from './engine/state';
+export { expectedFloors, initialState, stateValue, summitChance, type State } from './engine/state';
 export {
   resolveAchievements,
   type AchievementGoal,

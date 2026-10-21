@@ -544,3 +544,70 @@ describe('cas synthétiques', () => {
     expect(getCard(final, a.id, 0).copies).toBe(reserveTotal(reserveFor(ctx, final, a.id, 0)));
   });
 });
+
+describe('défis de la semaine', () => {
+  it('termine un défi quand ses points rendent la dépense rentable', () => {
+    // Dorée à 2 points pour 400 poudres : l'enchantement seul ne vaut pas sa poudre (4 points),
+    // mais le défi rapporte 10 points de classement et 50 poudres.
+    const card = makeItem(1001, { scores: [1, 2, 3], upgradable: false });
+    const challenge = {
+      id: 'c',
+      type: 'UPGRADE',
+      description: 'Enchanter une carte',
+      rewardLoreDust: 50,
+      score: 10,
+      current: 0,
+      max: 1,
+      action: 'enchant' as const,
+    };
+    const input = (challenges: (typeof challenge)[]) => ({
+      catalog: makeCatalog([card]),
+      player: makePlayer({
+        balances: { balance: 0, loreDust: 400, loreFragment: 0, upgradeDust: 0 },
+        inventory: Object.fromEntries([owned(card.id, 0, 2)]),
+        challenges,
+      }),
+      now: TEST_NOW,
+    });
+    expect(createPlan(input([])).commands).toEqual([]);
+    const plan = createPlan(input([challenge]));
+    expect(plan.commands).toEqual(['/enchantement carte:1001']);
+    expect(plan.gain.challenges).toBe(10);
+    expect(plan.challenges[0]).toMatchObject({ after: 1, max: 1, score: 10 });
+  });
+
+  it("invoque juste assez pour un défi d'invocations, sauf en stratégie Prudent", () => {
+    // Toutes les cartes possédées, constellations au maximum : une invocation ne rapporte presque
+    // rien, mais deux invocations terminent un défi à 30 points et 150 poudres.
+    const items = Array.from({ length: 30 }, (_, i) => makeItem(1001 + i));
+    const inventory = Object.fromEntries(
+      items.flatMap((i) => [0, 1, 2].map((s) => owned(i.id, s as 0 | 1 | 2, 1, 1))),
+    );
+    const challenge = {
+      id: 'c',
+      type: 'INVOKE',
+      description: 'Invoquer des cartes 5 fois',
+      rewardLoreDust: 150,
+      score: 30,
+      current: 3,
+      max: 5,
+      action: 'invoke' as const,
+    };
+    const input = {
+      catalog: makeCatalog(items),
+      player: makePlayer({
+        balances: { balance: 5000, loreDust: 0, loreFragment: 0, upgradeDust: 0 },
+        inventory,
+        challenges: [challenge],
+      }),
+      now: TEST_NOW,
+    };
+    // ZUMonnaie à 0,01 point : une invocation coûte 10 points, ses doublons en rendent moins.
+    const invokes = (strategy: 'equilibre' | 'prudent') =>
+      createPlan({ ...input, options: { strategy, weights: { balance: 0.01 } } }).steps.filter(
+        (s) => s.kind === 'invoke',
+      ).length;
+    expect(invokes('equilibre')).toBe(2);
+    expect(invokes('prudent')).toBe(0);
+  });
+});

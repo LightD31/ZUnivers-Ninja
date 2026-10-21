@@ -15,7 +15,7 @@ import { applyAction, type Action } from './actions';
 import { buildContext, rarityConfig, type Context, type PlannerOptions } from './context';
 import { holdCurve, type HoldCurves, type HoldSource, type HoldStep, type Horizon } from './hold';
 import { closure, nodeSteps, regroup, rollout, type LedgerEntry } from './planner';
-import { fork, initialState, stateValue, type State } from './state';
+import { fork, initialState, stateValue, summitChance, type State } from './state';
 
 /**
  * Anticipation (option `horizon`). Le planificateur ne cherche que le plan du jour : il est
@@ -219,7 +219,7 @@ function ascensionSource(ctx: Context, root: State) {
   if (!season || !allow.ascension || evFactor <= 0 || !ctx.features.has(FEATURE.tower)) return null;
   const count = remainingAscensionCredits(season, ctx.now);
   // Plus d'essai à venir, ou sommet déjà atteint : rien à garder.
-  if (count === 0 || Math.floor(root.towerFloor) >= season.floors.length) return null;
+  if (count === 0 || summitChance(root) >= 1) return null;
   let state: State = { ...fork(root), ascensionsLeft: root.ascensionsLeft + count };
   state.balances.loreDust = Number.MAX_SAFE_INTEGER;
   for (let i = 0; i < root.ascensionsLeft; i++) {

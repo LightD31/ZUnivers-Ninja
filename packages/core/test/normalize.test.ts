@@ -7,6 +7,7 @@ import {
   normalizeInventory,
   normalizeLoot,
   normalizePlayer,
+  UserSchema,
   UserTowerSchema,
   type ApiInventoryEntry,
 } from '../src';
@@ -173,5 +174,64 @@ describe('Vortex', () => {
     // Pas encore entré (« Dehors »).
     expect(tower({ maxFloorIndex: null })).toEqual({ floorsClimbed: 0, logCount: 7 });
     expect(tower({})).toEqual({ floorsClimbed: 0, logCount: 7 });
+  });
+});
+
+describe('invocations gratuites', () => {
+  const voucher = (name: string, inverse: boolean, invokeCount: number) => ({
+    event: {
+      id: `event-${name}`,
+      name,
+      packs: [{ id: 'classic-id', name: 'Classique', slug: 'classique' }],
+      isInversePack: inverse,
+      isPityEnabled: true,
+      isActive: true,
+      invokeCount,
+    },
+    createdDate: '2026-07-06T21:14:31.465622',
+  });
+  const player = (extra: Record<string, unknown>) =>
+    normalizePlayer({
+      ...rawPlayer(),
+      user: UserSchema.parse({ ...rawPlayer().user, ...extra }),
+    });
+
+  it('regroupe les bons du profil par évènement', () => {
+    const p = player({
+      vouchers: [
+        voucher('classique5dorée', false, 5),
+        voucher('pack10', true, 10),
+        voucher('classique5dorée', false, 5),
+      ],
+    });
+    expect(p.freeInvocations).toEqual([
+      { name: 'classique5dorée', count: 2, cards: 5, packId: null, inverse: false, golden: true },
+      { name: 'pack10', count: 1, cards: 10, packId: null, inverse: true, golden: false },
+    ]);
+  });
+
+  it('ignore des bons illisibles plutôt que de refuser le joueur', () => {
+    expect(player({ vouchers: [{ event: { name: 42 } }] }).freeInvocations).toEqual([]);
+  });
+
+  it("lit l'abonnement et les invocations premium faites depuis son début", () => {
+    const p = normalizePlayer({
+      ...rawPlayer(),
+      user: UserSchema.parse({
+        ...rawPlayer().user,
+        subscription: { beginDate: '2026-10-02T00:11:33.734', endDate: '2026-11-01T00:11:33.734' },
+      }),
+      premiumLogs: {
+        '2026-09-23T07:21:00.1': [],
+        '2026-10-03T10:34:12.5': [],
+        '2026-10-14T01:13:40.2': [],
+      },
+    });
+    expect(p.subscribed).toBe(true);
+    expect(p.subscription).toEqual({
+      begin: '2026-10-02T00:11:33',
+      end: '2026-11-01T00:11:33',
+      premiumDates: ['2026-10-03T10:34:12', '2026-10-14T01:13:40'],
+    });
   });
 });

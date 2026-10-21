@@ -22,6 +22,8 @@ export interface ChallengeProgress {
   current: number;
   max: number;
   reward: number;
+  /** Points du défi, comptés dans le classement général. */
+  score: number;
 }
 
 /** État simulé du joueur. Immuable : chaque action produit un nouvel état via `fork`. */
@@ -33,11 +35,16 @@ export interface State {
   weeklyDone: boolean;
   dailiesSinceWeekly: number;
   ascensionsLeft: number;
-  /** Étages du Vortex gravis, en espérance (fractionnaire) : l'index de l'étage à tenter. */
-  towerFloor: number;
+  /**
+   * Étages du Vortex gravis : `tower[f]` est la probabilité d'en avoir gravi `f` (c'est aussi
+   * l'index de l'étage à tenter), le dernier indice est le sommet. Vide sans Vortex en cours.
+   * Une moyenne fractionnaire valorisait mal les essais : le 2ᵉ comptait encore l'étage 1 alors
+   * que le 1ᵉʳ avait réussi à 95 %, et les derniers ignoraient qu'au sommet on ne tente plus rien.
+   */
+  tower: number[];
   /** Index de l'étape d'évolution possédée, -1 si aucune. */
   evolutionIndex: number;
-  /** Invocations d'évènement déjà simulées (pour les évènements à usage unique). */
+  /** Invocations limitées déjà simulées, par pack (évènement à usage unique, bons…). */
   eventInvocations: Record<string, number>;
   /** Cartes nouvelles attendues des invocations simulées, par réserve de tirage. */
   expectedNew: Record<string, number>;
@@ -66,6 +73,11 @@ export interface State {
   achievements: number[];
   /** Points des succès obtenus pendant le plan. */
   achievementPoints: number;
+  /**
+   * Points des défis terminés pendant le plan. Le score du classement général est la somme des
+   * points de collection, de constellation, de succès et de défis (vérifié sur le classement).
+   */
+  challengePoints: number;
 }
 
 export const EMPTY_CARD = (itemId: string, shiny: Shiny): OwnedCard => ({
@@ -113,6 +125,9 @@ export function initialState(ctx: Context): State {
   const season = catalog.season;
   const credits = season ? ascensionCredits(season.begin, season.end, now) : 0;
   const tower = player.tower ?? { floorsClimbed: 0, logCount: 0 };
+  const floors = season?.floors.length ?? 0;
+  const towerDist = season ? Array.from({ length: floors + 1 }, () => 0) : [];
+  if (season) towerDist[Math.min(floors, Math.max(0, tower.floorsClimbed))] = 1;
 
   const evolution = player.evolution;
   const evolutionIndex = evolution ? evolution.steps.findLastIndex((s) => s.owned) : -1;
@@ -129,12 +144,13 @@ export function initialState(ctx: Context): State {
         current: c.current,
         max: c.max,
         reward: c.rewardLoreDust,
+        score: c.score,
       })),
     dailyDone: (todayLoot?.daily ?? 0) > 0,
     weeklyDone: (todayLoot?.weekly ?? 0) > 0,
     dailiesSinceWeekly,
     ascensionsLeft: Math.max(0, credits - tower.logCount),
-    towerFloor: tower.floorsClimbed,
+    tower: towerDist,
     evolutionIndex,
     eventInvocations: {},
     expectedNew: {},
@@ -146,8 +162,16 @@ export function initialState(ctx: Context): State {
     ev: 0,
     achievements: ctx.achievements.map((a) => a.current),
     achievementPoints: 0,
+    challengePoints: 0,
   };
 }
+
+/** Chance d'avoir atteint le sommet du Vortex (1 sans Vortex en cours : plus rien à tenter). */
+export const summitChance = (state: State) => state.tower.at(-1) ?? 1;
+
+/** Étages du Vortex gravis, en espérance. */
+export const expectedFloors = (state: State) =>
+  state.tower.reduce((sum, p, floors) => sum + p * floors, 0);
 
 /** Copie superficielle : les champs modifiés doivent être réassignés (jamais mutés en place). */
 export function fork(state: State): State {
@@ -253,6 +277,7 @@ export function progressChallenges(
     const current = Math.min(c.max, c.current + amount);
     if (current >= c.max) {
       state.balances.loreDust += c.reward;
+      state.challengePoints += c.score;
       completed++;
     }
     return { ...c, current };
@@ -266,13 +291,13 @@ export function progressChallenges(
 }
 
 /**
- * Valeur d'un état pour le planificateur : points (collection et succès) + espérance (réduite
- * selon `evFactor`) + bonus des cartes nouvelles + monnaies pondérées, et avec l'option `horizon`
- * ce que les monnaies gardées rapporteront plus tard.
+ * Valeur d'un état pour le planificateur : points (collection, succès et défis) + espérance
+ * (réduite selon `evFactor`) + bonus des cartes nouvelles + monnaies pondérées, et avec l'option
+ * `horizon` ce que les monnaies gardées rapporteront plus tard.
  */
 export function stateValue(ctx: Context, state: State): number {
   const { evFactor, newCardBonus, weights } = ctx.options;
-  let value = state.points + state.achievementPoints + state.ev * evFactor;
+  let value = state.points + state.achievementPoints + state.challengePoints + state.ev * evFactor;
   if (newCardBonus > 0) value += newCardBonus * (state.owned + state.expectedNewCards * evFactor);
   for (const c of CURRENCIES) value += state.balances[c] * weights[c];
   if (ctx.horizon) value += holdValue(ctx.horizon.curves, state.balances);

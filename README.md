@@ -18,14 +18,19 @@ La v2 est une réécriture complète : TypeScript, aucune base de données, une 
 
 - **Planificateur par recherche en faisceau.** Il simule des milliers d'enchaînements d'actions et
   garde celui qui maximise les points de collection. La v1 appliquait une liste de règles fixes.
-- **Toutes les mécaniques du jeu**, d'après le [guide officiel](https://zunivers.zerator.com/guide) :
-  - `/journa` et `/bonus`, avec les bonus de corporation et d'abonnement ;
-  - recyclage du surplus réel, sans jamais toucher à une carte encore utile ;
+- **Toutes les mécaniques du jeu**, d'après le [guide officiel](https://zunivers.zerator.com/guide),
+  les pages du site et l'API (vérifiées sur des joueurs réels) :
+  - `/journa` et `/bonus`, avec les bonus de corporation et d'abonnement (ce dernier au `/journa`
+    seulement, jusqu'à la fin de l'abonnement) ;
+  - recyclage du surplus réel, sans jamais toucher à une carte encore utile (bonus de corporation
+    arrondi carte par carte, comme le jeu) ;
   - création et enchantement, en tenant compte du groupe d'Ascension en cours ;
   - fusions, y compris quand il faut d'abord créer un composant manquant ;
   - constellations et carte Évolution ;
   - invocations et ascensions, estimées en espérance à partir des vrais taux de drop ;
-  - défis de la semaine ;
+  - invocations gratuites : les bons du profil (`/im classique5dorée`, `/im pack10`…) et l'invocation
+    premium des abonnés (trois par abonnement, 10 jours d'attente entre deux), faites d'office ;
+  - défis de la semaine, avec leurs points de classement ;
   - mode Hardcore : aucun conseil quand aucune saison n'est en cours ;
   - succès : collections (toutes les cartes d'une rareté, d'un pack, toutes les constellations…)
     et compteurs (recyclages, fusions, défis terminés, ascension du Vortex en cours).
@@ -39,9 +44,9 @@ La v2 est une réécriture complète : TypeScript, aucune base de données, une 
   pour l'échange, si les cartes à enchanter pour les constellations et fusions dorées sont gardées,
   et les actions que tu ne veux pas faire (le recyclage, par exemple) : le plan est alors calculé
   sans elles, avec les monnaies que tu as déjà.
-- **Anticipation** (option expérimentale, désactivée par défaut) : le plan tient compte du prochain
-  Vortex (son groupe est prévu d'après ton historique), des essais d'ascension encore à venir et des
-  évènements déjà annoncés. Une monnaie qui rapportera plus plus tard est gardée, et les conseils
+- **Anticipation** (option expérimentale, désactivée par défaut) : le plan tient compte des prochains
+  Vortex (le prochain est annoncé par le jeu, les suivants sont prévus d'après ton historique) et des
+  essais d'ascension encore à venir. Une monnaie qui rapportera plus plus tard est gardée, et les conseils
   disent pour quoi (voir [Anticipation](#anticipation-option-horizon)).
 - **Notifications Discord** : le plan n'est envoyé que s'il a changé depuis le dernier envoi. Un
   webhook JSON générique est aussi disponible pour tes propres intégrations.
@@ -219,7 +224,7 @@ joueur dans `ZU_USERS`.
 | Stratégie      | `strategy`       | Pour qui                                        | Ce qui change                                                                         |
 | -------------- | ---------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------- |
 | Équilibré      | `equilibre`      | Le plus de points, tirages compris (par défaut) | —                                                                                     |
-| Prudent        | `prudent`        | Ne veut que des points garantis                 | Aucune invocation ni ascension, la ZUMonnaie est gardée                               |
+| Prudent        | `prudent`        | Ne veut que des points garantis                 | Aucune invocation payante ni ascension, la ZUMonnaie est gardée                       |
 | Épargne        | `epargne`        | Garde des monnaies pour un évènement ou un pack | Poudres × 15, ZUMonnaie × 50 : seules les grosses dépenses passent                    |
 | Vortex         | `vortex`         | Veut monter dans la tour d'Ascension            | Réputation × 50, poudre × 5 : la poudre va aux `/as` avant les petites créations      |
 | Collectionneur | `collectionneur` | Veut le plus de cartes différentes possible     | +1 000 points par carte de la collection : aucune carte perdue, les nouvelles d'abord |
@@ -250,12 +255,15 @@ et `BRANCHING` s'appliquent aussi par-dessus la stratégie.
 
    Seul le surplus est recyclé.
 
-3. **Actions sans regret**, appliquées automatiquement : récompenses quotidiennes, fusions possibles,
-   constellations avec les doublons, recyclage du surplus.
+3. **Actions sans regret**, appliquées automatiquement : récompenses quotidiennes, invocations
+   gratuites (bons du profil, invocation premium), fusions possibles, constellations avec les
+   doublons, recyclage du surplus.
 4. **Recherche en faisceau** sur les dépenses (création, enchantement, fusion à compléter,
    invocation, ascension, évolution). À chaque étape, les meilleurs états sont étendus avec leurs
    actions les plus prometteuses. Un état vaut :
-   `points de collection + points de succès + points espérés des tirages + Σ monnaies × poids`.
+   `points de collection + points de succès + points de défis + points espérés des tirages + Σ monnaies × poids`.
+   C'est le score du classement général (collection, constellations, succès et défis), plus les
+   tirages et les monnaies.
    Selon la stratégie, les points espérés ne comptent pas (Prudent) ou chaque carte de la collection
    rapporte un bonus (Collectionneur) : en perdre une le retire, et une carte espérée d'un tirage ne
    le rapporte que si elle manquait au début du plan.
@@ -287,8 +295,17 @@ Les points suivent les règles du jeu :
 - chaque niveau d'Évolution vaut sa rareté.
 
 Les invocations et les ascensions sont aléatoires. Leur valeur est donc une espérance, calculée à
-partir des taux de drop officiels et des cartes qu'il te manque. Pour les ascensions, la réputation
-gagnée compte aussi.
+partir des taux de drop officiels et des cartes qu'il te manque.
+
+Pour les ascensions, le plan suit la probabilité d'être à chaque étage après chaque essai, et pas un
+étage moyen : le 2ᵉ essai d'une tour à 95 % se joue presque sûrement à l'étage 2, et un essai ne vaut
+plus rien une fois le sommet probablement atteint (sa poudre reste). Un échec rapporte 4 cristaux
+d'histoire et 50 de réputation, une réussite une carte et 300 de réputation (1 000 au sommet), et le
+premier étage gravi évite les 1 000 de réputation qu'une saison sans étage fait perdre.
+
+Les bons d'invocation gratuite suivent les taux mesurés sur 6 500 cartes tirées par 50 joueurs : taux
+de rareté des boosters basiques, uniquement des dorées pour les bons « …dorée », et tous les packs
+d'évènement (sans le Classique) pour `pack10` et `/im premium`.
 
 Pour les invocations, deux règles du jeu s'ajoutent :
 
@@ -321,7 +338,7 @@ la recherche, `?horizon=1` dans l'API ou `HORIZON=true`), les monnaies gardées 
 seulement leur poids fixe, mais aussi ce qu'elles rapporteront plus tard :
 
 - **cristaux** : les cartes d'évènement ne se forgent que pendant le Vortex de leur groupe. Le groupe
-  des prochains Vortex est prévu d'après ton historique (ordre observé : Classique, Autres, ZLAN,
+  du prochain Vortex est annoncé par le jeu, celui des suivants prévu d'après ton historique (ordre observé : Classique, Autres, ZLAN,
   ZEvent), et la forge de chacun est simulée avec ta collection ;
 - **poudre** : les essais d'ascension encore à créditer d'ici la fin du Vortex (deux par midi).
 

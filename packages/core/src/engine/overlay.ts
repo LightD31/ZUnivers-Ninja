@@ -46,6 +46,18 @@ export class OverlayMap<K, V> {
     return { layer, writes: layer.writes };
   }
 
+  /**
+   * Modifications de la couche de `snapshot()`, et la map sans elles (`null` pour la première
+   * couche) : un calcul sur toutes les entrées peut repartir de celui de `base`, déjà en cache, en
+   * ne revoyant que les entrées modifiées.
+   */
+  diff(): { changes: ReadonlyMap<K, V>; base: OverlayMap<K, V> | null } {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    let layer: OverlayMap<K, V> = this;
+    while (layer.own.size === 0 && layer.parent) layer = layer.parent;
+    return { changes: layer.own, base: layer.parent };
+  }
+
   /** À n'appeler que sur une couche fraîchement créée par `fork()`. */
   set(key: K, value: V): void {
     this.own.set(key, value);

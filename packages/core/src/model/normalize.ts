@@ -7,6 +7,7 @@ import type {
   ApiUserOverview,
   ApiFusion,
   ApiInventoryEntry,
+  ApiInventoryLogs,
   ApiItem,
   ApiLoot,
   ApiRecycleConfig,
@@ -24,6 +25,7 @@ import {
   type Catalog,
   type Challenge,
   type ChallengeAction,
+  type FreeInvocation,
   type Fusion,
   type GameEvent,
   type Item,
@@ -125,6 +127,8 @@ export interface RawCatalog {
   events: ApiEvent[];
   season: ApiTowerSeason | null;
   towers: ApiTower[];
+  /** Facultatif : absent des anciens instantanés. */
+  nextTower?: ApiTower | null;
 }
 
 export function normalizeCatalog(
@@ -167,6 +171,9 @@ export function normalizeCatalog(
     events: raw.events.map(normalizeEvent),
     season: normalizeSeason(raw.season),
     towers: raw.towers.map((t) => ({ name: t.name, group: t.group, packId: t.pack.id })),
+    nextTower: raw.nextTower
+      ? { name: raw.nextTower.name, group: raw.nextTower.group, packId: raw.nextTower.pack.id }
+      : null,
   };
 }
 
@@ -283,9 +290,45 @@ export interface RawPlayer {
   overview?: ApiUserOverview | null;
   /** Facultatif : absent des anciens instantanés. */
   achievements?: ApiAchievementEntry[] | null;
+  /** Dernières invocations premium : disponibilité de la prochaine, premier mois offert. */
+  premiumLogs?: ApiInventoryLogs | null;
 }
 
 const FINAL_EVOLUTION_SCORE = 600;
+
+const normalizeName = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+/**
+ * Bons d'invocation, regroupés par évènement. Mesuré sur 6 500 cartes de 50 joueurs : tous suivent
+ * les taux de rareté des boosters basiques, les bons « …dorée » ne donnent que des dorées, et un
+ * bon « inversé » (`pack10`) tire dans tous les packs sauf ceux listés, comme `/im premium`.
+ */
+export function normalizeVouchers(user: ApiUser): FreeInvocation[] {
+  const byEvent = new Map<string, FreeInvocation>();
+  for (const { event } of user.vouchers ?? []) {
+    if (!event.isActive || event.packs.length !== 1) continue;
+    const pack = event.packs[0]!;
+    const free = byEvent.get(event.id) ?? {
+      name: event.name,
+      count: 0,
+      cards: event.invokeCount,
+      packId: pack.slug === CLASSIC_PACK_SLUG ? null : pack.id,
+      inverse: event.isInversePack,
+      golden: normalizeName(event.name).endsWith('doree'),
+    };
+    free.count++;
+    byEvent.set(event.id, free);
+  }
+  return [...byEvent.values()];
+}
+
+/** Dates des invocations premium depuis le début de l'abonnement. */
+function premiumDates(logs: ApiInventoryLogs | null | undefined, begin: string): string[] | null {
+  if (!logs) return null;
+  return [...new Set(Object.keys(logs).map((d) => d.slice(0, 19)))]
+    .filter((d) => d >= begin.slice(0, 19))
+    .sort();
+}
 
 /** Saisons de Vortex du joueur, triées par index (celles sans index ni tour sont ignorées). */
 export function normalizeTowerHistory(raw: ApiUserTower): TowerSeasonLog[] {
@@ -322,7 +365,16 @@ export function normalizePlayer(raw: RawPlayer, ruleSet = 'NORMAL'): Player {
       loreFragment: u.user.loreFragment,
       upgradeDust: u.user.upgradeDust,
     },
-    subscribed: u.isSubscribed ?? u.subscriptionBonusLimit > 0,
+    subscribed: u.subscription != null || (u.isSubscribed ?? u.subscriptionBonusLimit > 0),
+    subscription: u.subscription
+      ? {
+          begin: u.subscription.beginDate.slice(0, 19),
+          end: u.subscription.endDate.slice(0, 19),
+          premiumDates: premiumDates(raw.premiumLogs, u.subscription.beginDate),
+        }
+      : null,
+    freeInvocations: normalizeVouchers(u),
+    everPremium: raw.premiumLogs ? Object.keys(raw.premiumLogs).length > 0 : null,
     corporation:
       raw.corporation && u.userCorporation?.corporation
         ? {

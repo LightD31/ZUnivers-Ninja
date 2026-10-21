@@ -40,7 +40,7 @@ import { buildContext, resolveOptions, type PlannerOptionsInput } from '../src/e
 import { withHorizon } from '../src/engine/horizon';
 import { isStrategy } from '../src/engine/strategies';
 import { search } from '../src/engine/planner';
-import { initialState } from '../src/engine/state';
+import { expectedFloors, initialState } from '../src/engine/state';
 import { NOW, rawCatalog, rawPlayer } from '../test/helpers';
 
 const args = process.argv.slice(2);
@@ -135,7 +135,8 @@ function simulate(raw: RawCatalog, rawP: RawPlayer, start: Date, horizon: boolea
         ],
         tower: { floorsClimbed: 0, logCount: 0 },
       };
-      catalog = { ...catalog, season: nextSeason(raw, catalog, player) };
+      // La tour annoncée par l'API ne vaut que pour la saison qui suit l'instantané.
+      catalog = { ...catalog, season: nextSeason(raw, catalog, player), nextTower: null };
     }
 
     const started = performance.now();
@@ -159,16 +160,20 @@ function simulate(raw: RawCatalog, rawP: RawPlayer, start: Date, horizon: boolea
         { date, daily: Number(final.dailyDone), weekly: Number(final.weeklyDone) },
       ],
       tower: {
-        floorsClimbed: final.towerFloor,
+        // Étages gravis le plus probablement : le jeu ne connaît pas d'étage fractionnaire.
+        floorsClimbed: Math.round(expectedFloors(final)),
         logCount: tower.logCount + begin.ascensionsLeft - final.ascensionsLeft,
       },
       evolution: player.evolution && {
         ...player.evolution,
         steps: player.evolution.steps.map((s, i) => ({ ...s, owned: i <= final.evolutionIndex })),
       },
-      // Défis et succès de la semaine suivante inconnus : comptés le premier jour seulement.
+      // Défis et succès de la semaine suivante inconnus : comptés le premier jour seulement. Les
+      // invocations gratuites sont faites le premier jour.
       challenges: [],
       achievements: [],
+      freeInvocations: [],
+      subscription: player.subscription && { ...player.subscription, premiumDates: null },
       invokeBeforePity: draws ? player.invokeBeforePity : null,
     };
     last = final;

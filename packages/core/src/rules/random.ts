@@ -1,19 +1,32 @@
 import type { Context } from '../engine/context';
 import { recycleGain } from '../engine/context';
-import { getCard, type State } from '../engine/state';
-import { CURRENCIES, cardKey, type Balances, type Item, type Shiny } from '../model/types';
+import { EMPTY_CARD, getCard, type State } from '../engine/state';
 import {
-  ASCENSION_FAIL_REFUND,
+  CURRENCIES,
+  cardKey,
+  type Balances,
+  type FreeInvocation,
+  type Item,
+  type OwnedCard,
+  type Shiny,
+} from '../model/types';
+import {
+  ASCENSION_COST,
+  ASCENSION_FAIL_CRYSTALS,
   BOOSTERS,
+  CARDS_PER_INVOCATION,
   CONSTELLATION_POINTS_FACTOR,
   CONSTELLATION_UPGRADE_DUST,
   FEATURE,
   PITY_CARDS,
+  PREMIUM_BOOSTER,
   REPUTATION_ATTEMPT,
+  REPUTATION_NO_FLOOR,
   REPUTATION_SUCCESS,
   REPUTATION_TOP_FLOOR,
   type BoosterSpec,
 } from './constants';
+import { premiumAvailable } from './calendar';
 import { gameClock } from './time';
 
 /**
@@ -48,17 +61,30 @@ function weightedValue(weights: Balances, gain: Partial<Balances>): number {
 const duplicateWeights = (ctx: Context, invocation: boolean) =>
   (invocation && ctx.duplicateWeights) || ctx.options.weights;
 
-/** Réserve d'une invocation (cartes invocables) ou d'une ascension (toutes les cartes du pack). */
-function getPool(ctx: Context, packId: string | null, invocableOnly: boolean): Pool {
+/** Clé de la réserve d'une invocation : son pack (`!` : tous les packs sauf lui). */
+const invocationPoolKey = (option: Pick<BoosterOption, 'packId' | 'inverse'>) =>
+  `${option.packId ?? 'classic'}${option.inverse ? '!' : ''}|true`;
+
+/**
+ * Réserve d'une invocation (cartes invocables) ou d'une ascension (toutes les cartes du pack).
+ * `inverse` : tous les packs sauf celui-là (`/im premium` et les bons `pack10` tirent dans tous les
+ * packs d'évènement).
+ */
+function getPool(
+  ctx: Context,
+  packId: string | null,
+  invocableOnly: boolean,
+  inverse = false,
+): Pool {
   let cache = poolCache.get(ctx);
   if (!cache) poolCache.set(ctx, (cache = new Map()));
-  const key = `${packId ?? 'classic'}|${invocableOnly}`;
+  const key = `${packId ?? 'classic'}${inverse ? '!' : ''}|${invocableOnly}`;
   const cached = cache.get(key);
   if (cached) return cached;
 
   const items = ctx.itemList.filter(
     (item) =>
-      (packId === null ? item.isClassic : item.packId === packId) &&
+      (packId === null ? item.isClassic : item.packId === packId) !== inverse &&
       (!invocableOnly || item.invocable) &&
       !item.isFusion &&
       !item.isStar,
@@ -122,38 +148,74 @@ const ownedAtStart = (ctx: Context, item: Item, shiny: Shiny) =>
  * normal enchanté) puis retirée n'est pas une carte jamais possédée. Aussi, les cartes possédées
  * dont un doublon monterait une constellation.
  */
-function unownedIn(
+const unownedIn = (ctx: Context, state: State, key: string, bucket: PoolBucket, shiny: Shiny) =>
+  bucketCards(ctx, state.cards, key, bucket, shiny);
+
+/** Cartes de chaque seau, pour savoir vite si une carte modifiée en fait partie. */
+const bucketMembers = new WeakMap<PoolBucket, Set<string>>();
+
+/**
+ * Comme `unownedIn`, pour un inventaire. Un état ne diffère du précédent que de quelques cartes :
+ * le résultat repart de celui de l'inventaire précédent, déjà en cache, en ne revoyant que les
+ * cartes modifiées. Parcourir tout le seau à chaque état dominait le temps de calcul dès qu'une
+ * invocation était simulée (les bons du profil, d'office, dès le début du plan). Les sommes sont
+ * entières : le résultat est exactement celui d'un parcours complet.
+ */
+function bucketCards(
   ctx: Context,
-  state: State,
+  cards: State['cards'],
   key: string,
   bucket: PoolBucket,
   shiny: Shiny,
 ): BucketCards {
-  const { layer, writes } = state.cards.snapshot();
+  const { layer, writes } = cards.snapshot();
   let cache = unownedCache.get(layer);
   if (!cache) unownedCache.set(layer, (cache = new Map()));
   const cacheKey = `${writes}|${key}`;
-  let entry = cache.get(cacheKey);
-  if (!entry) {
-    entry = { unowned: 0, score: 0, fresh: 0, open: [], openUnowned: [] };
-    for (const item of bucket.items) {
-      const card = getCard(state, item.id, shiny);
-      if (card.copies === 0) {
-        entry.unowned++;
-        entry.score += item.scores[shiny];
-        if (!ownedAtStart(ctx, item, shiny)) entry.fresh++;
-      }
-      if (item.upgradable && shiny <= 1 && card.constellation < item.rarity) {
-        const levels = item.rarity - card.constellation;
-        const list = card.copies === 0 ? entry.openUnowned : entry.open;
-        const open = (list[levels] ??= { count: 0, points: 0 });
-        open.count++;
-        open.points += item.scores[shiny] * CONSTELLATION_POINTS_FACTOR;
-      }
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  const { changes, base } = cards.diff();
+  let entry: BucketCards;
+  if (base && changes.size * 4 < bucket.items.length) {
+    const from = bucketCards(ctx, base, key, bucket, shiny);
+    entry = {
+      ...from,
+      open: from.open.map((o) => ({ ...o })),
+      openUnowned: from.openUnowned.map((o) => ({ ...o })),
+    };
+    let members = bucketMembers.get(bucket);
+    if (!members) bucketMembers.set(bucket, (members = new Set(bucket.items.map((i) => i.id))));
+    for (const [cardId, card] of changes) {
+      if (card.shiny !== shiny || !members.has(card.itemId)) continue;
+      const item = ctx.items[card.itemId]!;
+      count(ctx, entry, item, base.get(cardId) ?? EMPTY_CARD(item.id, shiny), -1);
+      count(ctx, entry, item, card, 1);
     }
-    cache.set(cacheKey, entry);
+  } else {
+    entry = { unowned: 0, score: 0, fresh: 0, open: [], openUnowned: [] };
+    for (const item of bucket.items)
+      count(ctx, entry, item, cards.get(cardKey(item.id, shiny)) ?? EMPTY_CARD(item.id, shiny), 1);
   }
+  cache.set(cacheKey, entry);
   return entry;
+}
+
+/** Ajoute (`sign` 1) ou retire (-1) une carte de ce que compte `bucketCards`. */
+function count(ctx: Context, entry: BucketCards, item: Item, card: OwnedCard, sign: 1 | -1) {
+  const shiny = card.shiny;
+  if (card.copies === 0) {
+    entry.unowned += sign;
+    entry.score += sign * item.scores[shiny];
+    if (!ownedAtStart(ctx, item, shiny)) entry.fresh += sign;
+  }
+  if (item.upgradable && shiny <= 1 && card.constellation < item.rarity) {
+    const levels = item.rarity - card.constellation;
+    const list = card.copies === 0 ? entry.openUnowned : entry.open;
+    const open = (list[levels] ??= { count: 0, points: 0 });
+    open.count += sign;
+    open.points += sign * item.scores[shiny] * CONSTELLATION_POINTS_FACTOR;
+  }
 }
 
 /** Chance qu'une carte tirée en moyenne `draws` fois l'ait été moins de `levels` fois (Poisson). */
@@ -267,9 +329,17 @@ export interface BoosterOption {
   spec: BoosterSpec;
   /** `null` = pack Classique. */
   packId: string | null;
+  /** Tirage dans tous les packs sauf `packId`. */
+  inverse?: boolean;
   chroma: boolean;
   eventId?: string;
   oneTime?: boolean;
+  /**
+   * Invocation gratuite (bon du profil, invocation premium) : `limit` fois au plus. Elle ne coûte
+   * rien et rapporte des cartes : le plan la fait d'office (voir `closure`).
+   */
+  free?: boolean;
+  limit?: number;
   /**
    * Cartes mises en avant par l'évènement, par rareté : une carte tirée dans une de ces raretés
    * est forcément l'une d'elles (le site affiche « N'importe quelle carte » pour les autres).
@@ -328,8 +398,57 @@ function listBoosterOptions(ctx: Context): BoosterOption[] {
       ...(featured.size > 0 ? { featured } : {}),
     });
   }
+  for (const free of freeInvocations(ctx)) options.push(freeOption(free));
   return options;
 }
+
+/** Bons « …dorée » : taux de rareté basiques, toutes les cartes dorées (mesuré, voir `normalizeVouchers`). */
+const GOLDEN_ONLY: BoosterSpec = {
+  ...BOOSTERS.basic,
+  golden: [1, 1, 1, 1],
+  chroma: [0, 0, 0, 0],
+};
+
+/** Invocation premium des abonnés : 10 cartes de tous les packs d'évènement (source : /boosters). */
+export const PREMIUM_INVOCATION: FreeInvocation = {
+  name: PREMIUM_BOOSTER,
+  count: 1,
+  cards: CARDS_PER_INVOCATION,
+  packId: null,
+  inverse: true,
+  golden: false,
+};
+
+function freeOption(free: FreeInvocation): BoosterOption {
+  return {
+    key: `free:${free.name}`,
+    label:
+      free.name === PREMIUM_BOOSTER
+        ? 'Invocation premium (abonnement)'
+        : `Invocation gratuite « ${free.name} »`,
+    param: free.name,
+    cost: {},
+    cards: free.cards,
+    spec: free.golden ? GOLDEN_ONLY : BOOSTERS.basic,
+    packId: free.packId,
+    ...(free.inverse ? { inverse: true } : {}),
+    // Comme les invocations d'évènement, une invocation hors Classique ne donne pas de chroma.
+    chroma: free.packId === null && !free.inverse && !free.golden,
+    free: true,
+    limit: free.count,
+  };
+}
+
+/** Invocations gratuites du joueur : ses bons, et son invocation premium si elle est disponible. */
+function freeInvocations(ctx: Context): FreeInvocation[] {
+  const free = [...(ctx.player.freeInvocations ?? [])];
+  if (premiumAvailable(ctx.player, ctx.now)) free.push(PREMIUM_INVOCATION);
+  return free;
+}
+
+/** Espérance d'une invocation gratuite, même hors des invocations disponibles (abonnement à venir). */
+export const freeInvocationEV = (ctx: Context, state: State, free: FreeInvocation) =>
+  invocationEV(ctx, state, freeOption(free)).ev;
 
 const featuredPools = new WeakMap<BoosterOption, Pool>();
 
@@ -407,8 +526,8 @@ export function invocationEV(
   draws: Record<string, number>;
   pity: Float64Array | null;
 } {
-  const pool = getPool(ctx, option.packId, true);
-  const poolKey = `${option.packId ?? 'classic'}|true`;
+  const pool = getPool(ctx, option.packId, true, option.inverse);
+  const poolKey = invocationPoolKey(option);
   const featured = featuredPool(ctx, option);
   const expectedNew: Record<string, number> = {};
   const draws: Record<string, number> = {};
@@ -488,13 +607,13 @@ function bucketsOf(ctx: Context, item: Item, shiny: Shiny) {
     const seen = new Set<string>();
     for (const option of boosterOptions(ctx)) {
       const featured = option.featured?.has(item.rarity);
-      const poolKey = featured ? option.key : `${option.packId ?? 'classic'}|true`;
+      const poolKey = featured ? option.key : invocationPoolKey(option);
       const key = bucketKey(poolKey, item.rarity, shiny);
       if (seen.has(key)) continue;
       seen.add(key);
       const bucket = featured
         ? featuredPool(ctx, option)?.get(key)
-        : getPool(ctx, option.packId, true).get(key);
+        : getPool(ctx, option.packId, true, option.inverse).get(key);
       if (bucket?.items.includes(item)) list.push({ key, bucket });
     }
     cache.set(id, list);
@@ -628,42 +747,58 @@ export function releaseExpectedLevels(ctx: Context, state: State, item: Item, sh
   if (getCard(state, item.id, shiny).copies > 0) shiftExpectedLevels(ctx, state, item, shiny, -1);
 }
 
-/** Espérance (en points) d'une tentative d'ascension à l'étage courant, et cartes nouvelles attendues. */
+/**
+ * Espérance (en points) d'une tentative d'ascension, cartes nouvelles attendues, et étages gravis
+ * après la tentative (`next`, voir `State.tower`). Chaque étage possible compte pour sa
+ * probabilité. Un échec rapporte 4 cristaux et 50 de réputation ; une réussite, une carte et 300
+ * de réputation (1 000 au sommet), plus les 1 000 que coûte une saison sans aucun étage gravi.
+ * Au sommet, la tentative n'a pas lieu : sa poudre reste.
+ */
 export function ascensionEV(
   ctx: Context,
   state: State,
-): { ev: number; successRate: number; newCards: number } {
+): { ev: number; successRate: number; newCards: number; next: number[] } {
   const season = ctx.catalog.season;
-  if (!season) return { ev: 0, successRate: 0, newCards: 0 };
-  const floor = season.floors[Math.floor(state.towerFloor)];
-  if (!floor) return { ev: 0, successRate: 0, newCards: 0 };
+  const dist = state.tower;
+  const top = season ? Math.min(season.floors.length, dist.length - 1) : -1;
+  if (!season || top <= 0) return { ev: 0, successRate: 0, newCards: 0, next: dist };
   const pool = getPool(ctx, season.packId, false);
   const poolKey = `${season.packId}|false`;
-  let reward = 0;
-  let pFreshReward = 0;
-  for (const drop of floor.drops) {
-    const { value, pFresh } = cardEV(
-      ctx,
-      state,
-      poolKey,
-      pool.get(bucketKey(poolKey, drop.rarity, drop.shiny)),
-      drop.rarity,
-      drop.shiny,
-      null,
-    );
-    reward += drop.rate * value;
-    pFreshReward += drop.rate * pFresh;
+  const { weights, reputationWeight: rep } = ctx.options;
+  const failure = ASCENSION_FAIL_CRYSTALS * weights.loreFragment + REPUTATION_ATTEMPT * rep;
+  const next = dist.map(() => 0);
+  next[top] = dist[top]!;
+  let ev = dist[top]! * ASCENSION_COST * weights.loreDust;
+  let success = 0;
+  let newCards = 0;
+  for (let floorIndex = 0; floorIndex < top; floorIndex++) {
+    const p = dist[floorIndex]!;
+    const floor = season.floors[floorIndex];
+    if (p <= 0 || !floor) continue;
+    let reward = 0;
+    let pFreshReward = 0;
+    for (const drop of floor.drops) {
+      const { value, pFresh } = cardEV(
+        ctx,
+        state,
+        poolKey,
+        pool.get(bucketKey(poolKey, drop.rarity, drop.shiny)),
+        drop.rarity,
+        drop.shiny,
+        null,
+      );
+      reward += drop.rate * value;
+      pFreshReward += drop.rate * pFresh;
+    }
+    const reputation =
+      (floorIndex === top - 1 ? REPUTATION_TOP_FLOOR : REPUTATION_SUCCESS) +
+      (floorIndex === 0 ? REPUTATION_NO_FLOOR : 0);
+    ev += p * (floor.rate * (reward + reputation * rep) + (1 - floor.rate) * failure);
+    success += p * floor.rate;
+    newCards += p * floor.rate * pFreshReward;
+    next[floorIndex] = next[floorIndex]! + p * (1 - floor.rate);
+    next[floorIndex + 1] = next[floorIndex + 1]! + p * floor.rate;
   }
-  const floorIndex = Math.floor(state.towerFloor);
-  const refund = ASCENSION_FAIL_REFUND * ctx.options.weights.loreDust;
-  const rep = ctx.options.reputationWeight;
-  const successRep =
-    floorIndex === season.floors.length - 1 ? REPUTATION_TOP_FLOOR : REPUTATION_SUCCESS;
-  const success = reward + successRep * rep;
-  const failure = refund + REPUTATION_ATTEMPT * rep;
-  return {
-    ev: floor.rate * success + (1 - floor.rate) * failure,
-    successRate: floor.rate,
-    newCards: floor.rate * pFreshReward,
-  };
+  const attempted = 1 - dist[top]!;
+  return { ev, successRate: attempted > 0 ? success / attempted : 0, newCards, next };
 }

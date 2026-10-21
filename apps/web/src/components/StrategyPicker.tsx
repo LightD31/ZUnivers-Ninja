@@ -197,7 +197,7 @@ export function StrategyPicker({ settings, onChange }: Props) {
       <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Anticipation">
         <span className={LABEL}>Anticiper</span>
         <label
-          title="Simule les prochains Vortex (groupe prévu d'après ton historique) et les essais d'ascension encore à venir : une monnaie qui y rapportera plus est gardée au lieu d'être dépensée aujourd'hui."
+          title="Simule les prochains Vortex (le prochain est annoncé par le jeu, les suivants prévus d'après ton historique) et les essais d'ascension encore à venir : une monnaie qui y rapportera plus est gardée au lieu d'être dépensée aujourd'hui."
           className={`${choice(settings.horizon)} inline-flex cursor-pointer items-center gap-1.5`}
         >
           <input
