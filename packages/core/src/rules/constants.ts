@@ -5,14 +5,20 @@
 
 export const GAME_TIMEZONE = 'Europe/Paris';
 
-/** /journa et /bonus : ZUMonnaie supplémentaire pour les abonnés (source : /abonnement). */
+/**
+ * /journa : ZUMonnaie supplémentaire pour les abonnés, 30 fois par abonnement (source : /abonnement,
+ * « pour un total de 6 000 »). Pas sur /bonus : l'historique des récompenses l'indique à 0.
+ */
 export const SUBSCRIPTION_LOOT_BONUS = 200;
 /** /bonus se débloque tous les 7 /journa (source : /commandes). */
 export const WEEKLY_EVERY_DAILIES = 7;
 
-/** /as : coût, remboursement en cas d'échec, essais par jour crédités à midi (source : /vortex). */
+/**
+ * /as : coût en poudre, cristaux d'histoire reçus en cas d'échec, essais par jour crédités à midi
+ * (source : /vortex).
+ */
 export const ASCENSION_COST = 20;
-export const ASCENSION_FAIL_REFUND = 4;
+export const ASCENSION_FAIL_CRYSTALS = 4;
 export const ASCENSIONS_PER_DAY = 2;
 export const ASCENSION_CREDIT_HOUR = 12;
 
@@ -30,16 +36,27 @@ export const VORTEX_ROTATION: readonly string[] = ['Classique', 'Autres', 'ZLAN'
 export const REPUTATION_ATTEMPT = 50;
 export const REPUTATION_SUCCESS = 300;
 export const REPUTATION_TOP_FLOOR = 1000;
+/** Réputation perdue à la fin d'une saison sans aucun étage gravi (source : /vortex). */
+export const REPUTATION_NO_FLOOR = 1000;
 
 /** /constellation : éclats d'étoile gagnés par niveau (source : /constellations). */
 export const CONSTELLATION_UPGRADE_DUST = 1;
 /** Points d'une constellation = points de la carte × niveau × 2 (source : /constellations). */
 export const CONSTELLATION_POINTS_FACTOR = 2;
 
-/** Abonnement premium (source : /abonnement). */
+/**
+ * Abonnement premium (source : /abonnement) : 2 000 poudres pour 30 jours, le premier mois offert.
+ * Il donne trois `/im premium` gratuites (10 jours d'attente entre deux), une carte dorée ★
+ * d'évènement, et chaque jour 200 ZUMonnaie au /journa et un ticket Lucky Rayou.
+ */
 export const SUBSCRIPTION_COST_LORE_DUST = 2000;
 export const SUBSCRIPTION_DAYS = 30;
 export const SUBSCRIPTION_PREMIUM_INVOCATIONS = 3;
+export const SUBSCRIPTION_PREMIUM_DAYS = 10;
+/** Paramètre de `/im` de l'invocation premium des abonnés. */
+export const PREMIUM_BOOSTER = 'premium';
+/** Un ticket Lucky Rayou s'achète 100 ZUMonnaie (source : /tickets) : sa valeur au plus bas. */
+export const LUCKY_TICKET_COST = 100;
 
 export type BoosterKind = 'basic' | 'golden' | 'chroma';
 
@@ -99,7 +116,11 @@ export const CARDS_PER_INVOCATION = 10;
  */
 export const PITY_CARDS = 210;
 
-/** Bonus de corporation : multiplicateur par niveau (récompense = Σ niveaux × multiplicateur). */
+/**
+ * Bonus de corporation : multiplicateur par niveau (récompense = Σ niveaux × multiplicateur). Le
+ * bonus de recyclage s'applique carte par carte, arrondi à l'entier le plus proche : +10 % sur une
+ * carte à 5 poudres en donne 6 (source : /corporations/info).
+ */
 export const CORPORATION_BONUS_MULTIPLIER: Record<string, number> = {
   LOOT: 10,
   RECYCLE_LORE_DUST: 0.01,

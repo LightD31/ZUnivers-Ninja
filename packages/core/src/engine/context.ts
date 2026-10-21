@@ -313,7 +313,8 @@ export const isEnchantable = (ctx: Context, item: Item) =>
 
 /**
  * Gain d'un recyclage. Une carte fusion rapporte le recyclage de chacun de ses composants
- * (source : /forge). Le bonus de corporation s'applique.
+ * (source : /forge). Le bonus de corporation s'applique carte par carte, arrondi à l'entier le
+ * plus proche (source : /corporations/info).
  */
 export function recycleGain(ctx: Context, item: Item, shiny: Shiny, depth = 0): Partial<Balances> {
   const fusion = item.isFusion ? ctx.fusionsByResult.get(item.id) : undefined;
@@ -332,7 +333,7 @@ export function recycleGain(ctx: Context, item: Item, shiny: Shiny, depth = 0): 
   if (base <= 0) return {};
   const currency = forgeCurrency(item);
   const bonus = ctx.corporation.recycle[currency] ?? 0;
-  return { [currency]: base + Math.floor(base * bonus) };
+  return { [currency]: base + Math.round(base * bonus) };
 }
 
 export function canRecycle(ctx: Context, item: Item, shiny: Shiny): boolean {

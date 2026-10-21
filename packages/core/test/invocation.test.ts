@@ -7,6 +7,7 @@ import {
   invocationEV,
   nodeSteps,
   normalizePlayer,
+  premiumAvailable,
   resolveOptions,
   search,
   sortInvocations,
@@ -17,7 +18,7 @@ import { applyAction } from '../src/engine/actions';
 import { initialState, stateValue } from '../src/engine/state';
 import { PITY_CARDS } from '../src/rules/constants';
 import { pityStep } from '../src/rules/random';
-import { makeCatalog, makeContext, makeItem, makePlayer, owned } from './factory';
+import { makeCatalog, makeContext, makeItem, makePlayer, owned, TEST_NOW } from './factory';
 import { fixtureCatalog, fixturePlayer, NOW, rawPlayer } from './helpers';
 import type { Action } from '../src/engine/actions';
 
@@ -370,5 +371,121 @@ describe('bonus des cartes nouvelles', () => {
       invocationEV(ctx, before, basic).newCards,
     );
     expect(invocationEV(ctx, after, basic).ev).toBeGreaterThan(0);
+  });
+});
+
+describe('invocations gratuites', () => {
+  const classic = Array.from({ length: 20 }, (_, i) => makeItem(1001 + i));
+  const events = Array.from({ length: 20 }, (_, i) =>
+    makeItem(1101 + i, { packId: 'pack-zlan', packName: 'ZLAN', isClassic: false }),
+  );
+  const catalog = makeCatalog([...classic, ...events]);
+  const free = (name: string, overrides = {}) => ({
+    name,
+    count: 2,
+    cards: 5,
+    packId: null,
+    inverse: false,
+    golden: false,
+    ...overrides,
+  });
+
+  it('fait les bons du profil d’office, même en stratégie Prudent', () => {
+    const player = makePlayer({ freeInvocations: [free('classique5dorée', { golden: true })] });
+    for (const strategy of ['equilibre', 'prudent'] as const) {
+      const plan = createPlan({ catalog, player, now: TEST_NOW, options: { strategy } });
+      expect(plan.commands).toEqual([
+        '/im évènement:classique5dorée',
+        '/im évènement:classique5dorée',
+      ]);
+      expect(plan.steps.every((s) => s.auto)).toBe(true);
+    }
+    const skipped = createPlan({
+      catalog,
+      player,
+      now: TEST_NOW,
+      options: { allow: { invoke: false } },
+    });
+    expect(skipped.commands).toEqual([]);
+  });
+
+  it('tire les bons « …dorée » en dorées, et les bons inversés hors du Classique', () => {
+    const player = makePlayer({
+      freeInvocations: [
+        free('classique5'),
+        free('classique5dorée', { golden: true }),
+        free('pack10', { inverse: true }),
+      ],
+    });
+    const ctx = makeContext(catalog, player);
+    const state = initialState(ctx);
+    const option = (key: string) => boosterOptions(ctx).find((o) => o.key === key)!;
+    const golden = invocationEV(ctx, state, option('free:classique5dorée'));
+    expect(Object.keys(golden.expectedNew).every((k) => k.endsWith('|1'))).toBe(true);
+    // Une dorée ★ vaut 60 points, une normale 1 : le bon doré vaut bien plus que le bon basique.
+    expect(golden.ev).toBeGreaterThan(5 * invocationEV(ctx, state, option('free:classique5')).ev);
+    const inverse = invocationEV(ctx, state, option('free:pack10'));
+    expect(Object.keys(inverse.expectedNew).every((k) => k.startsWith('classic!|'))).toBe(true);
+    expect(option('free:pack10').chroma).toBe(false);
+  });
+});
+
+describe('invocation premium des abonnés', () => {
+  const subscription = (premiumDates: string[] | null) => ({
+    subscription: { begin: '2026-10-02T00:11:33', end: '2026-11-01T00:11:33', premiumDates },
+  });
+  // TEST_NOW : 11/10 à 14 h, heure française.
+  it('suit les trois invocations de l’abonnement et les 10 jours d’attente', () => {
+    expect(premiumAvailable(subscription([]), TEST_NOW)).toBe(true);
+    expect(premiumAvailable(subscription(['2026-10-02T09:00:00']), TEST_NOW)).toBe(false);
+    expect(premiumAvailable(subscription(['2026-10-01T13:59:00']), TEST_NOW)).toBe(true);
+    const three = ['2026-09-10T00:00:00', '2026-09-20T00:00:00', '2026-09-30T00:00:00'];
+    expect(premiumAvailable(subscription(three), TEST_NOW)).toBe(false);
+    // Historique inconnu ou abonnement terminé : rien n'est conseillé.
+    expect(premiumAvailable(subscription(null), TEST_NOW)).toBe(false);
+    expect(premiumAvailable(subscription([]), new Date('2026-11-02T12:00:00Z'))).toBe(false);
+    expect(premiumAvailable({ subscription: null }, TEST_NOW)).toBe(false);
+  });
+
+  it("propose l'invocation premium, tirée dans les packs d'évènement", () => {
+    const events = Array.from({ length: 20 }, (_, i) =>
+      makeItem(1101 + i, { packId: 'pack-zlan', packName: 'ZLAN', isClassic: false }),
+    );
+    const plan = createPlan({
+      catalog: makeCatalog([makeItem(1001), ...events]),
+      player: makePlayer({ subscribed: true, ...subscription([]) }),
+      now: TEST_NOW,
+    });
+    expect(plan.commands).toEqual(['/im évènement:premium']);
+  });
+
+  it('dit quand revient la prochaine, et rappelle le Lucky Rayou du jour', () => {
+    const plan = createPlan({
+      catalog: makeCatalog([makeItem(1001)]),
+      player: makePlayer({
+        subscribed: true,
+        ...subscription(['2026-10-03T10:34:12']),
+        loot: [{ date: '2026-10-10', daily: 1, weekly: 1 }],
+      }),
+      now: TEST_NOW,
+    });
+    expect(plan.commands[0]).toBe('/journa');
+    expect(plan.commands).not.toContain('/im évènement:premium');
+    expect(plan.steps[0]!.detail).toMatch(/Lucky Rayou.*\/ticketlien/);
+    expect(plan.advice).toContain(
+      'Prochaine /im premium de ton abonnement disponible le 13/10/2026 à 10:34.',
+    );
+  });
+
+  it('signale le premier mois offert à qui n’a jamais fait d’/im premium', () => {
+    const advice = (everPremium: boolean | null) =>
+      createPlan({
+        catalog: makeCatalog([makeItem(1001)]),
+        player: makePlayer({ everPremium }),
+        now: TEST_NOW,
+      }).advice.some((a) => a.includes("ton premier mois d'abonnement est offert"));
+    expect(advice(false)).toBe(true);
+    expect(advice(true)).toBe(false);
+    expect(advice(null)).toBe(false);
   });
 });

@@ -86,6 +86,16 @@ describe('prochains Vortex', () => {
     expect(predicted).toMatchObject({ group: 'ZLAN', packId: 'pack-zlan', floors: [] });
   });
 
+  it("prend la tour annoncée par l'API pour la prochaine saison", () => {
+    const nextTower = { name: 'ZEvent', group: 'ZEvent', packId: 'pack-zevent' };
+    const catalog = makeCatalog([], { season: season(), towers: TOWERS, nextTower });
+    const forecasts = forecastSeasons(catalog, [], 2);
+    // Sans annonce, l'ordre observé prévoit ZLAN après Autres.
+    expect(forecasts[0]!.groups).toEqual({ ZEvent: 1 });
+    expect(likelyGroup(forecasts[1]!)).toBe('Classique');
+    expect(predictedSeason(catalog, [], forecasts[0]!, 'ZEvent')?.towerName).toBe('ZEvent');
+  });
+
   it('ne prévoit rien hors saison', () => {
     expect(forecastSeasons(makeCatalog([], { towers: TOWERS }), [], 3)).toEqual([]);
   });
@@ -127,5 +137,23 @@ describe('récompenses à venir', () => {
       loreDust: 10,
     });
     expect(lootUntil(ctx, { dailyDone: true, dailiesSinceWeekly: 0 }, '2026-10-01')).toEqual({});
+  });
+
+  it("compte le bonus d'abonnement aux /journa d'ici la fin de l'abonnement", () => {
+    const subscribed = makeContext(
+      makeCatalog([]),
+      makePlayer({
+        subscribed: true,
+        subscription: {
+          begin: '2026-09-15T08:00:00',
+          end: '2026-10-15T08:00:00',
+          premiumDates: [],
+        },
+      }),
+    );
+    // Journas du 12 au 17 : bonus du 12 au 14 seulement, et jamais au /bonus du 6ᵉ journa.
+    expect(lootUntil(subscribed, { dailyDone: true, dailiesSinceWeekly: 1 }, '2026-10-17')).toEqual(
+      { balance: 7000 + 3 * 200, loreDust: 70 },
+    );
   });
 });

@@ -136,6 +136,8 @@ export interface Catalog {
   events: GameEvent[];
   season: Season | null;
   towers: TowerInfo[];
+  /** Tour du prochain Vortex, annoncée par l'API (absente des anciens instantanés). */
+  nextTower?: TowerInfo | null;
 }
 
 export interface OwnedCard {
@@ -202,6 +204,25 @@ export interface TowerSeasonLog {
   end: string;
 }
 
+/**
+ * Invocation gratuite à faire : un bon du profil (`/im classique5dorée`…) ou l'invocation premium
+ * des abonnés. Les taux de rareté sont ceux des boosters basiques.
+ */
+export interface FreeInvocation {
+  /** Paramètre de `/im`. */
+  name: string;
+  /** Invocations disponibles. */
+  count: number;
+  /** Cartes par invocation. */
+  cards: number;
+  /** Pack du tirage, `null` pour le Classique. */
+  packId: string | null;
+  /** Tirage dans tous les packs sauf `packId` (bons `pack10`, invocation premium). */
+  inverse: boolean;
+  /** Toutes les cartes tirées sont dorées (bons « …dorée »). */
+  golden: boolean;
+}
+
 export interface LootDay {
   date: string;
   daily: number;
@@ -217,6 +238,18 @@ export interface Player {
   ruleSet: string;
   balances: Balances;
   subscribed: boolean;
+  /**
+   * Abonnement en cours (dates AAAA-MM-JJTHH:MM:SS, heure française), et dates des invocations
+   * premium faites depuis son début (`null` si l'API ne les donne pas).
+   */
+  subscription?: { begin: string; end: string; premiumDates: string[] | null } | null;
+  /**
+   * Le joueur a déjà fait une invocation premium, donc déjà été abonné : son premier mois n'est
+   * plus offert. `null` si l'API ne le dit pas.
+   */
+  everPremium?: boolean | null;
+  /** Bons d'invocation gratuite du profil. */
+  freeInvocations?: FreeInvocation[];
   corporation: { id: string; name: string; bonuses: Record<string, number> } | null;
   inventory: Record<CardKey, OwnedCard>;
   challenges: Challenge[];

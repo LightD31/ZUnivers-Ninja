@@ -136,6 +136,27 @@ export const UserSchema = z.looseObject({
   subscriptionBonusCount: num.default(0),
   subscriptionBonusLimit: num.default(0),
   isSubscribed: z.boolean().optional(),
+  /** Abonnement premium en cours, absent sinon. */
+  subscription: z.looseObject({ beginDate: z.string(), endDate: z.string() }).nullish(),
+  /**
+   * Bons d'invocation gratuite (« Bons à utiliser » du profil) : un par invocation, à faire avec
+   * `/im <nom de l'évènement>`. Ignorés s'ils deviennent illisibles : ils ne sont qu'un bonus.
+   */
+  vouchers: z
+    .array(
+      z.looseObject({
+        event: z.looseObject({
+          id: z.string(),
+          name: z.string(),
+          packs: z.array(PackSchema).default([]),
+          isInversePack: flag,
+          isPityEnabled: z.boolean().default(true),
+          isActive: z.boolean().default(true),
+          invokeCount: num.default(10),
+        }),
+      }),
+    )
+    .catch([]),
   currentLootStreak: num.default(0),
   maxLootStreak: num.default(0),
   userCorporation: z
@@ -204,6 +225,13 @@ export const UserTowerSchema = z.looseObject({
     .default([]),
 });
 export type ApiUserTower = z.infer<typeof UserTowerSchema>;
+
+/**
+ * `/public/inventory/{pseudo}/logs` : cartes reçues, par date d'opération. Seules les dates servent
+ * (invocations premium déjà faites pendant l'abonnement).
+ */
+export const InventoryLogsSchema = z.record(z.string(), z.array(z.unknown()));
+export type ApiInventoryLogs = z.infer<typeof InventoryLogsSchema>;
 
 /** `/public/user/{pseudo}/overview` : seul le compteur de bienveillance sert au planificateur. */
 export const UserOverviewSchema = z.looseObject({

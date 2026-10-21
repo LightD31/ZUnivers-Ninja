@@ -15,6 +15,23 @@ export function gameClock(now: Date): { date: string; hour: number } {
   return { date: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) };
 }
 
+const dateTimeFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: GAME_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
+
+/** Date et heure AAAA-MM-JJTHH:MM:SS dans le fuseau du jeu, comme les dates sans fuseau de l'API. */
+export function gameDateTime(now: Date): string {
+  const p = Object.fromEntries(dateTimeFormatter.formatToParts(now).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`;
+}
+
 /** Nombre de jours entre deux dates AAAA-MM-JJ. */
 export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);

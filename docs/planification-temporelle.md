@@ -34,6 +34,7 @@ Vérifié sur l'API le 19/10/2026 :
 | Essais d'ascension à venir        | Règle du jeu : deux par jour à midi, cumulables jusqu'à la fin du Vortex | Oui.                                                                                                                                       |
 | Récompenses `/journa` et `/bonus` | `/app/settings`, corporation, abonnement                                 | Oui.                                                                                                                                       |
 | Fin des défis de la semaine       | `/public/challenge/{pseudo}` (`endDate`)                                 | Oui. Les défis de la semaine suivante, non.                                                                                                |
+| Prochain Vortex                   | `/public/tower/next` : la tour de la saison suivante                     | Oui, pour la saison suivante seulement (ajouté après cette étude).                                                                         |
 | Évènements à venir                | `/public/event/current` : seulement ceux en cours                        | Non. `/public/event` ne donne que des noms ; `/upcoming`, `/next`, `/{nom}` : 404. Le site officiel n'utilise que `/public/event/current`. |
 
 **Rotation des Vortex.** La saison en cours ouvre à la forge les packs de tout son groupe
@@ -46,7 +47,9 @@ depuis la saison 93 (13/10/2025) :
 - avant, l'ordre était presque aléatoire : 10 transitions sur 30 entre les saisons 60 et 92 ;
 - la saison 118 (Manoir Nougaret, Classique) a bien été suivie de la 119 (TMCUP, Autres).
 
-La prévision apprend donc l'ordre sur l'historique du joueur, plutôt que de le coder en dur. C'est
+La prévision apprend donc l'ordre sur l'historique du joueur, plutôt que de le coder en dur. La
+saison suivante n'est même plus une prévision : `/public/tower/next` annonce sa tour, et son groupe
+est pris tel quel. Au-delà, c'est
 une chaîne de Markov : le groupe suivant dépend du groupe en cours. Seules les paires de saisons
 consécutives comptent, les plus récentes davantage, et l'ordre observé sert de point de départ.
 Depuis la saison 118, elle donne Autres (100 %), puis ZLAN (99 %), puis ZEvent (83 %).
@@ -226,8 +229,8 @@ pnpm tsx packages/core/scripts/horizon-eval.ts --truth reverse --give loreFragme
   les tirages ne sont que des espérances. Le plan, recalculé chaque jour, corrige au fil de l'eau.
 - **Revenu sous-estimé** : seules les récompenses quotidiennes comptent, pas les recyclages ni les
   défis. Le plan garde donc un peu trop plutôt que pas assez.
-- **Ascensions** : chaque essai est estimé à l'étage moyen attendu. Le remboursement d'un échec
-  (4 poudres) compte dans sa valeur, pas dans son prix.
+- **Ascensions** : chaque essai est estimé sur la probabilité de chaque étage (`State.tower`), sommet
+  compris. Les 4 cristaux d'un échec comptent dans sa valeur, pas dans son prix.
 - **Évènements** : l'API ne les annonce jamais avant leur début. Leur anticipation (option
   `horizonEventDays`) a donc été retirée : elle ne se déclenchait jamais.
 - **Fin de saison** : `ascensionCredits` (avant cette étude) compte encore le jour de fin comme dans

@@ -59,7 +59,10 @@ export function buildDiscordMessage(
   }
   const challenges = plan.challenges
     .filter((c) => c.after !== c.before)
-    .map((c) => `${c.description} : \`${c.before}/${c.max}\` → \`${c.after}/${c.max}\``);
+    .map(
+      (c) =>
+        `${c.description} : \`${c.before}/${c.max}\` → \`${c.after}/${c.max}\`${c.after >= c.max && c.score > 0 ? ` (+${fmt(c.score)} points)` : ''}`,
+    );
   const achievements = plan.achievements
     .filter((a) => a.after !== a.before)
     .map((a) =>

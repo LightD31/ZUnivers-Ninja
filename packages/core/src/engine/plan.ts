@@ -1,9 +1,9 @@
-import { likelyGroup, seasonLastDay } from '../rules/calendar';
-import { boosterOptions, invocationEV } from '../rules/random';
+import { likelyGroup, nextPremium, premiumAvailable, seasonLastDay } from '../rules/calendar';
+import { PREMIUM_INVOCATION, boosterOptions, freeInvocationEV } from '../rules/random';
 import { daysBetween, gameClock } from '../rules/time';
 import {
-  BOOSTERS,
   FEATURE,
+  LUCKY_TICKET_COST,
   SUBSCRIPTION_COST_LORE_DUST,
   SUBSCRIPTION_DAYS,
   SUBSCRIPTION_LOOT_BONUS,
@@ -31,7 +31,14 @@ import {
 } from './context';
 import { horizonReserves, withHorizon, type HorizonReserve } from './horizon';
 import { nodeSteps, regroup, search, withDuplicateValue, type Step } from './planner';
-import { getCard, initialState, stateValue, type State } from './state';
+import {
+  expectedFloors,
+  getCard,
+  initialState,
+  stateValue,
+  summitChance,
+  type State,
+} from './state';
 import { STRATEGIES, type StrategyId } from './strategies';
 
 export interface PlanCard {
@@ -80,6 +87,8 @@ export interface ChallengeSummary {
   after: number;
   max: number;
   reward: number;
+  /** Points du défi (classement général). */
+  score: number;
   plannable: boolean;
 }
 
@@ -157,8 +166,14 @@ export interface PlanResult {
   commands: string[];
   before: Snapshot;
   after: Snapshot;
-  /** `achievements` : points des succès obtenus par le plan. */
-  gain: { points: number; expected: number; value: number; achievements: number };
+  /** `achievements`, `challenges` : points des succès et des défis obtenus par le plan. */
+  gain: {
+    points: number;
+    expected: number;
+    value: number;
+    achievements: number;
+    challenges: number;
+  };
   challenges: ChallengeSummary[];
   /** Succès que le plan fait progresser, puis les plus proches d'être obtenus. */
   achievements: AchievementSummary[];
@@ -557,30 +572,13 @@ function buildAdvice(ctx: Context, before: State, after: State, invokes: boolean
     );
   }
 
-  if (
-    after.ascensionsLeft > 0 &&
-    ctx.catalog.season &&
-    Math.floor(after.towerFloor) < ctx.catalog.season.floors.length
-  ) {
+  if (after.ascensionsLeft > 0 && ctx.catalog.season && summitChance(after) < 1) {
     advice.push(
       `${after.ascensionsLeft} ascension(s) disponible(s) non conseillée(s) (poudre insuffisante ou peu rentable). Elles restent cumulables jusqu'au ${frDate(ctx.catalog.season.end)}.`,
     );
   }
 
-  if (!player.subscribed && ctx.features.has(FEATURE.subscription)) {
-    const w = ctx.options.weights;
-    const basic = boosterOptions(ctx).find((o) => o.key === BOOSTERS.basic.kind);
-    const premiumEV = basic ? invocationEV(ctx, before, basic).ev : 0;
-    const value =
-      SUBSCRIPTION_DAYS * SUBSCRIPTION_LOOT_BONUS * w.balance +
-      SUBSCRIPTION_PREMIUM_INVOCATIONS * premiumEV;
-    const cost = SUBSCRIPTION_COST_LORE_DUST * w.loreDust;
-    if (before.balances.loreDust >= SUBSCRIPTION_COST_LORE_DUST && value > cost) {
-      advice.push(
-        `L'abonnement (${fmt(SUBSCRIPTION_COST_LORE_DUST)} poudre) semble rentable : ~${fmt(value)} points espérés pour ~${fmt(cost)} points de poudre.`,
-      );
-    }
-  }
+  if (ctx.features.has(FEATURE.subscription)) advice.push(...subscriptionAdvice(ctx, before));
 
   if (ctx.horizon) advice.push(...horizonAdvice(ctx, after));
 
@@ -595,6 +593,49 @@ function buildAdvice(ctx: Context, before: State, after: State, invokes: boolean
 
   // Le solde après le plan n'est pas un conseil : l'interface et Discord l'affichent déjà.
   return advice;
+}
+
+/**
+ * Valeur espérée d'un abonnement de 30 jours, en points (source : /abonnement) : 200 ZUMonnaie à
+ * chaque /journa, trois /im premium (10 cartes d'évènement), une dorée d'évènement de rareté
+ * tirée comme un booster basique, et un ticket Lucky Rayou par jour, compté à son prix.
+ */
+function subscriptionValue(ctx: Context, state: State): number {
+  const w = ctx.options.weights;
+  const premium = freeInvocationEV(ctx, state, PREMIUM_INVOCATION);
+  const golden = freeInvocationEV(ctx, state, {
+    ...PREMIUM_INVOCATION,
+    cards: 1,
+    golden: true,
+  });
+  return (
+    SUBSCRIPTION_DAYS * (SUBSCRIPTION_LOOT_BONUS + LUCKY_TICKET_COST) * w.balance +
+    (SUBSCRIPTION_PREMIUM_INVOCATIONS * premium + golden) * ctx.options.evFactor
+  );
+}
+
+/** Conseils d'abonnement : premier mois offert, abonnement rentable, prochaine /im premium. */
+function subscriptionAdvice(ctx: Context, before: State): string[] {
+  const { player } = ctx;
+  if (player.subscribed) {
+    const next = nextPremium(player);
+    if (!next || premiumAvailable(player, ctx.now)) return [];
+    const when = `${frDate(next)} à ${next.slice(11, 16)}`;
+    return [`Prochaine /im premium de ton abonnement disponible le ${when}.`];
+  }
+  const value = subscriptionValue(ctx, before);
+  const perks =
+    '3 /im premium, une dorée d’évènement, +200 ZUMonnaie par /journa et un Lucky Rayou par jour';
+  if (player.everPremium === false) {
+    return [
+      `Aucune /im premium dans ton historique : si tu ne t'es jamais abonné, ton premier mois d'abonnement est offert. Active-le depuis ton profil sur le site, ~${fmt(value)} points espérés (${perks}).`,
+    ];
+  }
+  const cost = SUBSCRIPTION_COST_LORE_DUST * ctx.options.weights.loreDust;
+  if (before.balances.loreDust < SUBSCRIPTION_COST_LORE_DUST || value <= cost) return [];
+  return [
+    `L'abonnement (${fmt(SUBSCRIPTION_COST_LORE_DUST)} poudre) semble rentable : ~${fmt(value)} points espérés pour ~${fmt(cost)} points de poudre (${perks}).`,
+  ];
 }
 
 const MISSING_LIMIT = 40;
@@ -747,6 +788,7 @@ export function createPlan({
       after: final.current,
       max: c.max,
       reward: c.reward,
+      score: c.score,
       plannable: c.action !== null,
     };
   });
@@ -758,6 +800,7 @@ export function createPlan({
         after: c.max,
         max: c.max,
         reward: c.rewardLoreDust,
+        score: c.score,
         plannable: c.action !== null,
       });
   }
@@ -787,6 +830,7 @@ export function createPlan({
       expected: finalState.ev,
       value: stateValue(ctx, finalState) - stateValue(ctx, before),
       achievements: finalState.achievementPoints,
+      challenges: finalState.challengePoints,
     },
     challenges,
     achievements: buildAchievements(ctx, finalState),
@@ -812,8 +856,8 @@ export function createPlan({
           group: season.group,
           end: season.end,
           ascensionsLeft: finalState.ascensionsLeft,
-          floor: Math.min(season.floors.length, Math.floor(before.towerFloor) + 1),
-          summit: Math.floor(before.towerFloor) >= season.floors.length,
+          floor: Math.min(season.floors.length, Math.round(expectedFloors(before)) + 1),
+          summit: summitChance(before) >= 1,
         }
       : null,
     stats: {

@@ -125,7 +125,8 @@ export function Summary({ plan }: { plan: PlanResult }) {
                 </div>
                 <Progress before={c.before} after={c.after} total={c.max} bar="bg-zu-500" />
                 <p className="text-xs text-white/60">
-                  +{c.reward} poudre{!c.plannable && c.after < c.max ? ' · à faire toi-même' : ''}
+                  {c.score > 0 ? `+${fmt(c.score)} points · ` : ''}+{c.reward} poudre
+                  {!c.plannable && c.after < c.max ? ' · à faire toi-même' : ''}
                 </p>
               </li>
             ))}

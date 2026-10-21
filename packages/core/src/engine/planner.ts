@@ -12,13 +12,21 @@ import {
   CURRENCIES,
   cardKey,
   type Balances,
+  type ChallengeAction,
   type Currency,
   type Item,
   type OwnedCard,
   type Shiny,
 } from '../model/types';
 import { goalCardMet } from './achievements';
-import { actionKey, applyAction, type Action, type Applied, type RecycleEntry } from './actions';
+import {
+  actionKey,
+  applyAction,
+  invocationsLeft,
+  type Action,
+  type Applied,
+  type RecycleEntry,
+} from './actions';
 import { canRecycle, craftCost, enchantCost, forgeCurrency, type Context } from './context';
 import { CARD_SEPARATOR, COMMAND_MAX_LENGTH, cardsToken, commandPrefix } from './commands';
 import { holdCost } from './hold';
@@ -78,6 +86,8 @@ const SHADOW_REFRESH = 20;
 const CHAIN_MAX = 4;
 /** Cartes manquantes au plus pour proposer de terminer un succès de collection d'un coup. */
 const ACHIEVEMENT_MISSING_MAX = 8;
+/** Invocations manquantes au plus pour proposer de terminer un défi d'invocations d'un coup. */
+const INVOKE_CHALLENGE_MAX = 10;
 
 function record(
   ctx: Context,
@@ -171,9 +181,9 @@ function recycleChunks(ctx: Context, cards: RecycleEntry[]): RecycleEntry[][] {
 }
 
 /**
- * Applique toutes les actions sans regret jusqu'à stabilité : récompenses quotidiennes, fusions
- * possibles sans toucher au dernier exemplaire, constellations avec les doublons, puis recyclage
- * du surplus réel.
+ * Applique toutes les actions sans regret jusqu'à stabilité : récompenses quotidiennes,
+ * invocations gratuites (bons, premium), fusions possibles sans toucher au dernier exemplaire,
+ * constellations avec les doublons, puis recyclage du surplus réel.
  */
 export function closure(
   ctx: Context,
@@ -183,6 +193,18 @@ export function closure(
   let node = start;
   for (const action of [{ kind: 'daily' }, { kind: 'weekly' }] as const) {
     node = tryApply(ctx, node, action, true) ?? node;
+  }
+  // Une invocation gratuite ne coûte rien et rapporte des cartes : toutes sont faites, même par la
+  // stratégie Prudent, qui ne refuse que les tirages payants.
+  if (ctx.options.allow.invoke) {
+    for (const option of boosterOptions(ctx)) {
+      if (!option.free) continue;
+      for (let left = invocationsLeft(node.state, option); left > 0; left--) {
+        const next = tryApply(ctx, node, { kind: 'invoke', booster: option.key }, true);
+        if (!next) break;
+        node = next;
+      }
+    }
   }
 
   let touched: Set<string> | 'all' = touchedInit;
@@ -337,9 +359,14 @@ function adjusted(
   /** Valeur des tirages espérés par carte et brillance, `null` sans invocation simulée. */
   drawn: Map<Item, number>[] | null,
   near: Set<number>,
+  /**
+   * Niveaux que les invocations simulées ne monteront plus, par carte, niveaux et obtention :
+   * partagés par les candidats d'un même état. `null` sans invocation simulée.
+   */
+  shifts: Map<string, number> | null,
 ): Candidate {
   let delta = 0;
-  if (Object.keys(state.drawsPerCard).length > 0) {
+  if (shifts) {
     // Cartes que la chaîne obtient et niveaux qu'elle leur monte.
     const cards = new Map<
       string,
@@ -356,9 +383,13 @@ function adjusted(
       const item = action.kind === 'constellation' ? ctx.items[action.itemId] : undefined;
       if (item && action.kind === 'constellation') touch(item, action.shiny).levels++;
     }
-    for (const { item, shiny, obtained, levels } of cards.values())
-      delta +=
-        expectedLevelsShift(ctx, state, item, shiny, obtained, levels) * ctx.options.evFactor;
+    for (const { item, shiny, obtained, levels } of cards.values()) {
+      const key = `${item.id}|${shiny}|${Number(obtained)}|${levels}`;
+      let shift = shifts.get(key);
+      if (shift === undefined)
+        shifts.set(key, (shift = expectedLevelsShift(ctx, state, item, shiny, obtained, levels)));
+      delta += shift * ctx.options.evFactor;
+    }
   }
   if (!c.obtains) return delta !== 0 ? { ...c, gain: c.gain + delta } : c;
   if (drawn) {
@@ -410,6 +441,53 @@ function nearAchievements(ctx: Context, state: State): Set<number> {
   return near;
 }
 
+/** Défi que fait progresser chaque type d'action, un par action (voir `progressChallenges`). */
+const CHALLENGE_OF: Partial<Record<Action['kind'], ChallengeAction>> = {
+  craft: 'craft',
+  enchant: 'enchant',
+  fusion: 'fusion',
+  constellation: 'constellation',
+  invoke: 'invoke',
+  ascension: 'ascension',
+  evolution: 'evolution',
+};
+
+/** Défis encore ouverts au début du plan : un candidat qui peut en terminer un est gardé. */
+const openChallengeCache = new WeakMap<Context, Set<ChallengeAction>>();
+
+function mayCompleteChallenge(ctx: Context, actions: Action[]): boolean {
+  let open = openChallengeCache.get(ctx);
+  if (!open) {
+    open = new Set(ctx.player.challenges.filter((c) => c.current < c.max).map((c) => c.action));
+    openChallengeCache.set(ctx, open);
+  }
+  return open.size > 0 && actions.some((a) => open.has(CHALLENGE_OF[a.kind] ?? null));
+}
+
+/**
+ * Points et poudre des défis qu'un candidat termine. Sans eux, « Enchanter une carte » (10 points
+ * et 50 poudres) ne rendait aucun enchantement rentable à explorer, alors que le plan qui le fait
+ * vaut plus une fois le défi compté.
+ */
+function challengeBonus(ctx: Context, state: State, actions: Action[]): number {
+  if (state.challenges.length === 0) return 0;
+  const counts = new Map<ChallengeAction, number>();
+  for (const action of actions) {
+    // Une stratégie qui ne compte pas les tirages (Prudent) n'en paie pas pour un défi non plus.
+    if (ctx.options.evFactor <= 0 && (action.kind === 'invoke' || action.kind === 'ascension'))
+      continue;
+    const challenge = CHALLENGE_OF[action.kind];
+    if (challenge) counts.set(challenge, (counts.get(challenge) ?? 0) + 1);
+  }
+  let bonus = 0;
+  for (const c of state.challenges) {
+    const count = counts.get(c.action);
+    if (count && c.current < c.max && c.current + count >= c.max)
+      bonus += c.score + c.reward * ctx.options.weights.loreDust;
+  }
+  return bonus;
+}
+
 /** Candidats de forge d'une carte, par état de la carte : ils ne dépendent que de lui. */
 const itemCandidateCache = new WeakMap<Context, Map<string, Candidate[]>>();
 
@@ -443,7 +521,8 @@ function itemCandidates(
   const out: Candidate[] = [];
   const w = ctx.options.weights;
   const bonus = ctx.options.newCardBonus;
-  // Une carte de succès est gardée même à gain négatif : la terminer peut rapporter le succès.
+  // Une carte de succès est gardée même à gain négatif : la terminer peut rapporter le succès. De
+  // même pour un défi de la semaine que le candidat peut terminer (voir `challengeBonus`).
   const achievement = ctx.achievementsByItem.has(item.id);
   const push = (
     actions: Action[],
@@ -451,7 +530,7 @@ function itemCandidates(
     cost: Partial<Balances>,
     obtains: [Item, Shiny][] = [],
   ) => {
-    if (gain > EPSILON || (achievement && obtains.length > 0))
+    if (gain > EPSILON || (achievement && obtains.length > 0) || mayCompleteChallenge(ctx, actions))
       out.push(candidate(ctx, actions, gain, cost, obtains));
   };
   const craft = allow.craft ? craftCost(ctx, item) : undefined;
@@ -555,7 +634,7 @@ function forgeCandidates(ctx: Context, state: State): Candidate[] {
   ) => {
     const achievement =
       ctx.achievements.length > 0 && obtains.some(([i]) => ctx.achievementsByItem.has(i.id));
-    if (gain <= EPSILON && !achievement) return;
+    if (gain <= EPSILON && !achievement && !mayCompleteChallenge(ctx, actions)) return;
     const c = candidate(ctx, actions, gain, cost, obtains);
     out.push(completes === undefined ? c : { ...c, completes });
   };
@@ -653,18 +732,22 @@ export function candidates(ctx: Context, state: State, affordableOnly = true): C
   const drawn =
     Object.keys(state.expectedNew).length > 0 ? [new Map(), new Map(), new Map()] : null;
   const near = nearAchievements(ctx, state);
+  const shifts = Object.keys(state.drawsPerCard).length > 0 ? new Map<string, number>() : null;
   for (const c of forgeCandidates(ctx, state)) {
     if (!payable(c.price)) continue;
-    const estimated = adjusted(ctx, state, c, drawn, near);
-    if (estimated.gain > EPSILON) out.push(estimated);
+    const estimated = adjusted(ctx, state, c, drawn, near, shifts);
+    const bonus = challengeBonus(ctx, state, c.actions);
+    if (estimated.gain + bonus > EPSILON)
+      out.push(bonus ? { ...estimated, gain: estimated.gain + bonus } : estimated);
   }
   const w = ctx.options.weights;
   // Bonus des cartes nouvelles et part de l'espérance retenue : mêmes termes que `stateValue`.
   const bonus = ctx.options.newCardBonus;
   const evFactor = ctx.options.evFactor;
   const push = (actions: Action[], gain: number, cost: Partial<Balances>) => {
-    if (gain <= EPSILON || !payable(cost)) return;
-    out.push(candidate(ctx, actions, gain, cost));
+    const total = gain + challengeBonus(ctx, state, actions);
+    if (total <= EPSILON || !payable(cost)) return;
+    out.push(candidate(ctx, actions, total, cost));
   };
   const allow = allowed(ctx);
 
@@ -675,8 +758,8 @@ export function candidates(ctx: Context, state: State, affordableOnly = true): C
     };
     const repeatable: { option: BoosterOption; candidate: Candidate }[] = [];
     for (const option of boosterOptions(ctx)) {
-      if (option.oneTime && option.eventId && (state.eventInvocations[option.eventId] ?? 0) > 0)
-        continue;
+      // Les invocations gratuites sont faites d'office (voir `closure`).
+      if (option.free || invocationsLeft(state, option) <= 0) continue;
       const gain = gainOf(state, option);
       const action: Action = { kind: 'invoke', booster: option.key };
       if (option.oneTime) push([action], gain, option.cost);
@@ -711,7 +794,28 @@ export function candidates(ctx: Context, state: State, affordableOnly = true): C
       }
       const price: Partial<Balances> = {};
       for (const c of CURRENCIES) if (best.price[c]) price[c] = best.price[c] * count;
-      out.push(candidate(ctx, Array(count).fill(best.actions[0]), best.gain * count, price));
+      push(Array(count).fill(best.actions[0]), best.gain * count, price);
+    }
+    // Défi « Invoquer N fois » : juste assez d'invocations du pack le moins cher pour le terminer,
+    // même quand elles ne rapportent pas assez seules (stratégie Épargne, par exemple).
+    for (const c of evFactor > 0 ? state.challenges : []) {
+      const needed = c.max - c.current;
+      if (c.action !== 'invoke' || needed <= 0 || needed > INVOKE_CHALLENGE_MAX) continue;
+      const cheapest = boosterOptions(ctx)
+        .filter((o) => !o.free && !o.oneTime && Object.keys(o.cost).length > 0)
+        .reduce<BoosterOption | null>(
+          (a, o) => (!a || weighted(ctx, o.cost) < weighted(ctx, a.cost) ? o : a),
+          null,
+        );
+      if (!cheapest) continue;
+      const price: Partial<Balances> = {};
+      for (const cur of CURRENCIES)
+        if (cheapest.cost[cur]) price[cur] = cheapest.cost[cur] * needed;
+      push(
+        Array(needed).fill({ kind: 'invoke', booster: cheapest.key }),
+        gainOf(state, cheapest) * needed,
+        price,
+      );
     }
   }
 

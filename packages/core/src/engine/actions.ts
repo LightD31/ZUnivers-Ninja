@@ -13,6 +13,7 @@ import {
   releaseExpectedLevels,
   settleExpectedLevels,
   settleExpectedNew,
+  type BoosterOption,
 } from '../rules/random';
 import { reserveBeforeConstellation, reserveFor, reserveTotal } from '../rules/reserve';
 import type { Balances, Item, Shiny } from '../model/types';
@@ -34,6 +35,7 @@ import {
   progressAchievements,
   progressChallenges,
   putCard,
+  summitChance,
   type State,
 } from './state';
 
@@ -96,15 +98,41 @@ function diff(before: Balances, after: Balances): Partial<Balances> {
   return delta;
 }
 
-/** Récompense de /journa ou /bonus : base + bonus de corporation + bonus d'abonnement. */
-function lootReward(ctx: Context, base: number): Partial<Balances> {
+/** Récompense de /journa ou /bonus : base + bonus de corporation, + bonus d'abonnement au /journa. */
+function lootReward(ctx: Context, base: number, daily: boolean): Partial<Balances> {
+  const subscription = daily && ctx.player.subscribed ? SUBSCRIPTION_LOOT_BONUS : 0;
   return {
-    balance: base + ctx.corporation.loot + (ctx.player.subscribed ? SUBSCRIPTION_LOOT_BONUS : 0),
+    balance: base + ctx.corporation.loot + subscription,
     loreDust: ctx.catalog.settings.dailyLoreDust,
   };
 }
 
 type Result = Omit<Applied, 'balanceDelta'> | null;
+
+/** Invocations encore possibles d'un pack : une pour un évènement à usage unique, ses bons… */
+export function invocationsLeft(state: State, option: BoosterOption): number {
+  const used = state.eventInvocations[option.key] ?? 0;
+  const limit = option.oneTime ? 1 : (option.limit ?? Infinity);
+  return limit - used;
+}
+
+/** En deçà de cette chance de ne pas être au sommet, plus aucune ascension n'est proposée. */
+const SUMMIT_EPSILON = 1e-6;
+
+/**
+ * Étage d'une ascension et sa chance de réussite : « étage 3, 65 % de réussite ». Quand les essais
+ * précédents du plan peuvent avoir échoué, l'étage le plus probable et la chance de monter, tous
+ * étages possibles confondus : « étage 3 le plus probable (70 %), 58 % de chances de monter ».
+ */
+function ascensionNote(state: State, successRate: number): string {
+  const attempted = state.tower.slice(0, -1);
+  const floor = attempted.reduce((best, p, f) => (p > attempted[best]! ? f : best), 0);
+  const chance = attempted[floor]! / Math.max(1e-9, 1 - summitChance(state));
+  const rate = Math.round(successRate * 100);
+  return chance >= 0.99
+    ? `étage ${floor + 1}, ${rate} % de réussite`
+    : `étage ${floor + 1} le plus probable (${Math.round(chance * 100)} %), ${rate} % de chances de monter`;
+}
 
 /** Ajoute un exemplaire obtenu à coup sûr, en soldant les tirages espérés de cette carte. */
 function obtain(ctx: Context, s: State, item: Item, shiny: Shiny): void {
@@ -128,18 +156,25 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
     case 'daily': {
       if (s0.dailyDone || !ctx.features.has(FEATURE.loot)) return null;
       const s = fork(s0);
-      earn(s, lootReward(ctx, ctx.catalog.settings.dailyReward));
+      earn(s, lootReward(ctx, ctx.catalog.settings.dailyReward, true));
       s.dailyDone = true;
       s.dailiesSinceWeekly += 1;
       progressChallenges(ctx, s, 'loot', 1);
-      return { state: s, touched: [] };
+      // Le ticket du jour des abonnés est perdu s'il n'est pas gratté sous 24 h (source : /tickets).
+      return {
+        state: s,
+        touched: [],
+        ...(ctx.player.subscribed
+          ? { note: 'Abonné : gratte ton Lucky Rayou du jour sous 24 h (lien : /ticketlien).' }
+          : {}),
+      };
     }
 
     case 'weekly': {
       if (s0.weeklyDone || s0.dailiesSinceWeekly < WEEKLY_EVERY_DAILIES) return null;
       if (!ctx.features.has(FEATURE.loot)) return null;
       const s = fork(s0);
-      earn(s, lootReward(ctx, ctx.catalog.settings.weeklyReward));
+      earn(s, lootReward(ctx, ctx.catalog.settings.weeklyReward, false));
       s.weeklyDone = true;
       s.dailiesSinceWeekly = 0;
       progressChallenges(ctx, s, 'weekly', 1);
@@ -248,9 +283,7 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
     case 'invoke': {
       if (!allow.invoke) return null;
       const option = boosterOptions(ctx).find((o) => o.key === action.booster);
-      if (!option || !canAfford(s0, option.cost)) return null;
-      if (option.oneTime && option.eventId && (s0.eventInvocations[option.eventId] ?? 0) > 0)
-        return null;
+      if (!option || !canAfford(s0, option.cost) || invocationsLeft(s0, option) <= 0) return null;
       const { ev, newCards, expectedNew, draws, pity } = invocationEV(ctx, s0, option);
       const s = fork(s0);
       pay(s, option.cost);
@@ -262,10 +295,10 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
         s.expectedNew[k] = (s.expectedNew[k] ?? 0) + v;
       s.drawsPerCard = { ...s.drawsPerCard };
       for (const [k, v] of Object.entries(draws)) s.drawsPerCard[k] = (s.drawsPerCard[k] ?? 0) + v;
-      if (option.eventId) {
+      if (option.oneTime || option.limit !== undefined) {
         s.eventInvocations = {
           ...s.eventInvocations,
-          [option.eventId]: (s.eventInvocations[option.eventId] ?? 0) + 1,
+          [option.key]: (s.eventInvocations[option.key] ?? 0) + 1,
         };
       }
       progressChallenges(ctx, s, 'invoke', 1);
@@ -277,22 +310,17 @@ function applyInner(ctx: Context, s0: State, action: Action): Result {
       const season = ctx.catalog.season;
       if (!allow.ascension || !season || !ctx.features.has(FEATURE.tower)) return null;
       if (s0.ascensionsLeft <= 0 || s0.balances.loreDust < ASCENSION_COST) return null;
-      if (Math.floor(s0.towerFloor) >= season.floors.length) return null;
-      const { ev, successRate, newCards } = ascensionEV(ctx, s0);
+      if (summitChance(s0) >= 1 - SUMMIT_EPSILON) return null;
+      const { ev, successRate, newCards, next } = ascensionEV(ctx, s0);
       const s = fork(s0);
       s.balances.loreDust -= ASCENSION_COST;
       s.ascensionsLeft -= 1;
-      s.towerFloor += successRate;
+      s.tower = next;
       s.ev += ev;
       s.expectedNewCards += newCards;
       progressChallenges(ctx, s, 'ascension', 1);
       progressAchievements(ctx, s, 'ascension', 1);
-      return {
-        state: s,
-        touched: [],
-        ev,
-        note: `étage ${Math.floor(s0.towerFloor) + 1}, ${Math.round(successRate * 100)} % de réussite`,
-      };
+      return { state: s, touched: [], ev, note: ascensionNote(s0, successRate) };
     }
 
     case 'evolution': {
