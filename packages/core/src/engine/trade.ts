@@ -345,7 +345,6 @@ interface Unit {
   copy: number;
 }
 
-const unitPoints = (u: Unit) => u.card.gains[u.copy] ?? 0;
 const unitOrder = (a: Unit, b: Unit) => byCategory(a.card, b.card) || a.copy - b.copy;
 
 /**
@@ -372,13 +371,12 @@ function regroup(units: Unit[]): TradeCard[] {
 }
 
 /**
- * Échange équilibré, exemplaire pour exemplaire. Les exemplaires choisis des deux côtés
- * s'échangent entre eux : de même rareté et brillance d'abord, puis les autres, au plus proche en
- * points (le joueur a choisi lui-même la contrepartie). Un exemplaire qui reste seul reçoit en face
- * un exemplaire de même rareté et brillance, de cartes différentes d'abord et la plus intéressante
- * en premier (recherchée sur le marché), ou reste dans l'échange sans contrepartie, signalé. Une
- * carte gardée (l'autre la demande) ou sans usage pour l'autre peut être choisie, jamais ajoutée
- * d'office.
+ * Échange équilibré, exemplaire pour exemplaire, comme l'exige le jeu : autant d'exemplaires de
+ * chaque rareté et brillance des deux côtés (source : zunivers.zerator.com/commandes). Les
+ * exemplaires choisis de même catégorie s'échangent entre eux ; un exemplaire qui reste seul reçoit
+ * en face un exemplaire de même catégorie, de cartes différentes d'abord et la plus intéressante en
+ * premier (recherchée sur le marché), ou reste dans l'échange sans contrepartie, signalé. Une carte
+ * gardée (l'autre la demande) ou sans usage pour l'autre peut être choisie, jamais ajoutée d'office.
  */
 export function proposeTrade(
   trade: Pick<TradeResult, 'me' | 'other'>,
@@ -404,14 +402,9 @@ export function proposeTrade(
     aloneReceive.push(...receive.slice(give.length));
     aloneGive.push(...give.slice(receive.length));
   }
-  // Paires entre catégories, les plus proches en points ensemble : les plus chers des deux côtés.
-  const byPoints = (a: Unit, b: Unit) => unitPoints(b) - unitPoints(a) || unitOrder(a, b);
-  const crossed = Math.min(aloneReceive.length, aloneGive.length);
-  const leftReceive = aloneReceive.sort(byPoints).slice(crossed).sort(unitOrder);
-  const leftGive = aloneGive.sort(byPoints).slice(crossed).sort(unitOrder);
 
-  // Les exemplaires encore seuls reçoivent une contrepartie de même catégorie : un exemplaire de
-  // chaque carte d'abord, la meilleure en premier.
+  // Ils reçoivent une contrepartie de même catégorie : un exemplaire de chaque carte d'abord, la
+  // meilleure en premier.
   const added = new Set<CardKey>();
   const unmatched = new Set<CardKey>();
   const fill = (alone: Unit[], pool: TradeCard[], chosen: TradePicks): Unit[] => {
@@ -431,8 +424,8 @@ export function proposeTrade(
     }
     return extra;
   };
-  const giveExtra = fill(leftReceive, trade.me.gives, picked.give);
-  const receiveExtra = fill(leftGive, trade.other.gives, picked.receive);
+  const giveExtra = fill(aloneReceive, trade.me.gives, picked.give);
+  const receiveExtra = fill(aloneGive, trade.other.gives, picked.receive);
 
   return {
     receive: regroup([...chosenReceive, ...receiveExtra]),
@@ -454,59 +447,66 @@ export interface TradeAlternative {
   ask: TradeCard[];
   /** Autres cartes à lui proposer. */
   offer: TradeCard[];
-  /**
-   * Les cartes sont de même rareté et brillance. Sinon (aucune ne l'est et une carte de l'échange
-   * reste sans contrepartie), ce sont les plus proches en points de collection.
-   */
-  askExact: boolean;
-  offerExact: boolean;
 }
-
-/** Contreparties approchées montrées au plus, faute de carte de même rareté et brillance. */
-const CLOSEST_LIMIT = 8;
 
 /**
  * Toutes les contreparties possibles, catégorie par catégorie de l'échange : ce que je peux
- * demander d'autre en échange de mes cartes, et proposer d'autre pour les siennes. Pour une carte
- * restée sans contrepartie, les cartes les plus proches en points, quelles que soient leur rareté
- * et leur brillance.
+ * demander d'autre en échange de mes cartes, et proposer d'autre pour les siennes. Seulement de
+ * même rareté et brillance : le jeu n'accepte rien d'autre.
  */
 export function tradeAlternatives(
   trade: Pick<TradeResult, 'me' | 'other'>,
   proposal: TradeProposal,
 ): TradeAlternative[] {
   const inTrade = new Set([...proposal.receive, ...proposal.give].map((c) => c.key));
-  const unmatched = new Set(proposal.unmatched);
   const seen = new Set<string>();
   const alternatives: TradeAlternative[] = [];
   for (const card of [...proposal.give, ...proposal.receive]) {
     const bucket = bucketOf(card);
     if (seen.has(bucket)) continue;
     seen.add(bucket);
-    const free = (cards: TradeCard[]) => cards.filter((c) => !inTrade.has(c.key));
-    // Contreparties d'une carte restée seule : même catégorie, sinon les plus proches en points.
-    const options = (cards: TradeCard[], alone: TradeCard[]) => {
-      const exact = free(cards).filter((c) => bucketOf(c) === bucket);
-      const missing = alone.find((c) => bucketOf(c) === bucket && unmatched.has(c.key));
-      if (exact.length > 0 || !missing) return { cards: exact, exact: true };
-      const distance = (c: TradeCard) => Math.abs(c.points - missing.points);
-      const closest = free(cards)
-        .sort((a, b) => distance(a) - distance(b) || compareCards(a, b))
-        .slice(0, CLOSEST_LIMIT);
-      return { cards: closest, exact: closest.length === 0 };
-    };
-    const ask = options(trade.other.gives, proposal.give);
-    const offer = options(trade.me.gives, proposal.receive);
+    const others = (cards: TradeCard[]) =>
+      cards.filter((c) => bucketOf(c) === bucket && !inTrade.has(c.key));
     alternatives.push({
       rarity: card.rarity,
       shiny: card.shiny,
-      ask: ask.cards,
-      offer: offer.cards,
-      askExact: ask.exact,
-      offerExact: offer.exact,
+      ask: others(trade.other.gives),
+      offer: others(trade.me.gives),
     });
   }
   return alternatives.sort((a, b) => b.rarity - a.rarity || b.shiny - a.shiny);
+}
+
+/** Cartes au plus de chaque côté d'un échange (source : zunivers.zerator.com/commandes). */
+export const TRADE_MAX_CARDS = 6;
+
+/** Ce qui empêche le jeu d'accepter un échange. */
+export type TradeIssue =
+  /** Des cartes choisies n'ont pas de contrepartie de même rareté et brillance. */
+  | { kind: 'unmatched'; cards: number }
+  /** Plus de `TRADE_MAX_CARDS` exemplaires d'un côté. */
+  | { kind: 'tooMany'; side: 'give' | 'receive'; copies: number };
+
+const copies = (cards: readonly TradeCard[]) => cards.reduce((total, c) => total + c.count, 0);
+
+/** Règles du jeu que l'échange ne respecte pas encore : aucune, il peut être fait tel quel. */
+export function tradeIssues(proposal: TradeProposal): TradeIssue[] {
+  const issues: TradeIssue[] = [];
+  if (proposal.unmatched.length > 0)
+    issues.push({ kind: 'unmatched', cards: proposal.unmatched.length });
+  for (const side of ['give', 'receive'] as const) {
+    const count = copies(proposal[side]);
+    if (count > TRADE_MAX_CARDS) issues.push({ kind: 'tooMany', side, copies: count });
+  }
+  return issues;
+}
+
+/**
+ * Commande `/échange` à taper dans le jeu, options nommées comme le jeu les attend (vérifié en jeu
+ * par un joueur) : `/échange joueur:@pseudo cartes-données:2225*3 cartes-prises:2012 + 2031 + 2032`.
+ */
+export function tradeCommand(otherName: string, proposal: TradeProposal): string {
+  return `/échange joueur:@${otherName} cartes-données:${tradeCardList(proposal.give)} cartes-prises:${tradeCardList(proposal.receive)}`;
 }
 
 /** Cartes à coller dans une commande du jeu (`1026 + 1030+ + 2225*2`). */

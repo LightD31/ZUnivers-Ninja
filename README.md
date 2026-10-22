@@ -261,17 +261,21 @@ L'onglet « Échanges » compare ta collection avec celle d'un autre joueur (lie
 
 Coche les cartes que tu veux recevoir, ou celles qu'on te demande : une carte choisie compte tous les
 exemplaires utiles à l'autre (2 KallaX pour 2 niveaux de constellation), à ajuster avec −/+ jusqu'à
-tout ce que le donneur peut céder, même au-delà des besoins de l'autre. Les exemplaires choisis des
-deux côtés s'échangent entre eux, un pour un, et un exemplaire resté seul reçoit en face un
-exemplaire de même rareté et brillance. La proposition liste aussi toutes les autres cartes que tu
-peux demander (ou proposer) à la place, et à défaut de même rareté et brillance, les plus proches en
-points : on te demande ta KallaX, tu vois aussitôt ce que tu peux réclamer en échange. Une carte
-que tu gardes (dernier exemplaire, fusion, enchantement, constellation) reste visible dans « Cartes
-que tu gardes », pour la céder quand même si tu le veux. Le reste de ton surplus, dont l'autre n'a
-pas l'usage (il en a déjà tout ce qui lui sert), est dans « Tes autres cartes en trop » : à donner
-quand même si tu veux, jamais ajouté d'office. Le message à envoyer à l'autre joueur et
-les listes de cartes (`1026 + 1030+ + 2225*2`) sont prêts à copier. Les échanges n'existent pas en
-Hardcore.
+tout ce que le donneur peut céder, même au-delà des besoins de l'autre. La proposition suit les
+règles du jeu ([commandes](https://zunivers.zerator.com/commandes)) : autant de cartes de chaque
+rareté et brillance des deux côtés, 6 au plus de chaque côté, 2 échanges par jour. Les exemplaires
+choisis de même rareté et brillance s'échangent entre eux, et un exemplaire resté seul reçoit en
+face un exemplaire de même rareté et brillance. La proposition liste aussi toutes les autres cartes
+que tu peux demander (ou proposer) à la place : on te demande ta KallaX, tu vois aussitôt ce que tu
+peux réclamer en échange. Une carte que tu gardes (dernier exemplaire, fusion, enchantement,
+constellation) reste visible dans « Cartes que tu gardes », pour la céder quand même si tu le veux.
+Le reste de ton surplus, dont l'autre n'a pas l'usage (il en a déjà tout ce qui lui sert), est dans
+« Tes autres cartes en trop » : à donner quand même si tu veux, jamais ajouté d'office.
+
+Quand l'échange respecte les règles, la commande est prête à copier :
+`/échange joueur:@maxpotte cartes-données:2225*3 cartes-prises:2012 + 2031 + 2032`. Sinon, la
+proposition dit ce que le jeu refuserait. Le message à envoyer à l'autre joueur et les listes de
+cartes sont aussi prêts à copier. Les échanges n'existent pas en Hardcore.
 
 ## Comment fonctionne le planificateur
 
