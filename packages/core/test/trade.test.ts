@@ -5,6 +5,8 @@ import {
   proposeTrade,
   tradeAlternatives,
   tradeCardList,
+  tradeCommand,
+  tradeIssues,
   tradeMessage,
   tradeValue,
   tradesAvailable,
@@ -299,8 +301,8 @@ describe('proposition d’échange', () => {
     expect(p.unmatched).toEqual([]);
   });
 
-  it('échange entre elles les cartes choisies des deux côtés, même de catégories différentes', () => {
-    // On me demande ma KallaX, et je choisis moi-même ce que je veux en échange.
+  it('n’échange que des cartes de même rareté et brillance, comme le jeu l’exige', () => {
+    // Ma KallaX (★★) contre une chroma ★ : le jeu refuserait, chacune cherche sa contrepartie.
     const kallax = worth(tc(2225), 5);
     const t = trade(
       [kallax, worth(tc(1054, 2), 130)],
@@ -308,9 +310,10 @@ describe('proposition d’échange', () => {
     );
     const p = proposeTrade(t, { receive: one(tc(1005, 2)), give: one(kallax) });
     expect(ids(p.receive)).toEqual(['1005*']);
-    expect(ids(p.give)).toEqual(['2225']);
-    expect(p.added).toEqual([]);
-    expect(p.unmatched).toEqual([]);
+    expect(ids(p.give)).toEqual(['2225', '1054*']);
+    expect(p.added).toEqual([tc(1054, 2).key]);
+    expect(p.unmatched).toEqual([kallax.key]);
+    expect(tradeIssues(p)).toEqual([{ kind: 'unmatched', cards: 1 }]);
   });
 
   it('équilibre exemplaire par exemplaire, de cartes différentes d’abord', () => {
@@ -389,7 +392,7 @@ describe('proposition d’échange', () => {
     expect(wanted.unmatched).toEqual([tc(2006).key]);
   });
 
-  it('sans carte de même rareté et brillance, propose les plus proches en points', () => {
+  it('ne propose jamais d’autre rareté ou brillance en contrepartie', () => {
     const kallax = worth(tc(2225), 5);
     const t = trade(
       [kallax],
@@ -397,10 +400,23 @@ describe('proposition d’échange', () => {
     );
     const p = proposeTrade(t, { receive: {}, give: one(kallax) });
     expect(p.unmatched).toEqual([kallax.key]);
-    const [alternative] = tradeAlternatives(t, p);
-    expect(alternative?.askExact).toBe(false);
-    expect(ids(alternative!.ask)).toEqual(['1005', '3005', '4005', '2006*']);
-    expect(alternative?.offer).toEqual([]);
+    expect(tradeAlternatives(t, p)).toEqual([{ rarity: 2, shiny: 0, ask: [], offer: [] }]);
+  });
+
+  it('écrit la commande /échange et signale ce que le jeu refuserait', () => {
+    const kallax = { ...worth(tc(2225), 10, 10, 0), count: 3, available: 7 };
+    const t = trade([kallax], [worth(tc(2012), 5), worth(tc(2031), 5), worth(tc(2032), 5)]);
+    const p = proposeTrade(t, { receive: {}, give: { [kallax.key]: 3 } });
+    expect(tradeIssues(p)).toEqual([]);
+    expect(tradeCommand('maxpotte', p)).toBe(
+      '/échange joueur:@maxpotte cartes-données:2225*3 cartes-prises:2012 + 2031 + 2032',
+    );
+    // 7 exemplaires d'un côté : 6 au plus par échange.
+    const many = proposeTrade(t, { receive: {}, give: { [kallax.key]: 7 } });
+    expect(tradeIssues(many)).toEqual([
+      { kind: 'unmatched', cards: 1 },
+      { kind: 'tooMany', side: 'give', copies: 7 },
+    ]);
   });
 
   it('liste tout ce qu’on peut demander ou proposer d’autre en échange', () => {

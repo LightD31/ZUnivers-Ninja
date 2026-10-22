@@ -1,13 +1,17 @@
 import {
   DEFAULT_TRADE_KEEP,
   proposeTrade,
+  TRADE_MAX_CARDS,
   tradeAlternatives,
   tradeCardList,
+  tradeCommand,
+  tradeIssues,
   tradeMessage,
   tradeValue,
   type CardKey,
   type RuleSet,
   type TradeCard,
+  type TradeIssue,
   type TradeKeep,
   type TradeKeptFor,
   type TradeNeed,
@@ -28,6 +32,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  SquareTerminal,
   Tag,
   X,
 } from 'lucide-react';
@@ -94,6 +99,13 @@ function keptNote(reason: TradeKeptFor, owner: string | null): string {
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`;
+
+/** Règle du jeu que l'échange ne respecte pas encore. */
+function issueText(issue: TradeIssue): string {
+  if (issue.kind === 'unmatched')
+    return `${plural(issue.cards, 'carte')} sans contrepartie de même rareté et brillance : le jeu exige les mêmes des deux côtés.`;
+  return `${issue.side === 'give' ? 'Tu donnes' : 'Tu reçois'} ${plural(issue.copies, 'carte')} : ${TRADE_MAX_CARDS} au plus de chaque côté.`;
+}
 
 /**
  * Valeur d'un côté de l'échange : ses points de collection, les exemplaires qui servent sans en
@@ -721,6 +733,8 @@ function Proposal({
   const other = trade.other.player;
   const empty = proposal.receive.length + proposal.give.length === 0;
   const message = tradeMessage(other.displayName, proposal);
+  const issues = tradeIssues(proposal);
+  const command = tradeCommand(other.name, proposal);
   const alternatives = tradeAlternatives(trade, proposal).filter(
     (a) => a.ask.length + a.offer.length > 0,
   );
@@ -737,9 +751,11 @@ function Proposal({
       {empty ? (
         <p className="text-sm text-white/65">
           Choisis les cartes que tu veux recevoir, ou celles qu'on te demande dans « Tu peux lui
-          donner » (cherche-les par leur nom). En face, une carte de même rareté et brillance est
-          ajoutée pour équilibrer l'échange, et la proposition liste toutes celles que tu peux
-          demander à la place.
+          donner » (cherche-les par leur nom). Le jeu exige les mêmes raretés et brillances des deux
+          côtés, {TRADE_MAX_CARDS} cartes au plus de chaque côté : en face, une carte de même rareté
+          et brillance est ajoutée pour équilibrer l'échange, et la proposition liste toutes celles
+          que tu peux demander à la place. La commande /échange est prête dès que l'échange est
+          valide.
         </p>
       ) : (
         <>
@@ -760,12 +776,31 @@ function Proposal({
           <p className="text-xs text-white/60" title="Points de collection que chacun gagne">
             Valeur : tu reçois {valueText(proposal.receive)} · tu donnes {valueText(proposal.give)}
           </p>
-          {proposal.unmatched.length > 0 && (
-            <p className="flex gap-2 text-xs text-danger">
-              <CircleAlert className="size-4 shrink-0" />
-              {plural(proposal.unmatched.length, 'carte')} sans contrepartie de même rareté et
-              brillance : à négocier.
-            </p>
+          {issues.length > 0 ? (
+            <div className="space-y-1 rounded border border-danger/40 px-3 py-2 text-xs text-danger">
+              <p className="flex items-center gap-2 font-semibold">
+                <CircleAlert className="size-4 shrink-0" />
+                Le jeu refuserait cet échange :
+              </p>
+              <ul className="list-disc space-y-0.5 pl-8">
+                {issues.map((issue) => (
+                  <li key={`${issue.kind}:${'side' in issue ? issue.side : ''}`}>
+                    {issueText(issue)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="label flex items-center gap-1.5">
+                <SquareTerminal className="size-3.5 text-zu-400" />
+                Commande d'échange
+              </p>
+              <code className="surface block px-3 py-2 font-mono text-xs break-words text-white/90">
+                {command}
+              </code>
+              <CopyButton text={command} label="Copier la commande" />
+            </div>
           )}
           {keptCards.length > 0 && (
             <ul className="space-y-1 text-xs text-gold">
@@ -811,28 +846,10 @@ function Proposal({
                     {RARITY_LABEL[a.rarity] ?? a.rarity} · {SHINY_NAME[a.shiny]}
                   </p>
                   {a.ask.length > 0 && (
-                    <Alternatives
-                      title={
-                        a.askExact
-                          ? 'Tu peux aussi demander'
-                          : 'Rien de même rareté et brillance : à demander à la place, au plus proche en points'
-                      }
-                      cards={a.ask}
-                      points={!a.askExact}
-                      onPick={onAsk}
-                    />
+                    <Alternatives title="Tu peux aussi demander" cards={a.ask} onPick={onAsk} />
                   )}
                   {a.offer.length > 0 && (
-                    <Alternatives
-                      title={
-                        a.offerExact
-                          ? 'Tu peux aussi proposer'
-                          : 'Rien de même rareté et brillance : à proposer à la place, au plus proche en points'
-                      }
-                      cards={a.offer}
-                      points={!a.offerExact}
-                      onPick={onOffer}
-                    />
+                    <Alternatives title="Tu peux aussi proposer" cards={a.offer} onPick={onOffer} />
                   )}
                 </div>
               ))}
@@ -847,18 +864,16 @@ function Proposal({
 const ALTERNATIVES_SHOWN = 12;
 
 /**
- * Contreparties possibles : un clic ajoute la carte à l'échange, à la place de celle choisie
- * d'office. `points` affiche leur valeur, quand elles ne sont pas de même rareté et brillance.
+ * Contreparties possibles, de même rareté et brillance : un clic ajoute la carte à l'échange, à la
+ * place de celle choisie d'office.
  */
 function Alternatives({
   title,
   cards,
-  points,
   onPick,
 }: {
   title: string;
   cards: TradeCard[];
-  points: boolean;
   onPick: (card: TradeCard) => void;
 }) {
   const [all, setAll] = useState(false);
@@ -883,7 +898,6 @@ function Alternatives({
               {SHINY_SUFFIX[c.shiny]}
             </span>
             <span className="max-w-32 truncate text-white/65">{c.name}</span>
-            {points && <span className="text-white/45">{plural(c.points, 'pt')}</span>}
           </button>
         ))}
         {cards.length > shown.length && (
@@ -932,7 +946,7 @@ function ProposalList({
                 <CopiesStepper
                   count={c.count}
                   useful={c.gains.length}
-                  max={c.available}
+                  max={Math.min(c.available, TRADE_MAX_CARDS)}
                   onChange={(count) => onCount(c.key, count)}
                 />
               )}
