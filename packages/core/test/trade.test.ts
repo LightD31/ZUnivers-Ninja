@@ -46,7 +46,7 @@ describe('cartes échangeables', () => {
     expect(trade.other.gives).toEqual([]);
   });
 
-  it('ne propose ni une carte non échangeable, ni une carte que l’autre possède', () => {
+  it('range à part le surplus dont l’autre n’a pas l’usage, jamais une carte non échangeable', () => {
     const locked = makeItem(1003, { tradable: false, upgradable: false, goldable: false });
     const known = makeItem(1004, { upgradable: false, goldable: false });
     const trade = compare(
@@ -56,6 +56,11 @@ describe('cartes échangeables', () => {
       [owned(known.id, 0, 1), owned(plain.id, 0, 0, 1)],
     );
     expect(trade.me.gives.map((c) => c.identifier)).toEqual([1002]);
+    // L'autre a déjà sa 1004 et n'en a plus l'usage : proposable quand même, à part.
+    expect(trade.me.extra).toMatchObject([
+      { identifier: 1004, need: 'none', spare: 4, available: 4, count: 1, gains: [], points: 0 },
+    ]);
+    expect(trade.me.kept).toEqual([]);
   });
 
   it('garde au choix les normales à enchanter pour la constellation dorée', () => {
@@ -255,16 +260,21 @@ const one = (...cards: TradeCard[]) => Object.fromEntries(cards.map((c) => [c.ke
 function trade(
   mine: TradeCard[],
   theirs: TradeCard[],
-  kept: { mine?: TradeCard[]; theirs?: TradeCard[] } = {},
+  more: { mine?: TradeCard[]; theirs?: TradeCard[]; extra?: TradeCard[] } = {},
 ): Pick<TradeResult, 'me' | 'other'> {
-  const side = (gives: TradeCard[], keptCards: TradeCard[] = []): TradeSide => ({
+  const side = (
+    gives: TradeCard[],
+    kept: TradeCard[] = [],
+    extra: TradeCard[] = [],
+  ): TradeSide => ({
     player: { name: 'x', displayName: 'X', avatar: null, tradesLeft: 2 },
     keep: { golden: true, goldenFusions: true, constellation: true },
     market: false,
     gives,
-    kept: keptCards,
+    kept,
+    extra,
   });
-  return { me: side(mine, kept.mine), other: side(theirs, kept.theirs) };
+  return { me: side(mine, more.mine, more.extra), other: side(theirs, more.theirs) };
 }
 
 const ids = (cards: TradeCard[]) =>
@@ -342,6 +352,20 @@ describe('proposition d’échange', () => {
     expect(ids(proposeTrade(t, { receive: {}, give: { [kallax.key]: 9 } }).give)).toEqual([
       '2225×7',
     ]);
+  });
+
+  it('donne une carte dont l’autre n’a pas l’usage quand on la choisit, jamais d’office', () => {
+    const spare = { ...tc(2001), need: 'none' as const, gains: [], points: 0, available: 3 };
+    const t = trade([], [tc(2005), tc(2006)], { extra: [spare] });
+    // Choisie avec 2 exemplaires : elle compte dans l'échange, sans rapporter de points.
+    const p = proposeTrade(t, { receive: {}, give: { [spare.key]: 2 } });
+    expect(ids(p.give)).toEqual(['2001×2']);
+    expect(p.give.map(tradeValue)).toEqual([0]);
+    expect(ids(p.receive)).toEqual(['2005', '2006']);
+    // Je demande une de ses cartes : elle n'est pas proposée d'office en échange.
+    const asked = proposeTrade(t, { receive: one(tc(2005)), give: {} });
+    expect(ids(asked.give)).toEqual([]);
+    expect(asked.unmatched).toEqual([tc(2005).key]);
   });
 
   it('signale une carte sans contrepartie de même rareté et brillance', () => {
