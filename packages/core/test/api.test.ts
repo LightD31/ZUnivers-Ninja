@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiCache, createClient, ZuApiError, ZuNotFoundError, ZuSchemaError } from '../src';
+import {
+  ApiCache,
+  createClient,
+  fetchMarketOffer,
+  ZuApiError,
+  ZuNotFoundError,
+  ZuSchemaError,
+} from '../src';
 import { rawCatalog, rawPlayer } from './helpers';
 
 function fakeFetch(responses: Record<string, { status: number; body?: unknown }>) {
@@ -67,6 +74,37 @@ describe('client API', () => {
     await expect(client.towerSeason()).resolves.toBeNull();
     await expect(client.evolution('alice')).resolves.toBeNull();
     await expect(client.user('alice')).rejects.toBeInstanceOf(ZuNotFoundError);
+  });
+});
+
+describe('marché', () => {
+  it('lit l’annonce d’un joueur, ou rien quand il n’en a pas (404)', async () => {
+    const entry = (id: string) => ({ quantity: 1, item: { id, name: id, identifier: 1001 } });
+    const fetch = fakeFetch({
+      '/public/market/search?discordUserName=grewa': {
+        status: 200,
+        body: {
+          id: 'offre',
+          date: '2026-10-19T13:58:01',
+          entriesSell: [entry('a')],
+          entriesBuy: [entry('b'), entry('c')],
+          sellCount: 1,
+          buyCount: 2,
+        },
+      },
+    });
+    const client = createClient({ baseUrl: 'https://api.test', fetch });
+    await expect(fetchMarketOffer(client, 'grewa')).resolves.toEqual({
+      offers: ['a'],
+      wants: ['b', 'c'],
+    });
+    await expect(fetchMarketOffer(client, 'personne')).resolves.toBeNull();
+  });
+
+  it('ignore un marché qui ne répond pas', async () => {
+    const fetch = fakeFetch({ '/public/market/search?discordUserName=grewa': { status: 503 } });
+    const client = createClient({ baseUrl: 'https://api.test', fetch, retries: 0 });
+    await expect(fetchMarketOffer(client, 'grewa')).resolves.toBeNull();
   });
 });
 

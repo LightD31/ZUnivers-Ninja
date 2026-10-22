@@ -278,3 +278,11 @@ export interface Player {
   invokeBeforePity: number | null;
   stats: { inventoryCount: number; uniqueCount: number; uniqueGoldenCount: number };
 }
+
+/** Annonce du joueur sur le marché ZUnivers (`/hv`) : identifiants des cartes concernées. */
+export interface MarketOffer {
+  /** Cartes proposées à l'échange. */
+  offers: string[];
+  /** Cartes recherchées. */
+  wants: string[];
+}

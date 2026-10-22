@@ -15,6 +15,7 @@ import { StrategyPicker } from './components/StrategyPicker';
 import { SearchForm } from './components/SearchForm';
 import { SettingsDrawer } from './components/SettingsDrawer';
 import { Summary } from './components/Summary';
+import { Trade } from './components/Trade';
 import { fetchPlan, PlanError, STANDALONE } from './lib/api';
 import { fmt, fmt1, formatTime, signed } from './lib/format';
 import { loadSettings, saveSettings, withStrategy, type Settings } from './lib/settings';
@@ -25,11 +26,17 @@ type Status =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
   | { kind: 'done'; plan: PlanResult };
-type Tab = 'plan' | 'collection' | 'achievements';
+type Tab = 'plan' | 'collection' | 'achievements' | 'trade';
 
 const RECENT_KEY = 'zuninja:recent';
 
-function readUrl(): { user: string; ruleSet: RuleSet | null; strategy: StrategyId | null } {
+function readUrl(): {
+  user: string;
+  ruleSet: RuleSet | null;
+  strategy: StrategyId | null;
+  /** Joueur avec qui échanger (`?with=`) : ouvre l'onglet Échanges. */
+  partner: string;
+} {
   const params = new URLSearchParams(location.search);
   const mode = params.get('mode')?.toUpperCase();
   const strategy = params.get('strategy');
@@ -37,14 +44,16 @@ function readUrl(): { user: string; ruleSet: RuleSet | null; strategy: StrategyI
     user: params.get('u')?.trim() ?? '',
     ruleSet: mode === 'HARDCORE' || mode === 'NORMAL' ? mode : null,
     strategy: isStrategy(strategy) ? strategy : null,
+    partner: params.get('with')?.trim() ?? '',
   };
 }
 
-function writeUrl(user: string, s: Settings) {
+function writeUrl(user: string, s: Settings, partner = '') {
   const params = new URLSearchParams();
   if (user) params.set('u', user);
   if (user && s.ruleSet === 'HARDCORE') params.set('mode', 'hardcore');
   if (user && s.strategy !== DEFAULT_STRATEGY) params.set('strategy', s.strategy);
+  if (user && partner) params.set('with', partner);
   const query = params.toString();
   history.replaceState(null, '', `${location.pathname}${query ? `?${query}` : ''}`);
 }
@@ -60,7 +69,10 @@ export function App() {
   });
   const [user, setUser] = useState(initial.current.user);
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
-  const [tab, setTab] = useState<Tab>('plan');
+  const [tab, setTab] = useState<Tab>(initial.current.partner ? 'trade' : 'plan');
+  // Onglet Échanges ouvert une fois : gardé monté (pseudo, choix des cartes) d'un onglet à l'autre.
+  const [tradeOpened, setTradeOpened] = useState(!!initial.current.partner);
+  const partner = useRef(initial.current.partner);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [recent, setRecent] = useState<string[]>(() => load(RECENT_KEY, []));
   const [tracked, setTracked] = useState<string[]>([]);
@@ -69,7 +81,7 @@ export function App() {
   const run = useCallback(async (name: string, s: Settings, fresh = false) => {
     const id = ++request.current;
     setStatus({ kind: 'loading' });
-    writeUrl(name, s);
+    writeUrl(name, s, partner.current);
     try {
       const plan = await fetchPlan(name, s, fresh);
       if (id !== request.current) return;
@@ -121,6 +133,8 @@ export function App() {
   const search = (name: string) => {
     setUser(name);
     setTab('plan');
+    setTradeOpened(false);
+    partner.current = '';
     void run(name, settings);
   };
 
@@ -128,6 +142,8 @@ export function App() {
     request.current++;
     setUser('');
     setStatus({ kind: 'idle' });
+    setTradeOpened(false);
+    partner.current = '';
     writeUrl('', settings);
     document.title = 'ZUnivers Ninja';
   };
@@ -136,6 +152,9 @@ export function App() {
   // Succès que le plan débloque : signalés sur l'onglet Succès.
   const unlocked = plan?.achievements.filter((a) => a.after >= a.max).length ?? 0;
   const suggestions = [...new Set([...tracked, ...recent])].slice(0, 8);
+  // Pas d'échanges en Hardcore.
+  const trades = settings.ruleSet !== 'HARDCORE';
+  const shownTab: Tab = tab === 'trade' && !trades ? 'plan' : tab;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -181,22 +200,26 @@ export function App() {
                   </p>
                 )}
                 <div>
-                  <div className="flex items-end gap-1.5 px-2" role="tablist">
+                  <div className="flex items-end gap-1 px-0 sm:gap-1.5 sm:px-2" role="tablist">
                     {(
                       [
                         ['plan', 'Plan'],
                         ['collection', 'Collection'],
                         ['achievements', 'Succès'],
+                        ...(trades ? ([['trade', 'Échanges']] as const) : []),
                       ] as const
                     ).map(([key, label]) => (
                       <button
                         key={key}
                         type="button"
                         role="tab"
-                        aria-selected={tab === key}
-                        onClick={() => setTab(key)}
-                        className={`rounded-t px-3 text-sm tracking-[0.06em] whitespace-nowrap uppercase transition sm:px-5 ${
-                          tab === key
+                        aria-selected={shownTab === key}
+                        onClick={() => {
+                          setTab(key);
+                          if (key === 'trade') setTradeOpened(true);
+                        }}
+                        className={`rounded-t px-2.5 text-[13px] tracking-[0.03em] whitespace-nowrap uppercase transition sm:px-5 sm:text-sm sm:tracking-[0.06em] ${
+                          shownTab === key
                             ? 'h-12 bg-ink-700 font-semibold text-white'
                             : 'h-10 bg-ink-800/85 text-white/65 hover:text-white'
                         }`}
@@ -215,19 +238,37 @@ export function App() {
                   </div>
                   <div className="zu-divider" />
                 </div>
-                <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-                  <div className="min-w-0">
-                    {tab === 'plan' ? (
-                      <PlanList plan={plan} />
-                    ) : tab === 'collection' ? (
-                      <Collection plan={plan} />
-                    ) : (
-                      <Achievements plan={plan} />
-                    )}
+                {shownTab !== 'trade' && (
+                  <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+                    <div className="min-w-0">
+                      {shownTab === 'plan' ? (
+                        <PlanList plan={plan} />
+                      ) : shownTab === 'collection' ? (
+                        <Collection plan={plan} />
+                      ) : (
+                        <Achievements plan={plan} />
+                      )}
+                    </div>
+                    <Summary plan={plan} />
                   </div>
-                  <Summary plan={plan} />
-                </div>
+                )}
               </>
+            )}
+            {/* Hors du plan : un nouveau calcul (réglages modifiés) ne perd pas l'échange en cours. */}
+            {tradeOpened && trades && (
+              <div hidden={!plan || shownTab !== 'trade'}>
+                <Trade
+                  key={user.toLowerCase()}
+                  me={user}
+                  ruleSet={settings.ruleSet}
+                  settings={settings}
+                  initialPartner={partner.current}
+                  onPartner={(name) => {
+                    partner.current = name;
+                    writeUrl(user, settings, name);
+                  }}
+                />
+              </div>
             )}
           </div>
         )}

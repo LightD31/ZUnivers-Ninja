@@ -140,4 +140,5 @@ export const FEATURE = {
   challenge: 'CHALLENGE',
   corporation: 'CORPORATION',
   subscription: 'SUBSCRIPTION',
+  trade: 'TRADE',
 } as const;

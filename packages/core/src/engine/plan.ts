@@ -236,6 +236,9 @@ function card(ctx: Context, itemId: string, shiny: Shiny, count = 1): PlanCard {
   };
 }
 
+/** Fiche d'une carte pour l'affichage, partagée avec les échanges. */
+export { card as planCard };
+
 /** Exemplaires d'une carte dans une commande (`1001*2`, `1002+*3`). */
 function cardRef(c: PlanCard, kind?: ActionKind): string {
   return cardsToken(c.identifier, c.shiny, c.count, kind);

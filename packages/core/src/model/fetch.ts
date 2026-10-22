@@ -2,7 +2,7 @@ import type { ZuClient } from '../api/client';
 import type { ApiAchievementEntry } from '../api/schemas';
 import { PREMIUM_BOOSTER } from '../rules/constants';
 import { normalizeCatalog, normalizePlayer, type RawCatalog, type RawPlayer } from './normalize';
-import type { Catalog, Player } from './types';
+import type { Catalog, MarketOffer, Player } from './types';
 
 /** Données communes à tous les joueurs (cartes, fusions, évènements, Vortex…). */
 export async function fetchRawCatalog(client: ZuClient): Promise<RawCatalog> {
@@ -84,4 +84,20 @@ export async function fetchCatalog(client: ZuClient): Promise<Catalog> {
 
 export async function fetchPlayer(client: ZuClient, name: string): Promise<Player> {
   return normalizePlayer(await fetchRawPlayer(client, name), client.ruleSet);
+}
+
+/**
+ * Annonce du joueur sur le marché. Facultative : `null` sans annonce, ou si le marché ne répond
+ * pas (elle ne sert qu'à mettre en avant les cartes recherchées).
+ */
+export async function fetchMarketOffer(
+  client: ZuClient,
+  name: string,
+): Promise<MarketOffer | null> {
+  const offer = await client.marketOffer(name).catch(() => null);
+  if (!offer) return null;
+  return {
+    offers: offer.entriesSell.map((e) => e.item.id),
+    wants: offer.entriesBuy.map((e) => e.item.id),
+  };
 }

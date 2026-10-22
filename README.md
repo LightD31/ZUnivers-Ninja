@@ -38,6 +38,8 @@ La v2 est une réécriture complète : TypeScript, aucune base de données, une 
   - le plan pas à pas, avec la commande prête à copier et les visuels des cartes ;
   - l'évolution des monnaies et de la collection, les défis, les succès et l'état du Vortex ;
   - les fusions à compléter et les cartes manquantes les plus rentables ;
+  - les échanges : avec le pseudo d'un autre joueur, les cartes que chacun peut donner à l'autre
+    sans rien perdre, et une proposition équilibrée prête à copier (voir [Échanges](#échanges)) ;
   - le choix de la stratégie sous la recherche, et des réglages avancés du planificateur.
 - **Stratégies** selon ta façon de jouer : Équilibré, Prudent, Épargne, Vortex ou Collectionneur
   (voir [Stratégies](#stratégies)). Sous la recherche, choisis aussi le nombre de doublons gardés
@@ -117,6 +119,10 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
     `SKIP_ACTIONS` : `skip=` les autorise toutes ;
   - `wBalance`, `wLoreDust`, `wLoreFragment` et `wUpgradeDust` ;
   - `fresh=1` pour ignorer le cache.
+- `GET /api/trade/:pseudo/:autre` renvoie ce que les deux joueurs peuvent s'échanger
+  (voir [Échanges](#échanges)). Paramètres facultatifs : `ruleset`, `fresh=1`, et `keep` /
+  `otherKeep`, les exemplaires gardés par chacun (`golden`, `goldenFusions`, `constellation`,
+  séparés par des virgules ; absent, tout est gardé ; présent mais vide, rien).
 - `GET /api/strategies` liste les stratégies disponibles (`strategies` : `id`, `label`,
   `description`) et celle par défaut du serveur (`strategy`). Un bot peut s'en servir pour proposer
   les mêmes choix que l'interface. `GET /api/config` les renvoie aussi.
@@ -233,6 +239,31 @@ Les réglages explicites l'emportent toujours sur la stratégie : avec
 `?strategy=epargne&wBalance=0.002`, la ZUMonnaie garde sa valeur par défaut. Côté serveur,
 `KEEP_EXTRA`, `KEEP_FOR_GOLDEN`, `KEEP_FOR_GOLDEN_FUSIONS`, `HORIZON` (et ses réglages), `SKIP_ACTIONS`, `BEAM_WIDTH`
 et `BRANCHING` s'appliquent aussi par-dessus la stratégie.
+
+## Échanges
+
+L'onglet « Échanges » compare ta collection avec celle d'un autre joueur (lien partageable :
+`/?u=pseudo&with=autre`). Pour chacun, il liste les cartes qu'il peut donner à l'autre :
+
+- seules les cartes échangeables du jeu (`isTradable`) comptent, et seulement celles qui manquent à
+  l'autre (une carte Constellation seule ne vaut pas possession) ;
+- le donneur ne cède que son vrai surplus, calculé avec la réserve du planificateur : les composants
+  des fusions à faire et l'exemplaire à enchanter pour une dorée qui manque sont toujours gardés. Les
+  doublons gardés pour l'échange (`keepExtra`) sont justement ceux proposés ;
+- comme dans le plan, chaque joueur choisit s'il garde les normales à enchanter pour la constellation
+  dorée, celles des fusions dorées et les doublons qui monteront ses constellations. Tes cases
+  reprennent celles du plan, l'autre joueur garde tout par défaut ;
+- les cartes recherchées sur le [marché](https://zunivers.zerator.com/marche) (`/hv`) passent en
+  premier.
+
+Coche les cartes que tu veux recevoir, ou celles qu'on te demande : les cartes choisies des deux
+côtés s'échangent entre elles, carte pour carte, et une carte restée seule reçoit en face une carte
+de même rareté et brillance. La proposition liste aussi toutes les autres cartes que tu peux demander
+(ou proposer) à la place, et à défaut de même rareté et brillance, les plus proches en points : on
+te demande ta KallaX, tu vois aussitôt ce que tu peux réclamer en échange. Une carte que tu gardes
+(dernier exemplaire, fusion, enchantement, constellation) reste visible dans « Cartes que tu
+gardes », pour la céder quand même si tu le veux. Le message à envoyer à l'autre joueur et les listes
+de cartes (`1026 + 1030+`) sont prêts à copier. Les échanges n'existent pas en Hardcore.
 
 ## Comment fonctionne le planificateur
 

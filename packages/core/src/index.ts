@@ -99,3 +99,21 @@ export {
   type MissingCard,
   type CreatePlanInput,
 } from './engine/plan';
+export {
+  DEFAULT_TRADE_KEEP,
+  TRADE_KEEP_KEYS,
+  compareForTrade,
+  proposeTrade,
+  tradeAlternatives,
+  tradeCardList,
+  tradeMessage,
+  tradesAvailable,
+  type CompareTradeInput,
+  type TradeAlternative,
+  type TradeCard,
+  type TradeKeptFor,
+  type TradeKeep,
+  type TradeProposal,
+  type TradeResult,
+  type TradeSide,
+} from './engine/trade';
