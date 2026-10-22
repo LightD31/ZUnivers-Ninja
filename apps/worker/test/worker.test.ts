@@ -1,8 +1,15 @@
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createPlan, ZuNotFoundError, type PlanResult } from '@zuninja/core';
+import {
+  compareForTrade,
+  createPlan,
+  ZuNotFoundError,
+  type PlanResult,
+  type TradeResult,
+} from '@zuninja/core';
 import { describe, expect, it, vi } from 'vitest';
+import { makePlayer } from '../../../packages/core/test/factory';
 import { fixtureCatalog, fixturePlayer, NOW } from '../../../packages/core/test/helpers';
 import { loadConfig } from '../src/config';
 import { setLogLevel } from '../src/logger';
@@ -10,8 +17,8 @@ import { Metrics, PlayerTracker } from '../src/metrics';
 import { buildDiscordMessage, sendDiscord } from '../src/notifiers/discord';
 import { PlannerBusyError, PlannerTimeoutError } from '../src/pool';
 import { runTick } from '../src/scheduler';
-import { createApp, parsePlannerQuery } from '../src/server';
-import type { PlanService } from '../src/service';
+import { createApp, parsePlannerQuery, parseTradeKeep } from '../src/server';
+import { PlayerNotFoundError, TradeUnavailableError, type PlanService } from '../src/service';
 import { StateStore } from '../src/store';
 
 setLogLevel('error');
@@ -390,6 +397,84 @@ describe('API HTTP', () => {
       craft: true,
     });
     expect(Object.values(parsePlannerQuery({ skip: '' }).allow ?? {})).not.toContain(false);
+  });
+});
+
+describe('échanges', () => {
+  const options = {
+    ruleSet: 'NORMAL' as const,
+    users: [],
+    webDir: join(tmp(), 'absent'),
+    cron: '* * * * *',
+  };
+  const trade: TradeResult = compareForTrade({
+    catalog: fixtureCatalog(),
+    me: fixturePlayer(),
+    other: makePlayer({ name: 'debutant' }),
+    now: NOW,
+  });
+  const tradeService = (impl: (me: string, other: string) => Promise<TradeResult>) =>
+    ({ trade: vi.fn(impl) }) as unknown as PlanService;
+
+  it('lit les exemplaires gardés par chaque joueur', () => {
+    expect(parseTradeKeep(undefined)).toEqual({});
+    expect(parseTradeKeep('')).toEqual({
+      golden: false,
+      goldenFusions: false,
+      constellation: false,
+    });
+    expect(parseTradeKeep('golden, constellation,yolo')).toEqual({
+      golden: true,
+      goldenFusions: false,
+      constellation: true,
+    });
+  });
+
+  it('compare deux joueurs avec les réglages de chacun', async () => {
+    const service = tradeService(async () => trade);
+    const app = createApp(service, null, options);
+    const res = await app.request('/api/trade/alexpresso/debutant?otherKeep=golden&fresh=1');
+    expect(res.status).toBe(200);
+    expect((await res.json()).me.gives.length).toBe(trade.me.gives.length);
+    expect(service.trade).toHaveBeenCalledWith(
+      'alexpresso',
+      'debutant',
+      'NORMAL',
+      { me: {}, other: { golden: true, goldenFusions: false, constellation: false } },
+      { fresh: true },
+    );
+  });
+
+  it('refuse un échange avec soi-même ou un pseudo invalide', async () => {
+    const service = tradeService(async () => trade);
+    const app = createApp(service, null, options);
+    expect((await app.request('/api/trade/Alice/alice')).status).toBe(400);
+    expect((await app.request(`/api/trade/alice/${'x'.repeat(65)}`)).status).toBe(400);
+    expect(service.trade).not.toHaveBeenCalled();
+  });
+
+  it('dit quel joueur est introuvable, et refuse le Hardcore', async () => {
+    const missing = createApp(
+      tradeService(async () => {
+        throw new PlayerNotFoundError('fantome');
+      }),
+      null,
+      options,
+    );
+    const res = await missing.request('/api/trade/alice/fantome');
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toMatch(/« fantome » introuvable/);
+
+    const hardcore = createApp(
+      tradeService(async () => {
+        throw new TradeUnavailableError();
+      }),
+      null,
+      options,
+    );
+    const closed = await hardcore.request('/api/trade/alice/bob?ruleset=hardcore');
+    expect(closed.status).toBe(400);
+    expect((await closed.json()).error).toMatch(/Pas d'échanges/);
   });
 });
 

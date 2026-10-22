@@ -1,13 +1,20 @@
 import {
   ApiCache,
+  compareForTrade,
   createClient,
   fetchCatalog,
+  fetchMarketOffer,
   fetchPlayer,
+  tradesAvailable,
+  ZuNotFoundError,
   type Catalog,
+  type MarketOffer,
   type Player,
   type PlanResult,
   type PlannerOptionsInput,
   type RuleSet,
+  type TradeKeep,
+  type TradeResult,
   type ZuClient,
 } from '@zuninja/core';
 import type { Config } from './config';
@@ -31,6 +38,25 @@ type ServiceConfig = Pick<
   'apiBaseUrl' | 'catalogTtlMs' | 'planner' | 'threads' | 'queueLimit' | 'timeLimitMs'
 > & { fetch?: typeof fetch; metrics?: Metrics | null };
 
+/** Pas d'échanges dans ce mode de jeu (Hardcore). */
+export class TradeUnavailableError extends Error {
+  constructor() {
+    super("Pas d'échanges dans ce mode de jeu.");
+    this.name = 'TradeUnavailableError';
+  }
+}
+
+/** Un des deux joueurs d'un échange n'existe pas. */
+export class PlayerNotFoundError extends Error {
+  readonly player: string;
+
+  constructor(player: string) {
+    super(`Joueur introuvable : ${player}`);
+    this.name = 'PlayerNotFoundError';
+    this.player = player;
+  }
+}
+
 /** Calcul en cours, partagé par toutes les requêtes identiques. */
 interface Flight {
   promise: Promise<PlanResult>;
@@ -42,6 +68,11 @@ export class PlanService {
   private readonly clients = new Map<RuleSet, ZuClient>();
   private readonly catalogs: ApiCache<Catalog>;
   private readonly players = new ApiCache<Player>({
+    ttlMs: PLAYER_CACHE_MS,
+    freshMinMs: PLAYER_FRESH_MIN_MS,
+  });
+  /** Annonces du marché : elles ne servent qu'à mettre en avant les cartes recherchées. */
+  private readonly markets = new ApiCache<MarketOffer | null>({
     ttlMs: PLAYER_CACHE_MS,
     freshMinMs: PLAYER_FRESH_MIN_MS,
   });
@@ -97,6 +128,44 @@ export class PlanService {
       () => fetchPlayer(this.client(ruleSet), name),
       fresh,
     );
+  }
+
+  /**
+   * Ce que deux joueurs peuvent s'échanger. Calcul rapide, fait sur place : les données des
+   * joueurs sont celles de leurs plans quand elles viennent d'être chargées.
+   */
+  async trade(
+    me: string,
+    other: string,
+    ruleSet: RuleSet,
+    keep: { me?: Partial<TradeKeep>; other?: Partial<TradeKeep> } = {},
+    { fresh = false }: { fresh?: boolean } = {},
+  ): Promise<TradeResult> {
+    const catalog = await this.catalog(ruleSet);
+    if (!tradesAvailable(catalog)) throw new TradeUnavailableError();
+    const player = (name: string) =>
+      this.player(name, ruleSet, fresh).catch((error: unknown) => {
+        throw error instanceof ZuNotFoundError ? new PlayerNotFoundError(name) : error;
+      });
+    const market = (name: string) =>
+      this.markets.get(
+        `${ruleSet}|${name.toLowerCase()}`,
+        () => fetchMarketOffer(this.client(ruleSet), name),
+        fresh,
+      );
+    const [mePlayer, otherPlayer, meMarket, otherMarket] = await Promise.all([
+      player(me),
+      player(other),
+      market(me),
+      market(other),
+    ]);
+    return compareForTrade({
+      catalog,
+      me: mePlayer,
+      other: otherPlayer,
+      keep,
+      market: { me: meMarket, other: otherMarket },
+    });
   }
 
   /**

@@ -11,6 +11,7 @@ import {
   InventorySchema,
   ItemSchema,
   LootSchema,
+  MarketOfferSchema,
   RecycleConfigSchema,
   SettingsSchema,
   TowerSchema,
@@ -177,6 +178,9 @@ export function createClient(options: ClientOptions = {}) {
       getOptional(`/public/achievement/${enc(name)}/category`, AchievementCategoriesSchema),
     achievements: (name: string, categoryId: string) =>
       getOptional(`/public/achievement/${enc(name)}/${enc(categoryId)}`, AchievementEntriesSchema),
+    /** Annonce du joueur sur le marché, `null` s'il n'en a pas. */
+    marketOffer: (name: string) =>
+      getOptional(`/public/market/search?discordUserName=${enc(name)}`, MarketOfferSchema),
   };
 }
 

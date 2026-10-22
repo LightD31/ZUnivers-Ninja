@@ -6,6 +6,7 @@ import {
   HORIZON_SEASONS_MAX,
   STRATEGIES,
   STRATEGY_IDS,
+  TRADE_KEEP_KEYS,
   allowExcept,
   isOptionalAction,
   isStrategy,
@@ -16,13 +17,14 @@ import {
   type PlannerOptionsInput,
   type RuleSet,
   type StrategyId,
+  type TradeKeep,
 } from '@zuninja/core';
 import { Hono, type Context } from 'hono';
 import { buildDiscordMessage } from './notifiers/discord';
 import { logger } from './logger';
 import type { Metrics, PlanOutcome, PlanSource } from './metrics';
 import { PlanAbortedError, PlannerBusyError, PlannerTimeoutError } from './pool';
-import { VERSION, type PlanService } from './service';
+import { PlayerNotFoundError, TradeUnavailableError, VERSION, type PlanService } from './service';
 import type { StateStore } from './store';
 
 export interface ServerOptions {
@@ -82,6 +84,18 @@ export function parsePlannerQuery(query: Record<string, string | undefined>): Pl
   return options;
 }
 
+/**
+ * Exemplaires gardés par un joueur lors d'un échange (`golden,goldenFusions,constellation`).
+ * Absent : tout est gardé ; présent mais vide : rien.
+ */
+export function parseTradeKeep(value: string | undefined): Partial<TradeKeep> {
+  if (value === undefined) return {};
+  const keys = new Set(value.split(',').map((k) => k.trim()));
+  return Object.fromEntries(TRADE_KEEP_KEYS.map((k) => [k, keys.has(k)]));
+}
+
+const invalidUser = (user: string) => !user || user.length > 64;
+
 export function createApp(service: PlanService, store: StateStore | null, options: ServerOptions) {
   const app = new Hono();
   const strategyList = () => ({
@@ -126,15 +140,39 @@ export function createApp(service: PlanService, store: StateStore | null, option
     return result;
   }
 
+  const ruleSetOf = (c: Context): RuleSet =>
+    (c.req.query('ruleset') ?? options.ruleSet).toUpperCase() === 'HARDCORE'
+      ? 'HARDCORE'
+      : 'NORMAL';
+
+  /** Réponse à un échec de l'API ZUnivers, `null` si l'erreur vient d'ailleurs. */
+  function zuApiFailure(c: Context, error: unknown): Response | null {
+    if (error instanceof ZuSchemaError) {
+      logger.error('Format de l’API ZUnivers inattendu', error.message);
+      return c.json(
+        {
+          error: "L'API ZUnivers a changé de format, ZUnivers Ninja doit être mis à jour.",
+          detail: error.issues,
+        },
+        502,
+      );
+    }
+    if (error instanceof ZuApiError) {
+      return c.json(
+        { error: "L'API ZUnivers ne répond pas pour le moment, réessaie dans un instant." },
+        502,
+      );
+    }
+    return null;
+  }
+
   async function planOutcome(
     c: Context,
     user: string,
   ): Promise<{ result: PlanResult | Response; outcome: PlanOutcome }> {
     const fail = (outcome: PlanOutcome, result: Response) => ({ result, outcome });
-    if (!user || user.length > 64)
-      return fail('invalid', c.json({ error: 'Pseudo invalide.' }, 400));
-    const ruleSetParam = (c.req.query('ruleset') ?? options.ruleSet).toUpperCase();
-    const ruleSet: RuleSet = ruleSetParam === 'HARDCORE' ? 'HARDCORE' : 'NORMAL';
+    if (invalidUser(user)) return fail('invalid', c.json({ error: 'Pseudo invalide.' }, 400));
+    const ruleSet = ruleSetOf(c);
     const strategy = c.req.query('strategy');
     if (strategy && !isStrategy(strategy)) {
       return fail(
@@ -184,28 +222,8 @@ export function createApp(service: PlanService, store: StateStore | null, option
           c.json({ error: `Joueur « ${user} » introuvable sur ZUnivers (${ruleSet}).` }, 404),
         );
       }
-      if (error instanceof ZuSchemaError) {
-        logger.error('Format de l’API ZUnivers inattendu', error.message);
-        return fail(
-          'zu_api_error',
-          c.json(
-            {
-              error: "L'API ZUnivers a changé de format, ZUnivers Ninja doit être mis à jour.",
-              detail: error.issues,
-            },
-            502,
-          ),
-        );
-      }
-      if (error instanceof ZuApiError) {
-        return fail(
-          'zu_api_error',
-          c.json(
-            { error: "L'API ZUnivers ne répond pas pour le moment, réessaie dans un instant." },
-            502,
-          ),
-        );
-      }
+      const failure = zuApiFailure(c, error);
+      if (failure) return fail('zu_api_error', failure);
       logger.error(`Erreur inattendue pour ${user}`, error);
       return fail('error', c.json({ error: 'Erreur interne.' }, 500));
     }
@@ -266,6 +284,45 @@ export function createApp(service: PlanService, store: StateStore | null, option
       embeds: message.payload.embeds,
       attachment: message.attachment,
     });
+  });
+
+  /**
+   * Ce que deux joueurs peuvent s'échanger. `keep` et `otherKeep` : exemplaires gardés par chacun
+   * (`golden,goldenFusions,constellation`, tous par défaut).
+   */
+  app.get('/api/trade/:me/:other', async (c) => {
+    const me = c.req.param('me').trim();
+    const other = c.req.param('other').trim();
+    if (invalidUser(me) || invalidUser(other)) return c.json({ error: 'Pseudo invalide.' }, 400);
+    if (me.toLowerCase() === other.toLowerCase())
+      return c.json({ error: 'Choisis un autre joueur que toi pour échanger.' }, 400);
+    const ruleSet = ruleSetOf(c);
+    try {
+      const trade = await service.trade(
+        me,
+        other,
+        ruleSet,
+        {
+          me: parseTradeKeep(c.req.query('keep')),
+          other: parseTradeKeep(c.req.query('otherKeep')),
+        },
+        { fresh: c.req.query('fresh') === '1' },
+      );
+      c.header('Cache-Control', 'no-cache');
+      return c.json(trade);
+    } catch (error) {
+      if (error instanceof TradeUnavailableError)
+        return c.json({ error: "Pas d'échanges dans ce mode de jeu." }, 400);
+      if (error instanceof PlayerNotFoundError)
+        return c.json(
+          { error: `Joueur « ${error.player} » introuvable sur ZUnivers (${ruleSet}).` },
+          404,
+        );
+      const failure = zuApiFailure(c, error);
+      if (failure) return failure;
+      logger.error(`Erreur inattendue pour l'échange ${me} ↔ ${other}`, error);
+      return c.json({ error: 'Erreur interne.' }, 500);
+    }
   });
 
   app.all('/api/*', (c) => c.json({ error: 'Route inconnue.' }, 404));

@@ -289,3 +289,18 @@ export const AchievementEntrySchema = z.looseObject({
 });
 export const AchievementEntriesSchema = z.array(AchievementEntrySchema);
 export type ApiAchievementEntry = z.infer<typeof AchievementEntrySchema>;
+
+/**
+ * `/public/market/search?discordUserName=…` : annonce du joueur sur le marché (404 sans annonce).
+ * Seul l'identifiant des cartes sert : la liste générale du marché en donne une fiche réduite.
+ */
+const MarketEntriesSchema = z
+  .array(z.looseObject({ quantity: num.default(1), item: z.looseObject({ id: z.string() }) }))
+  .default([]);
+export const MarketOfferSchema = z.looseObject({
+  /** Cartes proposées à l'échange. */
+  entriesSell: MarketEntriesSchema,
+  /** Cartes recherchées. */
+  entriesBuy: MarketEntriesSchema,
+});
+export type ApiMarketOffer = z.infer<typeof MarketOfferSchema>;
