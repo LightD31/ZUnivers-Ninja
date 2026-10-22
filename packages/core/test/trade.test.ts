@@ -157,7 +157,15 @@ describe('cartes échangeables', () => {
     const mine = [owned(kallax.id, 0, 8, 2)];
     const trade = compare([kallax], mine, [owned(kallax.id, 0, 1)]);
     expect(trade.me.gives).toMatchObject([
-      { identifier: 2225, need: 'constellation', spare: 7, count: 2, gains: [10, 10], points: 10 },
+      {
+        identifier: 2225,
+        need: 'constellation',
+        spare: 7,
+        available: 7,
+        count: 2,
+        gains: [10, 10],
+        points: 10,
+      },
     ]);
     // Sans ses constellations, l'autre n'en a plus l'usage.
     const off = compare([kallax], mine, [owned(kallax.id, 0, 1)], {
@@ -226,6 +234,7 @@ function tc(identifier: number, shiny: Shiny = 0, wanted = false): TradeCard {
     need: 'missing',
     gains: [1],
     spare: 1,
+    available: 1,
     wanted,
     offered: false,
   };
@@ -237,6 +246,7 @@ const worth = (card: TradeCard, ...gains: number[]): TradeCard => ({
   points: gains[0]!,
   gains,
   spare: gains.length,
+  available: gains.length,
 });
 
 /** Cartes choisies, un exemplaire chacune. */
@@ -302,7 +312,7 @@ describe('proposition d’échange', () => {
     expect(ids(p.receive)).toEqual(['2005', '2006']);
     expect(p.unmatched).toEqual([]);
     expect(p.give.map(tradeValue)).toEqual([20]);
-    // Le nombre choisi est respecté, et borné aux exemplaires utiles.
+    // Le nombre choisi est respecté, et borné à ce que le donneur peut céder.
     expect(ids(proposeTrade(t, { receive: {}, give: { [kallax.key]: 1 } }).receive)).toEqual([
       '2005',
     ]);
@@ -316,6 +326,22 @@ describe('proposition d’échange', () => {
     });
     expect(ids(short.receive)).toEqual(['2006']);
     expect(short.unmatched).toEqual([kallax.key]);
+  });
+
+  it('laisse donner plus d’exemplaires que l’autre n’en a l’usage', () => {
+    // 7 KallaX en trop, dont 2 seulement servent à l'autre : les 5 autres ne lui rapportent rien,
+    // mais peuvent être donnés, et comptent dans l'échange comme les autres.
+    const kallax = { ...worth(tc(2225), 10, 10), count: 2, spare: 7, available: 7 };
+    const t = trade([kallax], [worth(tc(2005), 5, 10), worth(tc(2006), 5)]);
+    const p = proposeTrade(t, { receive: {}, give: { [kallax.key]: 5 } });
+    expect(ids(p.give)).toEqual(['2225×5']);
+    expect(p.give.map(tradeValue)).toEqual([20]);
+    // En face, seuls les exemplaires utiles sont ajoutés d'office : 3 pour 5, le reste est signalé.
+    expect(ids(p.receive)).toEqual(['2005×2', '2006']);
+    expect(p.unmatched).toEqual([kallax.key]);
+    expect(ids(proposeTrade(t, { receive: {}, give: { [kallax.key]: 9 } }).give)).toEqual([
+      '2225×7',
+    ]);
   });
 
   it('signale une carte sans contrepartie de même rareté et brillance', () => {
