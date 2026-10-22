@@ -95,18 +95,22 @@ function keptNote(reason: TradeKeptFor, owner: string | null): string {
 const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`;
 
 /**
- * Valeur d'un côté de l'échange : ses points de collection, et les exemplaires qui servent sans en
- * rapporter tout de suite (composants de fusion, normales à enchanter).
+ * Valeur d'un côté de l'échange : ses points de collection, les exemplaires qui servent sans en
+ * rapporter tout de suite (composants de fusion, normales à enchanter), et ceux donnés en plus de
+ * ce qui sert (au-delà des besoins du receveur).
  */
 function valueText(cards: TradeCard[]): string {
   const points = cards.reduce((total, c) => total + tradeValue(c), 0);
-  const indirect = cards.reduce(
-    (total, c) => total + c.gains.slice(0, c.count).filter((gain) => gain === 0).length,
-    0,
-  );
-  return indirect > 0
-    ? `${plural(points, 'pt')} + ${plural(indirect, 'exemplaire')} à enchanter ou fusionner`
-    : plural(points, 'pt');
+  const count = (f: (c: TradeCard) => number) => cards.reduce((total, c) => total + f(c), 0);
+  const indirect = count((c) => c.gains.slice(0, c.count).filter((gain) => gain === 0).length);
+  const extra = count((c) => Math.max(0, c.count - c.gains.length));
+  return [
+    plural(points, 'pt'),
+    indirect > 0 && `${plural(indirect, 'exemplaire')} à enchanter ou fusionner`,
+    extra > 0 && `${plural(extra, 'exemplaire')} en plus des besoins`,
+  ]
+    .filter(Boolean)
+    .join(' + ');
 }
 const fold = (text: string) =>
   text
@@ -869,10 +873,11 @@ function ProposalList({
               className={`inline-flex items-center gap-1 rounded ${proposal.unmatched.includes(c.key) ? 'ring-1 ring-danger' : ''}`}
             >
               <CardChip card={c} />
-              {picks[c.key] !== undefined && c.gains.length > 1 && (
+              {picks[c.key] !== undefined && c.available > 1 && (
                 <CopiesStepper
                   count={c.count}
-                  max={c.gains.length}
+                  useful={c.gains.length}
+                  max={c.available}
                   onChange={(count) => onCount(c.key, count)}
                 />
               )}
@@ -895,13 +900,19 @@ function ProposalList({
   );
 }
 
-/** Nombre d'exemplaires d'une carte choisie, de 1 à ceux qui servent à celui qui les reçoit. */
+/**
+ * Nombre d'exemplaires d'une carte choisie : de 1 à tous ceux que le donneur peut céder, même
+ * au-delà de ce qui sert à celui qui les reçoit.
+ */
 function CopiesStepper({
   count,
+  useful,
   max,
   onChange,
 }: {
   count: number;
+  /** Exemplaires qui servent au receveur ; les suivants peuvent être donnés quand même. */
+  useful: number;
   max: number;
   onChange: (count: number) => void;
 }) {
@@ -910,7 +921,7 @@ function CopiesStepper({
   return (
     <span
       className="inline-flex items-center gap-0.5"
-      title={`Jusqu'à ${plural(max, 'exemplaire')} utiles`}
+      title={`${plural(useful, 'exemplaire')} utile${useful > 1 ? 's' : ''}, jusqu'à ${max} à donner`}
     >
       <button
         type="button"

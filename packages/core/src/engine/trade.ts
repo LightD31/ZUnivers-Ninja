@@ -65,6 +65,12 @@ export interface TradeCard extends PlanCard {
   gains: number[];
   /** Exemplaires que le donneur peut céder sans rien perdre (0 pour une carte gardée). */
   spare: number;
+  /**
+   * Exemplaires que le donneur peut céder au plus : son surplus, ou tous ceux d'une carte qu'il
+   * garde. Au-delà de `gains`, un exemplaire ne sert plus au receveur, mais rien n'interdit de le
+   * donner.
+   */
+  available: number;
   /** Carte gardée : ce que le donneur perdrait en la cédant. */
   keptFor?: TradeKeptFor;
   /** Sur la liste des cartes recherchées du receveur, sur le marché. */
@@ -205,8 +211,9 @@ function givable(
     const copies = getCard(state, item.id, shiny).copies;
     const reserve = reserveFor(ctx, state, item.id, shiny);
     const spare = copies - reserveTotal(reserve);
-    // Exemplaires utiles à échanger : le surplus, ou ce que le donneur céderait de ce qu'il garde.
-    const gains = use.gains.slice(0, spare > 0 ? spare : copies);
+    // Exemplaires à céder : le surplus, ou ce que le donneur céderait de ce qu'il garde.
+    const available = spare > 0 ? spare : copies;
+    const gains = use.gains.slice(0, available);
     const card: TradeCard = {
       ...planCard(ctx, item.id, shiny),
       key: cardKey(item.id, shiny),
@@ -215,6 +222,7 @@ function givable(
       need: use.need,
       gains,
       spare: Math.max(0, spare),
+      available,
       wanted: wanted.has(item.id),
       offered: offered.has(item.id),
     };
@@ -324,12 +332,15 @@ interface Unit {
 const unitPoints = (u: Unit) => u.card.gains[u.copy] ?? 0;
 const unitOrder = (a: Unit, b: Unit) => byCategory(a.card, b.card) || a.copy - b.copy;
 
-/** Exemplaires choisis : de 1 au nombre d'exemplaires utiles de la carte. */
+/**
+ * Exemplaires choisis : de 1 à tous ceux que le donneur peut céder, même au-delà de ce qui sert au
+ * receveur (ceux-là ne lui rapportent rien, mais comptent dans l'échange comme les autres).
+ */
 function pickedUnits(cards: TradeCard[], picks: TradePicks): Unit[] {
   return cards.flatMap((card) => {
     const wanted = picks[card.key];
     if (!wanted || wanted <= 0) return [];
-    const count = Math.min(Math.max(1, Math.round(wanted)), card.gains.length);
+    const count = Math.min(Math.max(1, Math.round(wanted)), card.available);
     return Array.from({ length: count }, (_, copy) => ({ card, copy }));
   });
 }
