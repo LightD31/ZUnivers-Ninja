@@ -4,11 +4,14 @@ import {
   tradeAlternatives,
   tradeCardList,
   tradeMessage,
+  tradeValue,
   type CardKey,
   type RuleSet,
   type TradeCard,
   type TradeKeep,
   type TradeKeptFor,
+  type TradeNeed,
+  type TradePicks,
   type TradeProposal,
   type TradeResult,
   type TradeSide,
@@ -21,6 +24,8 @@ import {
   Handshake,
   Heart,
   LoaderCircle,
+  Minus,
+  Plus,
   RefreshCw,
   Search,
   Tag,
@@ -38,24 +43,34 @@ const PARTNERS_KEY = 'zuninja:trade-partners';
 const SHINY_RING = ['ring-white/10', 'ring-gold', 'ring-[#aaa5fa]'];
 const SHINY_SUFFIX = ['', '+', '*'];
 
-/** Exemplaires gardés par un joueur, comme les cases du plan. */
+/**
+ * Réserve d'un joueur, comme les cases du plan : ce qu'il garde au lieu de l'échanger, et ce qu'il
+ * lui manque encore (les exemplaires à lui proposer).
+ */
 const KEEP_OPTIONS: { key: keyof TradeKeep; label: string; title: string }[] = [
   {
     key: 'golden',
     label: 'Normales à enchanter',
-    title: 'Garde les normales à enchanter pour monter la constellation dorée.',
+    title: 'Les normales à enchanter pour monter la constellation dorée : gardées, et demandées.',
   },
   {
     key: 'goldenFusions',
     label: 'Fusions dorées',
-    title: 'Garde les normales à enchanter pour les fusions dorées encore à faire.',
+    title: 'Les normales à enchanter pour les fusions dorées à faire : gardées, et demandées.',
   },
   {
     key: 'constellation',
     label: 'Constellations',
-    title: 'Garde les doublons qui monteront la constellation de la carte.',
+    title: 'Les doublons qui montent la constellation de la carte : gardés, et demandés.',
   },
 ];
+
+/** Ce qu'une carte déjà possédée apporte encore au receveur. */
+const NEED_SHORT: Record<Exclude<TradeNeed, 'missing'>, string> = {
+  constellation: 'constellation',
+  fusion: 'fusion',
+  enchant: 'à enchanter',
+};
 
 /** Ce que le donneur perdrait en cédant une carte qu'il garde. */
 const KEPT_SHORT: Record<TradeKeptFor, string> = {
@@ -77,8 +92,22 @@ function keptNote(reason: TradeKeptFor, owner: string | null): string {
   return owner ? `${owner} la garde ${use}` : `tu la gardes ${use}`;
 }
 
-const sum = (cards: TradeCard[]) => cards.reduce((total, c) => total + c.points, 0);
 const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`;
+
+/**
+ * Valeur d'un côté de l'échange : ses points de collection, et les exemplaires qui servent sans en
+ * rapporter tout de suite (composants de fusion, normales à enchanter).
+ */
+function valueText(cards: TradeCard[]): string {
+  const points = cards.reduce((total, c) => total + tradeValue(c), 0);
+  const indirect = cards.reduce(
+    (total, c) => total + c.gains.slice(0, c.count).filter((gain) => gain === 0).length,
+    0,
+  );
+  return indirect > 0
+    ? `${plural(points, 'pt')} + ${plural(indirect, 'exemplaire')} à enchanter ou fusionner`
+    : plural(points, 'pt');
+}
 const fold = (text: string) =>
   text
     .normalize('NFD')
@@ -107,8 +136,9 @@ export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Prop
   const [trade, setTrade] = useState<TradeResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [receive, setReceive] = useState<CardKey[]>([]);
-  const [give, setGive] = useState<CardKey[]>([]);
+  // Cartes choisies de chaque côté, avec leur nombre d'exemplaires.
+  const [receive, setReceive] = useState<TradePicks>({});
+  const [give, setGive] = useState<TradePicks>({});
   const [filter, setFilter] = useState('');
   const [recent, setRecent] = useState<string[]>(() => load(PARTNERS_KEY, []));
   const request = useRef(0);
@@ -152,8 +182,8 @@ export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Prop
       return;
     }
     setTrade(null);
-    setReceive([]);
-    setGive([]);
+    setReceive({});
+    setGive({});
     setFilter('');
     setPartner(name);
     onPartner(name);
@@ -169,9 +199,15 @@ export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Prop
     !query ||
     fold(c.name).includes(query) ||
     `${c.identifier}${SHINY_SUFFIX[c.shiny]}`.startsWith(query);
-  const toggle = (set: (f: (keys: CardKey[]) => CardKey[]) => void) => (key: CardKey) =>
-    set((keys) => (keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key]));
-  const picks = receive.length + give.length;
+  type SetPicks = (f: (picks: TradePicks) => TradePicks) => void;
+  // Une carte choisie l'est avec ses exemplaires utiles par défaut ; un second clic la retire.
+  const toggle = (set: SetPicks) => (card: TradeCard) =>
+    set(({ [card.key]: picked, ...rest }) => (picked ? rest : { ...rest, [card.key]: card.count }));
+  const add = (set: SetPicks) => (card: TradeCard) =>
+    set((p) => (p[card.key] ? p : { ...p, [card.key]: card.count }));
+  const setCount = (set: SetPicks) => (key: CardKey, count: number) =>
+    set((p) => ({ ...p, [key]: count }));
+  const picks = Object.keys(receive).length + Object.keys(give).length;
 
   return (
     <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -233,7 +269,7 @@ export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Prop
             <SideList
               side={trade.other}
               title={`${trade.other.player.displayName} peut te donner`}
-              empty={`${trade.other.player.displayName} n'a aucune carte en trop qui te manque.`}
+              empty={`${trade.other.player.displayName} n'a aucune carte en trop qui te serait utile.`}
               owner={trade.other.player.displayName}
               keep={keepOther}
               onKeep={setKeepOther}
@@ -247,7 +283,7 @@ export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Prop
             <SideList
               side={trade.me}
               title="Tu peux lui donner"
-              empty={`Tu n'as aucune carte en trop qui manque à ${trade.other.player.displayName}.`}
+              empty={`Tu n'as aucune carte en trop utile à ${trade.other.player.displayName}.`}
               owner={null}
               keep={keepMe}
               onKeep={setKeepMe}
@@ -266,11 +302,13 @@ export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Prop
         <Proposal
           trade={trade}
           proposal={proposal}
-          onAsk={(key) => setReceive((keys) => (keys.includes(key) ? keys : [...keys, key]))}
-          onOffer={(key) => setGive((keys) => (keys.includes(key) ? keys : [...keys, key]))}
+          picks={{ receive, give }}
+          onAsk={add(setReceive)}
+          onOffer={add(setGive)}
+          onCount={{ receive: setCount(setReceive), give: setCount(setGive) }}
           onClear={() => {
-            setReceive([]);
-            setGive([]);
+            setReceive({});
+            setGive({});
           }}
         />
       )}
@@ -349,9 +387,10 @@ function PartnerForm({
         </div>
       )}
       <p className="text-xs text-white/60">
-        Seules les cartes échangeables sont comparées : le surplus de chacun qui manque à l'autre,
-        sans toucher aux fusions, ni à ce que chacun garde ci-dessous pour ses enchantements et ses
-        constellations. Les cartes recherchées sur le marché passent en premier.
+        Seules les cartes échangeables sont comparées : le surplus de chacun dont l'autre a l'usage
+        (cartes qui lui manquent, doublons pour ses constellations, normales à enchanter, composants
+        de fusion), selon la réserve de chacun ci-dessous. Les cartes recherchées sur le marché
+        passent en premier.
       </p>
     </section>
   );
@@ -379,12 +418,12 @@ function SideList({
   keep: TradeKeep;
   onKeep: (keep: TradeKeep) => void;
   cards: TradeCard[];
-  /** Cartes qui manquent à l'autre mais que le donneur garde. */
+  /** Cartes utiles à l'autre mais que le donneur garde. */
   kept: TradeCard[];
   filtered: boolean;
-  picked: CardKey[];
+  picked: TradePicks;
   proposal: TradeProposal;
-  onToggle: (key: CardKey) => void;
+  onToggle: (card: TradeCard) => void;
 }) {
   const [showKept, setShowKept] = useState(false);
   // Une recherche montre aussi les cartes gardées : on cherche souvent celle qu'on nous demande.
@@ -411,7 +450,12 @@ function SideList({
         <span className="shrink-0 text-xs text-white/60">{plural(side.gives.length, 'carte')}</span>
       </header>
       <div className="flex flex-wrap items-center gap-1.5 border-b border-white/[0.06] px-4 py-2 text-xs">
-        <span className="text-white/60">{owner ? `${owner} garde` : 'Tu gardes'} :</span>
+        <span
+          className="text-white/60"
+          title={`Ce que ${owner ?? 'tu'} ${owner ? 'garde' : 'gardes'} au lieu de l'échanger, et ce qu'il ${owner ? 'lui' : 'te'} manque encore : décocher une case libère ces exemplaires et ne les demande plus.`}
+        >
+          {owner ? `Réserve de ${owner}` : 'Ta réserve'} :
+        </span>
         {KEEP_OPTIONS.map((o) => (
           <button
             key={o.key}
@@ -447,10 +491,10 @@ function SideList({
                   <TradeTile
                     key={c.key}
                     card={c}
-                    picked={picked.includes(c.key)}
+                    picked={!!picked[c.key]}
                     added={proposal.added.includes(c.key)}
                     unmatched={proposal.unmatched.includes(c.key)}
-                    onToggle={() => onToggle(c.key)}
+                    onToggle={() => onToggle(c)}
                   />
                 ))}
               </div>
@@ -474,18 +518,18 @@ function SideList({
             <>
               <p className="mt-1.5 text-xs text-white/55">
                 {owner
-                  ? `Elles te manquent, mais ${owner} les garde (dernier exemplaire, fusion, enchantement ou constellation) : à demander seulement si c'est d'accord.`
-                  : 'Elles lui manquent, mais tu les gardes (dernier exemplaire, fusion, enchantement ou constellation). Si on te les demande, choisis-les : la proposition dit ce que tu peux demander en échange.'}
+                  ? `Elles te seraient utiles, mais ${owner} les garde (dernier exemplaire, fusion, enchantement ou constellation) : à demander seulement si c'est d'accord.`
+                  : "Elles seraient utiles à l'autre, mais tu les gardes (dernier exemplaire, fusion, enchantement ou constellation). Si on te les demande, choisis-les : la proposition dit ce que tu peux demander en échange."}
               </p>
               <div className="mt-3 flex flex-wrap gap-3">
                 {kept.map((c) => (
                   <TradeTile
                     key={c.key}
                     card={c}
-                    picked={picked.includes(c.key)}
+                    picked={!!picked[c.key]}
                     added={false}
                     unmatched={proposal.unmatched.includes(c.key)}
-                    onToggle={() => onToggle(c.key)}
+                    onToggle={() => onToggle(c)}
                   />
                 ))}
               </div>
@@ -521,6 +565,8 @@ function TradeTile({
     card.keptFor
       ? `gardée : ${KEPT_SHORT[card.keptFor]}`
       : `${plural(card.spare, 'exemplaire')} en trop`,
+    card.need !== 'missing' &&
+      `utile pour ${card.need === 'enchant' ? "l'enchanter" : `sa ${NEED_SHORT[card.need]}`} (${plural(card.gains.length, 'exemplaire')})`,
     card.wanted && 'recherchée sur le marché',
     card.offered && 'proposée sur le marché',
     added && "ajoutée pour équilibrer l'échange",
@@ -554,6 +600,11 @@ function TradeTile({
             <Check className="size-6 text-zu-400" />
           </span>
         )}
+        {card.count > 1 && (
+          <span className="absolute right-0.5 bottom-0.5 rounded bg-zu-500 px-1 text-[10px] leading-4 font-bold text-white">
+            ×{card.count}
+          </span>
+        )}
       </span>
       {card.wanted && (
         <span className="absolute -top-1.5 -left-1.5 grid size-5 place-items-center rounded-full bg-pink-500 text-white shadow">
@@ -571,6 +622,11 @@ function TradeTile({
         {ref}
       </span>
       <span className="block truncate text-center text-[10px] text-white/60">{card.name}</span>
+      {card.need !== 'missing' && (
+        <span className="mt-0.5 block truncate rounded bg-zu-500/15 text-center text-[9px] tracking-wide text-zu-400 uppercase">
+          {NEED_SHORT[card.need]}
+        </span>
+      )}
       {card.keptFor && (
         <span className="mt-0.5 block truncate rounded bg-gold/15 text-center text-[9px] tracking-wide text-gold uppercase">
           {KEPT_SHORT[card.keptFor]}
@@ -583,16 +639,24 @@ function TradeTile({
 function Proposal({
   trade,
   proposal,
+  picks,
   onAsk,
   onOffer,
+  onCount,
   onClear,
 }: {
   trade: TradeResult;
   proposal: TradeProposal;
+  picks: { receive: TradePicks; give: TradePicks };
   /** Ajoute une carte de l'autre joueur à l'échange. */
-  onAsk: (key: CardKey) => void;
+  onAsk: (card: TradeCard) => void;
   /** Ajoute une de mes cartes à l'échange. */
-  onOffer: (key: CardKey) => void;
+  onOffer: (card: TradeCard) => void;
+  /** Change le nombre d'exemplaires d'une carte choisie. */
+  onCount: {
+    receive: (key: CardKey, count: number) => void;
+    give: (key: CardKey, count: number) => void;
+  };
   onClear: () => void;
 }) {
   const other = trade.other.player;
@@ -620,11 +684,22 @@ function Proposal({
         </p>
       ) : (
         <>
-          <ProposalList title="Tu reçois" cards={proposal.receive} proposal={proposal} />
-          <ProposalList title="Tu donnes" cards={proposal.give} proposal={proposal} />
+          <ProposalList
+            title="Tu reçois"
+            cards={proposal.receive}
+            proposal={proposal}
+            picks={picks.receive}
+            onCount={onCount.receive}
+          />
+          <ProposalList
+            title="Tu donnes"
+            cards={proposal.give}
+            proposal={proposal}
+            picks={picks.give}
+            onCount={onCount.give}
+          />
           <p className="text-xs text-white/60" title="Points de collection que chacun gagne">
-            Valeur : tu reçois {plural(sum(proposal.receive), 'pt')} · tu donnes{' '}
-            {plural(sum(proposal.give), 'pt')}
+            Valeur : tu reçois {valueText(proposal.receive)} · tu donnes {valueText(proposal.give)}
           </p>
           {proposal.unmatched.length > 0 && (
             <p className="flex gap-2 text-xs text-danger">
@@ -725,7 +800,7 @@ function Alternatives({
   title: string;
   cards: TradeCard[];
   points: boolean;
-  onPick: (key: CardKey) => void;
+  onPick: (card: TradeCard) => void;
 }) {
   const [all, setAll] = useState(false);
   const shown = all ? cards : cards.slice(0, ALTERNATIVES_SHOWN);
@@ -739,7 +814,7 @@ function Alternatives({
           <button
             key={c.key}
             type="button"
-            onClick={() => onPick(c.key)}
+            onClick={() => onPick(c)}
             title={`Ajouter ${c.name} à l'échange${c.wanted ? ' (recherchée sur le marché)' : ''}`}
             className="chip transition hover:bg-zu-500/20 hover:text-white"
           >
@@ -770,10 +845,14 @@ function ProposalList({
   title,
   cards,
   proposal,
+  picks,
+  onCount,
 }: {
   title: string;
   cards: TradeCard[];
   proposal: TradeProposal;
+  picks: TradePicks;
+  onCount: (key: CardKey, count: number) => void;
 }) {
   return (
     <div>
@@ -790,6 +869,16 @@ function ProposalList({
               className={`inline-flex items-center gap-1 rounded ${proposal.unmatched.includes(c.key) ? 'ring-1 ring-danger' : ''}`}
             >
               <CardChip card={c} />
+              {picks[c.key] !== undefined && c.gains.length > 1 && (
+                <CopiesStepper
+                  count={c.count}
+                  max={c.gains.length}
+                  onChange={(count) => onCount(c.key, count)}
+                />
+              )}
+              {c.need !== 'missing' && (
+                <span className="text-[10px] text-white/50">{NEED_SHORT[c.need]}</span>
+              )}
               {proposal.added.includes(c.key) && (
                 <span
                   className="text-[10px] font-semibold text-zu-400 uppercase"
@@ -803,6 +892,45 @@ function ProposalList({
         </div>
       )}
     </div>
+  );
+}
+
+/** Nombre d'exemplaires d'une carte choisie, de 1 à ceux qui servent à celui qui les reçoit. */
+function CopiesStepper({
+  count,
+  max,
+  onChange,
+}: {
+  count: number;
+  max: number;
+  onChange: (count: number) => void;
+}) {
+  const button =
+    'grid size-5 place-items-center rounded text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-30';
+  return (
+    <span
+      className="inline-flex items-center gap-0.5"
+      title={`Jusqu'à ${plural(max, 'exemplaire')} utiles`}
+    >
+      <button
+        type="button"
+        className={button}
+        disabled={count <= 1}
+        onClick={() => onChange(count - 1)}
+        aria-label="Un exemplaire de moins"
+      >
+        <Minus className="size-3" />
+      </button>
+      <button
+        type="button"
+        className={button}
+        disabled={count >= max}
+        onClick={() => onChange(count + 1)}
+        aria-label="Un exemplaire de plus"
+      >
+        <Plus className="size-3" />
+      </button>
+    </span>
   );
 }
 

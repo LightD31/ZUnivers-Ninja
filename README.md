@@ -245,25 +245,29 @@ et `BRANCHING` s'appliquent aussi par-dessus la stratégie.
 L'onglet « Échanges » compare ta collection avec celle d'un autre joueur (lien partageable :
 `/?u=pseudo&with=autre`). Pour chacun, il liste les cartes qu'il peut donner à l'autre :
 
-- seules les cartes échangeables du jeu (`isTradable`) comptent, et seulement celles qui manquent à
-  l'autre (une carte Constellation seule ne vaut pas possession) ;
+- seules les cartes échangeables du jeu (`isTradable`) comptent, et seulement celles dont l'autre a
+  l'usage : une carte qui lui manque (une carte Constellation seule ne vaut pas possession), ou des
+  exemplaires qu'il lui faut encore pour une fusion, sa constellation ou une dorée à enchanter. Ta
+  KallaX intéresse ainsi un joueur qui en a déjà une, mais dont la constellation reste à monter ;
 - le donneur ne cède que son vrai surplus, calculé avec la réserve du planificateur : les composants
   des fusions à faire et l'exemplaire à enchanter pour une dorée qui manque sont toujours gardés. Les
   doublons gardés pour l'échange (`keepExtra`) sont justement ceux proposés ;
-- comme dans le plan, chaque joueur choisit s'il garde les normales à enchanter pour la constellation
-  dorée, celles des fusions dorées et les doublons qui monteront ses constellations. Tes cases
-  reprennent celles du plan, l'autre joueur garde tout par défaut ;
+- comme dans le plan, chaque joueur choisit si sa réserve compte les normales à enchanter pour la
+  constellation dorée, celles des fusions dorées et les doublons qui monteront ses constellations :
+  il les garde, et on les lui propose quand elles lui manquent. Tes cases reprennent celles du plan,
+  l'autre joueur compte tout par défaut ;
 - les cartes recherchées sur le [marché](https://zunivers.zerator.com/marche) (`/hv`) passent en
   premier.
 
-Coche les cartes que tu veux recevoir, ou celles qu'on te demande : les cartes choisies des deux
-côtés s'échangent entre elles, carte pour carte, et une carte restée seule reçoit en face une carte
-de même rareté et brillance. La proposition liste aussi toutes les autres cartes que tu peux demander
+Coche les cartes que tu veux recevoir, ou celles qu'on te demande : une carte choisie compte tous les
+exemplaires utiles à l'autre (2 KallaX pour 2 niveaux de constellation), à ajuster avec −/+. Les
+exemplaires choisis des deux côtés s'échangent entre eux, un pour un, et un exemplaire resté seul
+reçoit en face un exemplaire de même rareté et brillance. La proposition liste aussi toutes les autres cartes que tu peux demander
 (ou proposer) à la place, et à défaut de même rareté et brillance, les plus proches en points : on
 te demande ta KallaX, tu vois aussitôt ce que tu peux réclamer en échange. Une carte que tu gardes
 (dernier exemplaire, fusion, enchantement, constellation) reste visible dans « Cartes que tu
 gardes », pour la céder quand même si tu le veux. Le message à envoyer à l'autre joueur et les listes
-de cartes (`1026 + 1030+`) sont prêts à copier. Les échanges n'existent pas en Hardcore.
+de cartes (`1026 + 1030+ + 2225*2`) sont prêts à copier. Les échanges n'existent pas en Hardcore.
 
 ## Comment fonctionne le planificateur
 

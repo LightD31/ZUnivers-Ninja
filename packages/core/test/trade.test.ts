@@ -6,6 +6,7 @@ import {
   tradeAlternatives,
   tradeCardList,
   tradeMessage,
+  tradeValue,
   tradesAvailable,
   type Item,
   type Shiny,
@@ -150,6 +151,37 @@ describe('cartes échangeables', () => {
     expect(free.me.gives.map((c) => c.identifier)).toEqual([2225]);
   });
 
+  it('propose aussi les exemplaires dont l’autre a encore l’usage, selon sa réserve', () => {
+    // KallaX : 8 chez moi, constellation au maximum ; une seule chez l'autre, constellation à 0.
+    const kallax = makeItem(2225, { goldable: false });
+    const mine = [owned(kallax.id, 0, 8, 2)];
+    const trade = compare([kallax], mine, [owned(kallax.id, 0, 1)]);
+    expect(trade.me.gives).toMatchObject([
+      { identifier: 2225, need: 'constellation', spare: 7, count: 2, gains: [10, 10], points: 10 },
+    ]);
+    // Sans ses constellations, l'autre n'en a plus l'usage.
+    const off = compare([kallax], mine, [owned(kallax.id, 0, 1)], {
+      keep: { other: { constellation: false } },
+    });
+    expect(off.me.gives).toEqual([]);
+    // Une carte qui manque : un exemplaire par défaut, les suivants monteraient sa constellation.
+    expect(compare([kallax], mine).me.gives).toMatchObject([
+      { need: 'missing', count: 1, gains: [5, 10, 10], points: 5 },
+    ]);
+  });
+
+  it('propose les normales qui manquent à l’autre pour enchanter, sauf s’il les a déjà', () => {
+    const card = makeItem(2003);
+    // Chez moi : constellation normale au maximum et dorée possédée, 5 normales en trop.
+    const mine = [owned(card.id, 0, 6, 2), owned(card.id, 1, 1, 2)];
+    // Chez l'autre : constellation normale au maximum, dorée à enchanter puis à monter.
+    const trade = compare([card], mine, [owned(card.id, 0, 1, 2)]);
+    expect(trade.me.gives).toMatchObject([
+      { need: 'enchant', spare: 5, count: 3, gains: [0, 0, 0], points: 0 },
+    ]);
+    expect(compare([card], mine, [owned(card.id, 0, 4, 2)]).me.gives).toEqual([]);
+  });
+
   it('n’existe pas en Hardcore', () => {
     expect(tradesAvailable(makeCatalog([]))).toBe(true);
     const settings = { dailyReward: 1000, weeklyReward: 1000, dailyLoreDust: 10 };
@@ -191,11 +223,24 @@ function tc(identifier: number, shiny: Shiny = 0, wanted = false): TradeCard {
     slug: '',
     key: cardKey(itemId, shiny),
     points: 1,
+    need: 'missing',
+    gains: [1],
     spare: 1,
     wanted,
     offered: false,
   };
 }
+
+/** Carte dont chaque exemplaire rapporte `gains` points au receveur. */
+const worth = (card: TradeCard, ...gains: number[]): TradeCard => ({
+  ...card,
+  points: gains[0]!,
+  gains,
+  spare: gains.length,
+});
+
+/** Cartes choisies, un exemplaire chacune. */
+const one = (...cards: TradeCard[]) => Object.fromEntries(cards.map((c) => [c.key, 1]));
 
 function trade(
   mine: TradeCard[],
@@ -212,12 +257,13 @@ function trade(
   return { me: side(mine, kept.mine), other: side(theirs, kept.theirs) };
 }
 
-const ids = (cards: TradeCard[]) => cards.map((c) => `${c.identifier}${['', '+', '*'][c.shiny]}`);
+const ids = (cards: TradeCard[]) =>
+  cards.map((c) => `${c.identifier}${['', '+', '*'][c.shiny]}${c.count > 1 ? `×${c.count}` : ''}`);
 
 describe('proposition d’échange', () => {
   it('donne une carte de même rareté pour chaque carte demandée, recherchée d’abord', () => {
     const t = trade([tc(2001), tc(2002, 0, true), tc(1001)], [tc(2005), tc(2006)]);
-    const p = proposeTrade(t, { receive: [tc(2005).key], give: [] });
+    const p = proposeTrade(t, { receive: one(tc(2005)), give: {} });
     expect(ids(p.receive)).toEqual(['2005']);
     expect(ids(p.give)).toEqual(['2002']);
     expect(p.added).toEqual([tc(2002).key]);
@@ -226,7 +272,7 @@ describe('proposition d’échange', () => {
 
   it('équilibre dans les deux sens', () => {
     const t = trade([tc(1001), tc(2001), tc(2002)], [tc(1005), tc(2005)]);
-    const p = proposeTrade(t, { receive: [tc(1005).key, tc(2005).key], give: [tc(2002).key] });
+    const p = proposeTrade(t, { receive: one(tc(1005), tc(2005)), give: one(tc(2002)) });
     expect(ids(p.receive)).toEqual(['2005', '1005']);
     expect(ids(p.give)).toEqual(['2002', '1001']);
     expect(p.added).toEqual([tc(1001).key]);
@@ -235,24 +281,46 @@ describe('proposition d’échange', () => {
 
   it('échange entre elles les cartes choisies des deux côtés, même de catégories différentes', () => {
     // On me demande ma KallaX, et je choisis moi-même ce que je veux en échange.
-    const kallax = { ...tc(2225), points: 5 };
+    const kallax = worth(tc(2225), 5);
     const t = trade(
-      [kallax, { ...tc(1054, 2), points: 130 }],
-      [
-        { ...tc(1005, 2), points: 130 },
-        { ...tc(3005), points: 20 },
-      ],
+      [kallax, worth(tc(1054, 2), 130)],
+      [worth(tc(1005, 2), 130), worth(tc(3005), 20)],
     );
-    const p = proposeTrade(t, { receive: [tc(1005, 2).key], give: [kallax.key] });
+    const p = proposeTrade(t, { receive: one(tc(1005, 2)), give: one(kallax) });
     expect(ids(p.receive)).toEqual(['1005*']);
     expect(ids(p.give)).toEqual(['2225']);
     expect(p.added).toEqual([]);
     expect(p.unmatched).toEqual([]);
   });
 
+  it('équilibre exemplaire par exemplaire, de cartes différentes d’abord', () => {
+    // L'autre a l'usage de 2 KallaX pour sa constellation.
+    const kallax = { ...worth(tc(2225), 10, 10), count: 2 };
+    const t = trade([kallax], [worth(tc(2005), 5, 10), worth(tc(2006), 5)]);
+    const p = proposeTrade(t, { receive: {}, give: { [kallax.key]: 2 } });
+    expect(ids(p.give)).toEqual(['2225×2']);
+    expect(ids(p.receive)).toEqual(['2005', '2006']);
+    expect(p.unmatched).toEqual([]);
+    expect(p.give.map(tradeValue)).toEqual([20]);
+    // Le nombre choisi est respecté, et borné aux exemplaires utiles.
+    expect(ids(proposeTrade(t, { receive: {}, give: { [kallax.key]: 1 } }).receive)).toEqual([
+      '2005',
+    ]);
+    expect(ids(proposeTrade(t, { receive: {}, give: { [kallax.key]: 9 } }).give)).toEqual([
+      '2225×2',
+    ]);
+    // Un exemplaire sans contrepartie est signalé.
+    const short = proposeTrade(trade([kallax], [worth(tc(2006), 5)]), {
+      receive: {},
+      give: { [kallax.key]: 2 },
+    });
+    expect(ids(short.receive)).toEqual(['2006']);
+    expect(short.unmatched).toEqual([kallax.key]);
+  });
+
   it('signale une carte sans contrepartie de même rareté et brillance', () => {
     const t = trade([tc(1001), tc(3001)], [tc(1005, 1), tc(3005), tc(3006)]);
-    const p = proposeTrade(t, { receive: [tc(1005, 1).key, tc(3005).key, tc(3006).key], give: [] });
+    const p = proposeTrade(t, { receive: one(tc(1005, 1), tc(3005), tc(3006)), give: {} });
     expect(ids(p.give)).toEqual(['3001']);
     expect(p.unmatched).toEqual([tc(3006).key, tc(1005, 1).key]);
   });
@@ -261,28 +329,23 @@ describe('proposition d’échange', () => {
     const kallax = { ...tc(2225), spare: 0, keptFor: 'constellation' as const };
     const t = trade([tc(1001)], [tc(2005, 0, true), tc(2006)], { mine: [kallax] });
     // L'autre demande la KallaX : en échange, sa meilleure carte de même rareté.
-    const asked = proposeTrade(t, { receive: [], give: [kallax.key] });
+    const asked = proposeTrade(t, { receive: {}, give: one(kallax) });
     expect(ids(asked.give)).toEqual(['2225']);
     expect(ids(asked.receive)).toEqual(['2005']);
     expect(asked.unmatched).toEqual([]);
     // Je demande une de ses cartes : ma KallaX gardée n'est pas proposée en échange.
-    const wanted = proposeTrade(t, { receive: [tc(2006).key], give: [] });
+    const wanted = proposeTrade(t, { receive: one(tc(2006)), give: {} });
     expect(ids(wanted.give)).toEqual([]);
     expect(wanted.unmatched).toEqual([tc(2006).key]);
   });
 
   it('sans carte de même rareté et brillance, propose les plus proches en points', () => {
-    const kallax = { ...tc(2225), points: 5 };
+    const kallax = worth(tc(2225), 5);
     const t = trade(
       [kallax],
-      [
-        { ...tc(2006, 2), points: 200 },
-        { ...tc(4005), points: 80 },
-        { ...tc(1005), points: 1 },
-        { ...tc(3005), points: 20 },
-      ],
+      [worth(tc(2006, 2), 200), worth(tc(4005), 80), worth(tc(1005), 1), worth(tc(3005), 20)],
     );
-    const p = proposeTrade(t, { receive: [], give: [kallax.key] });
+    const p = proposeTrade(t, { receive: {}, give: one(kallax) });
     expect(p.unmatched).toEqual([kallax.key]);
     const [alternative] = tradeAlternatives(t, p);
     expect(alternative?.askExact).toBe(false);
@@ -295,26 +358,29 @@ describe('proposition d’échange', () => {
     const t = trade([tc(1001), tc(2001)], [tc(2005, 0, true), tc(2006), tc(2007), tc(1005)], {
       mine: [kallax],
     });
-    const p = proposeTrade(t, { receive: [], give: [kallax.key] });
+    const p = proposeTrade(t, { receive: {}, give: one(kallax) });
     expect(
       tradeAlternatives(t, p).map((a) => [a.rarity, a.shiny, ids(a.ask), ids(a.offer)]),
     ).toEqual([[2, 0, ['2006', '2007'], ['2001']]]);
-    expect(tradeAlternatives(t, proposeTrade(t, { receive: [], give: [] }))).toEqual([]);
+    expect(tradeAlternatives(t, proposeTrade(t, { receive: {}, give: {} }))).toEqual([]);
   });
 
   it('prépare le message et la liste des cartes', () => {
-    const p = proposeTrade(trade([tc(1001)], [tc(1005, 1)]), { receive: [], give: [tc(1001).key] });
+    const p = proposeTrade(trade([tc(1001)], [tc(1005, 1)]), { receive: {}, give: one(tc(1001)) });
     expect(ids(p.receive)).toEqual([]);
     expect(tradeMessage('bob', p)).toBe(
       "Salut bob ! Je peux te donner 1001 Carte 1001, ça t'intéresse ?",
     );
-    const both = proposeTrade(trade([tc(2001), tc(2002)], [tc(2005)]), {
-      receive: [tc(2005).key],
-      give: [tc(2001).key],
+    const kallax = { ...worth(tc(2225), 10, 10), count: 2 };
+    const both = proposeTrade(trade([kallax], [worth(tc(2005), 5, 10)]), {
+      receive: {},
+      give: { [kallax.key]: 2 },
     });
     expect(tradeMessage('bob', both)).toBe(
-      'Salut bob ! Je te propose un échange : 2001 Carte 2001 contre 2005 Carte 2005. Ça te va ?',
+      'Salut bob ! Je te propose un échange : 2× 2225 Carte 2225 contre 2× 2005 Carte 2005. Ça te va ?',
     );
-    expect(tradeCardList([tc(1001), tc(2001, 1), tc(3001, 2)])).toBe('1001 + 2001+ + 3001*');
+    expect(tradeCardList([tc(1001), tc(2001, 1), { ...tc(3001, 2), count: 2 }])).toBe(
+      '1001 + 2001+ + 3001**2',
+    );
   });
 });
