@@ -267,7 +267,9 @@ exemplaire de même rareté et brillance. La proposition liste aussi toutes les 
 peux demander (ou proposer) à la place, et à défaut de même rareté et brillance, les plus proches en
 points : on te demande ta KallaX, tu vois aussitôt ce que tu peux réclamer en échange. Une carte
 que tu gardes (dernier exemplaire, fusion, enchantement, constellation) reste visible dans « Cartes
-que tu gardes », pour la céder quand même si tu le veux. Le message à envoyer à l'autre joueur et
+que tu gardes », pour la céder quand même si tu le veux. Le reste de ton surplus, dont l'autre n'a
+pas l'usage (il en a déjà tout ce qui lui sert), est dans « Tes autres cartes en trop » : à donner
+quand même si tu veux, jamais ajouté d'office. Le message à envoyer à l'autre joueur et
 les listes de cartes (`1026 + 1030+ + 2225*2`) sont prêts à copier. Les échanges n'existent pas en
 Hardcore.
 

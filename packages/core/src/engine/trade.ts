@@ -43,10 +43,11 @@ export const TRADE_KEEP_KEYS = Object.keys(DEFAULT_TRADE_KEEP) as (keyof TradeKe
 export type TradeKeptFor = 'last' | 'fusion' | 'enchant' | 'constellation';
 
 /**
- * Ce que la carte apporte à celui qui la reçoit : une carte qui lui manque, ou des exemplaires
- * qu'il lui faut encore pour une fusion, sa constellation ou une dorée à enchanter.
+ * Ce que la carte apporte à celui qui la reçoit : une carte qui lui manque, des exemplaires qu'il
+ * lui faut encore pour une fusion, sa constellation ou une dorée à enchanter, ou rien (`none` : il
+ * a déjà tout ce qui lui sert, mais rien n'interdit de la lui donner).
  */
-export type TradeNeed = 'missing' | 'fusion' | 'constellation' | 'enchant';
+export type TradeNeed = 'missing' | 'fusion' | 'constellation' | 'enchant' | 'none';
 
 /**
  * Carte qu'un joueur peut donner à l'autre, qui en a l'usage. `count` : exemplaires proposés par
@@ -91,6 +92,11 @@ export interface TradeSide {
    * constellation) : à céder seulement s'il le veut bien, quand l'autre les demande.
    */
   kept: TradeCard[];
+  /**
+   * Le reste du surplus de ce joueur : des cartes dont l'autre n'a pas l'usage (il a déjà tout ce
+   * qui lui sert), à donner quand même si on le veut. Jamais ajoutées d'office.
+   */
+  extra: TradeCard[];
 }
 
 export interface TradeResult {
@@ -110,6 +116,7 @@ const NEED_RANK: Record<TradeNeed, number> = {
   constellation: 1,
   fusion: 2,
   enchant: 3,
+  none: 4,
 };
 
 /** Ordre d'affichage : cartes recherchées d'abord, puis celles qui manquent, puis les plus rares. */
@@ -144,16 +151,16 @@ function receiverGains(
   shiny: Shiny,
   have: number,
   reserve: Reserve,
-): { need: TradeNeed; gains: number[] } | null {
+): { need: Exclude<TradeNeed, 'none'>; gains: number[] } | null {
   const score = item.scores[shiny];
-  const slots: [TradeNeed, number, number][] = [
+  const slots: [Exclude<TradeNeed, 'none'>, number, number][] = [
     ['missing', reserve.keep, score],
     ['fusion', reserve.fusion, 0],
     ['constellation', reserve.constellation, score * CONSTELLATION_POINTS_FACTOR],
     ['enchant', reserve.enchant, 0],
   ];
   let owned = have;
-  let need: TradeNeed | null = null;
+  let need: Exclude<TradeNeed, 'none'> | null = null;
   const gains: number[] = [];
   for (const [kind, size, gain] of slots) {
     const free = Math.max(0, size - owned);
@@ -179,7 +186,8 @@ function reserveContext(catalog: Catalog, player: Player, keep: TradeKeep, now: 
 /**
  * Cartes échangeables de `giver` dont `receiver` a l'usage, chacun avec sa réserve : celles qui lui
  * manquent, et les exemplaires qu'il lui faut encore (fusion, constellation, normale à enchanter).
- * Le surplus du donneur d'un côté, ce qu'il garde de l'autre.
+ * Le surplus du donneur d'un côté, ce qu'il garde de l'autre, et le reste de son surplus, dont
+ * le receveur n'a pas l'usage.
  */
 function givable(
   catalog: Catalog,
@@ -187,7 +195,7 @@ function givable(
   keep: { giver: TradeKeep; receiver: TradeKeep },
   markets: { giver: MarketOffer | null; receiver: MarketOffer | null },
   now: Date,
-): { gives: TradeCard[]; kept: TradeCard[] } {
+): { gives: TradeCard[]; kept: TradeCard[]; extra: TradeCard[] } {
   const ctx = reserveContext(catalog, players.giver, keep.giver, now);
   const state = initialState(ctx);
   const receiverCtx = reserveContext(catalog, players.receiver, keep.receiver, now);
@@ -196,10 +204,14 @@ function givable(
   const wanted = new Set(markets.receiver?.wants ?? []);
   const gives: TradeCard[] = [];
   const kept: TradeCard[] = [];
+  const extra: TradeCard[] = [];
   for (const owned of Object.values(players.giver.inventory)) {
     const item = ctx.items[owned.itemId];
     if (!item?.tradable || owned.copies <= 0) continue;
     const shiny: Shiny = owned.shiny;
+    const copies = getCard(state, item.id, shiny).copies;
+    const reserve = reserveFor(ctx, state, item.id, shiny);
+    const spare = copies - reserveTotal(reserve);
     // Une carte Constellation seule ne vaut pas possession : la carte manque toujours.
     const use = receiverGains(
       item,
@@ -207,29 +219,33 @@ function givable(
       getCard(receiverState, item.id, shiny).copies,
       reserveFor(receiverCtx, receiverState, item.id, shiny),
     );
-    if (!use) continue;
-    const copies = getCard(state, item.id, shiny).copies;
-    const reserve = reserveFor(ctx, state, item.id, shiny);
-    const spare = copies - reserveTotal(reserve);
+    // Sans usage pour le receveur : seul le surplus reste proposé, une carte gardée l'est pour rien.
+    if (!use && spare <= 0) continue;
     // Exemplaires à céder : le surplus, ou ce que le donneur céderait de ce qu'il garde.
     const available = spare > 0 ? spare : copies;
-    const gains = use.gains.slice(0, available);
+    const gains = use?.gains.slice(0, available) ?? [];
+    const need: TradeNeed = use?.need ?? 'none';
     const card: TradeCard = {
       ...planCard(ctx, item.id, shiny),
       key: cardKey(item.id, shiny),
-      count: spare > 0 && use.need !== 'missing' ? gains.length : 1,
-      points: gains[0]!,
-      need: use.need,
+      count: spare > 0 && need !== 'missing' && gains.length > 0 ? gains.length : 1,
+      points: gains[0] ?? 0,
+      need,
       gains,
       spare: Math.max(0, spare),
       available,
       wanted: wanted.has(item.id),
       offered: offered.has(item.id),
     };
-    if (spare > 0) gives.push(card);
+    if (!use) extra.push(card);
+    else if (spare > 0) gives.push(card);
     else kept.push({ ...card, keptFor: keptFor(copies, reserve) });
   }
-  return { gives: gives.sort(compareCards), kept: kept.sort(compareCards) };
+  return {
+    gives: gives.sort(compareCards),
+    kept: kept.sort(compareCards),
+    extra: extra.sort(compareCards),
+  };
 }
 
 export interface CompareTradeInput {
@@ -259,7 +275,7 @@ export function compareForTrade({
     player: Player,
     sideKeep: TradeKeep,
     sideMarket: MarketOffer | null,
-    cards: { gives: TradeCard[]; kept: TradeCard[] },
+    cards: { gives: TradeCard[]; kept: TradeCard[]; extra: TradeCard[] },
   ): TradeSide => ({
     player: {
       name: player.name,
@@ -361,14 +377,21 @@ function regroup(units: Unit[]): TradeCard[] {
  * points (le joueur a choisi lui-même la contrepartie). Un exemplaire qui reste seul reçoit en face
  * un exemplaire de même rareté et brillance, de cartes différentes d'abord et la plus intéressante
  * en premier (recherchée sur le marché), ou reste dans l'échange sans contrepartie, signalé. Une
- * carte gardée peut être choisie (l'autre la demande), jamais ajoutée d'office.
+ * carte gardée (l'autre la demande) ou sans usage pour l'autre peut être choisie, jamais ajoutée
+ * d'office.
  */
 export function proposeTrade(
   trade: Pick<TradeResult, 'me' | 'other'>,
   picked: { receive: TradePicks; give: TradePicks },
 ): TradeProposal {
-  const chosenReceive = pickedUnits([...trade.other.gives, ...trade.other.kept], picked.receive);
-  const chosenGive = pickedUnits([...trade.me.gives, ...trade.me.kept], picked.give);
+  const chosenReceive = pickedUnits(
+    [...trade.other.gives, ...trade.other.kept, ...trade.other.extra],
+    picked.receive,
+  );
+  const chosenGive = pickedUnits(
+    [...trade.me.gives, ...trade.me.kept, ...trade.me.extra],
+    picked.give,
+  );
   chosenReceive.sort(unitOrder);
   chosenGive.sort(unitOrder);
 

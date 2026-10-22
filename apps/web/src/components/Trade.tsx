@@ -65,11 +65,12 @@ const KEEP_OPTIONS: { key: keyof TradeKeep; label: string; title: string }[] = [
   },
 ];
 
-/** Ce qu'une carte déjà possédée apporte encore au receveur. */
+/** Ce qu'une carte déjà possédée apporte encore au receveur, ou rien (`none`). */
 const NEED_SHORT: Record<Exclude<TradeNeed, 'missing'>, string> = {
   constellation: 'constellation',
   fusion: 'fusion',
   enchant: 'à enchanter',
+  none: 'sans usage',
 };
 
 /** Ce que le donneur perdrait en cédant une carte qu'il garde. */
@@ -279,6 +280,7 @@ export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Prop
               onKeep={setKeepOther}
               cards={trade.other.gives.filter(visible)}
               kept={trade.other.kept.filter(visible)}
+              extra={trade.other.extra.filter(visible)}
               filtered={!!query}
               picked={receive}
               proposal={proposal}
@@ -293,6 +295,7 @@ export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Prop
               onKeep={setKeepMe}
               cards={trade.me.gives.filter(visible)}
               kept={trade.me.kept.filter(visible)}
+              extra={trade.me.extra.filter(visible)}
               filtered={!!query}
               picked={give}
               proposal={proposal}
@@ -409,6 +412,7 @@ function SideList({
   onKeep,
   cards,
   kept,
+  extra,
   filtered,
   picked,
   proposal,
@@ -424,14 +428,13 @@ function SideList({
   cards: TradeCard[];
   /** Cartes utiles à l'autre mais que le donneur garde. */
   kept: TradeCard[];
+  /** Surplus du donneur dont l'autre n'a pas l'usage. */
+  extra: TradeCard[];
   filtered: boolean;
   picked: TradePicks;
   proposal: TradeProposal;
   onToggle: (card: TradeCard) => void;
 }) {
-  const [showKept, setShowKept] = useState(false);
-  // Une recherche montre aussi les cartes gardées : on cherche souvent celle qu'on nous demande.
-  const keptOpen = showKept || (filtered && kept.length > 0);
   const groups = new Map<number, TradeCard[]>();
   for (const c of [...cards].sort((a, b) => b.rarity - a.rarity))
     groups.set(c.rarity, [...(groups.get(c.rarity) ?? []), c]);
@@ -506,42 +509,88 @@ function SideList({
           ))}
         </div>
       )}
-      {kept.length > 0 && (
-        <div className="border-t border-white/[0.06] px-4 py-3">
-          <button
-            type="button"
-            aria-expanded={keptOpen}
-            onClick={() => setShowKept(!keptOpen)}
-            className="label flex items-center gap-1.5 text-white/70 transition hover:text-white"
-          >
-            <ChevronRight className={`size-3.5 transition ${keptOpen ? 'rotate-90' : ''}`} />
-            {owner ? `Cartes que ${owner} garde` : 'Cartes que tu gardes'}
-            <span className="text-white/45 normal-case">· {kept.length}</span>
-          </button>
-          {keptOpen && (
-            <>
-              <p className="mt-1.5 text-xs text-white/55">
-                {owner
-                  ? `Elles te seraient utiles, mais ${owner} les garde (dernier exemplaire, fusion, enchantement ou constellation) : à demander seulement si c'est d'accord.`
-                  : "Elles seraient utiles à l'autre, mais tu les gardes (dernier exemplaire, fusion, enchantement ou constellation). Si on te les demande, choisis-les : la proposition dit ce que tu peux demander en échange."}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-3">
-                {kept.map((c) => (
-                  <TradeTile
-                    key={c.key}
-                    card={c}
-                    picked={!!picked[c.key]}
-                    added={false}
-                    unmatched={proposal.unmatched.includes(c.key)}
-                    onToggle={() => onToggle(c)}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      <FoldedGroup
+        title={owner ? `Cartes que ${owner} garde` : 'Cartes que tu gardes'}
+        note={
+          owner
+            ? `Elles te seraient utiles, mais ${owner} les garde (dernier exemplaire, fusion, enchantement ou constellation) : à demander seulement si c'est d'accord.`
+            : "Elles seraient utiles à l'autre, mais tu les gardes (dernier exemplaire, fusion, enchantement ou constellation). Si on te les demande, choisis-les : la proposition dit ce que tu peux demander en échange."
+        }
+        cards={kept}
+        filtered={filtered}
+        picked={picked}
+        proposal={proposal}
+        onToggle={onToggle}
+      />
+      <FoldedGroup
+        title={owner ? `Autres cartes en trop de ${owner}` : 'Tes autres cartes en trop'}
+        note={
+          owner
+            ? `Tu as déjà tout ce qui te sert de celles-ci, mais tu peux les demander quand même.`
+            : "L'autre a déjà tout ce qui lui sert de celles-ci, mais tu peux les donner quand même : choisies, elles comptent dans l'échange comme les autres."
+        }
+        cards={extra}
+        filtered={filtered}
+        picked={picked}
+        proposal={proposal}
+        onToggle={onToggle}
+      />
     </section>
+  );
+}
+
+/** Groupe de cartes replié sous une liste (cartes gardées, autres cartes en trop). */
+function FoldedGroup({
+  title,
+  note,
+  cards,
+  filtered,
+  picked,
+  proposal,
+  onToggle,
+}: {
+  title: string;
+  note: string;
+  cards: TradeCard[];
+  filtered: boolean;
+  picked: TradePicks;
+  proposal: TradeProposal;
+  onToggle: (card: TradeCard) => void;
+}) {
+  const [show, setShow] = useState(false);
+  // Une recherche l'ouvre aussi : on cherche souvent la carte qu'on nous demande.
+  const open = show || (filtered && cards.length > 0);
+  if (cards.length === 0) return null;
+  return (
+    <div className="border-t border-white/[0.06] px-4 py-3">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setShow(!open)}
+        className="label flex items-center gap-1.5 text-white/70 transition hover:text-white"
+      >
+        <ChevronRight className={`size-3.5 transition ${open ? 'rotate-90' : ''}`} />
+        {title}
+        <span className="text-white/45 normal-case">· {cards.length}</span>
+      </button>
+      {open && (
+        <>
+          <p className="mt-1.5 text-xs text-white/55">{note}</p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            {cards.map((c) => (
+              <TradeTile
+                key={c.key}
+                card={c}
+                picked={!!picked[c.key]}
+                added={false}
+                unmatched={proposal.unmatched.includes(c.key)}
+                onToggle={() => onToggle(c)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -569,8 +618,10 @@ function TradeTile({
     card.keptFor
       ? `gardée : ${KEPT_SHORT[card.keptFor]}`
       : `${plural(card.spare, 'exemplaire')} en trop`,
-    card.need !== 'missing' &&
-      `utile pour ${card.need === 'enchant' ? "l'enchanter" : `sa ${NEED_SHORT[card.need]}`} (${plural(card.gains.length, 'exemplaire')})`,
+    card.need === 'none'
+      ? "sans usage pour l'autre"
+      : card.need !== 'missing' &&
+        `utile pour ${card.need === 'enchant' ? "l'enchanter" : `sa ${NEED_SHORT[card.need]}`} (${plural(card.gains.length, 'exemplaire')})`,
     card.wanted && 'recherchée sur le marché',
     card.offered && 'proposée sur le marché',
     added && "ajoutée pour équilibrer l'échange",
@@ -627,7 +678,11 @@ function TradeTile({
       </span>
       <span className="block truncate text-center text-[10px] text-white/60">{card.name}</span>
       {card.need !== 'missing' && (
-        <span className="mt-0.5 block truncate rounded bg-zu-500/15 text-center text-[9px] tracking-wide text-zu-400 uppercase">
+        <span
+          className={`mt-0.5 block truncate rounded text-center text-[9px] tracking-wide uppercase ${
+            card.need === 'none' ? 'bg-white/10 text-white/55' : 'bg-zu-500/15 text-zu-400'
+          }`}
+        >
           {NEED_SHORT[card.need]}
         </span>
       )}
