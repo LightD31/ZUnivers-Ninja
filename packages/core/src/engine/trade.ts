@@ -567,13 +567,20 @@ const describeCards = (cards: readonly PlanCard[]) =>
     )
     .join(', ');
 
-/** Message à envoyer à l'autre joueur pour lui proposer l'échange. */
-export function tradeMessage(otherName: string, proposal: TradeProposal): string {
+/**
+ * Message à envoyer à l'autre joueur pour lui proposer l'échange, suivi de `link` : le lien qui lui
+ * ouvre l'échange de son côté.
+ */
+export function tradeMessage(otherName: string, proposal: TradeProposal, link?: string): string {
   const give = describeCards(proposal.give);
   const receive = describeCards(proposal.receive);
-  if (give && receive)
-    return `Salut ${otherName} ! Je te propose un échange : ${give} contre ${receive}. Ça te va ?`;
-  if (receive) return `Salut ${otherName} ! Tu pourrais m'échanger ${receive} ?`;
-  if (give) return `Salut ${otherName} ! Je peux te donner ${give}, ça t'intéresse ?`;
-  return '';
+  const message =
+    give && receive
+      ? `Salut ${otherName} ! Je te propose un échange : ${give} contre ${receive}. Ça te va ?`
+      : receive
+        ? `Salut ${otherName} ! Tu pourrais m'échanger ${receive} ?`
+        : give
+          ? `Salut ${otherName} ! Je peux te donner ${give}, ça t'intéresse ?`
+          : '';
+  return message && link ? `${message} Le détail : ${link}` : message;
 }

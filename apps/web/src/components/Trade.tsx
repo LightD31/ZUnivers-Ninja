@@ -48,6 +48,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchPartners, fetchTrade, PlanError } from '../lib/api';
 import { RARITY_LABEL, RARITY_TINT, SHINY_NAME } from '../lib/game';
 import type { Settings } from '../lib/settings';
+import {
+  cardsToLink,
+  linkUrl,
+  myTradeKeep,
+  partnerView,
+  picksFromLink,
+  picksToLink,
+  sameKeep,
+  type TradeLink,
+} from '../lib/share';
 import { load, save } from '../lib/storage';
 import { CardChip } from './CardChip';
 import { CopyButton } from './CopyButton';
@@ -145,20 +155,24 @@ interface Props {
   me: string;
   ruleSet: RuleSet;
   settings: Settings;
-  initialPartner: string;
-  onPartner: (name: string) => void;
+  /** Échange d'un lien partagé : partenaire, réserve de chacun et cartes choisies. */
+  initial: TradeLink | null;
+  /** Échange en cours, pour le lien de la page (`null` sans partenaire). */
+  onChange: (trade: TradeLink | null) => void;
 }
 
+/** Toutes les cartes qu'un joueur peut céder, gardées et sans usage pour l'autre comprises. */
+const cardsOf = (side: TradeSide) => [...side.gives, ...side.kept, ...side.extra];
+
 /** Échanges : ce que deux joueurs peuvent se donner, et une proposition équilibrée. */
-export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Props) {
-  const [partner, setPartner] = useState(initialPartner);
-  // Tes cases reprennent celles du plan ; l'autre joueur garde tout par défaut.
-  const [keepMe, setKeepMe] = useState<TradeKeep>(() => ({
-    golden: settings.keepForGolden,
-    goldenFusions: settings.keepForGoldenFusions,
-    constellation: !settings.skip.includes('constellation'),
-  }));
-  const [keepOther, setKeepOther] = useState<TradeKeep>(DEFAULT_TRADE_KEEP);
+export function Trade({ me, ruleSet, settings, initial, onChange }: Props) {
+  const [partner, setPartner] = useState(initial?.partner ?? '');
+  // Tes cases reprennent celles du plan ; l'autre joueur garde tout par défaut. Un lien donne les
+  // siennes.
+  const [keepMe, setKeepMe] = useState<TradeKeep>(() => initial?.keep.me ?? myTradeKeep(settings));
+  const [keepOther, setKeepOther] = useState<TradeKeep>(initial?.keep.other ?? DEFAULT_TRADE_KEEP);
+  // Cartes choisies du lien : retrouvées dans le premier échange chargé.
+  const linkedPicks = useRef(initial?.picks ?? null);
   const [trade, setTrade] = useState<TradeResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -185,6 +199,12 @@ export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Prop
         const result = await fetchTrade({ me, other, ruleSet, keep, fresh });
         if (id !== request.current) return;
         setTrade(result);
+        const linked = linkedPicks.current;
+        if (linked) {
+          linkedPicks.current = null;
+          setReceive(picksFromLink(cardsOf(result.other), linked.receive));
+          setGive(picksFromLink(cardsOf(result.me), linked.give));
+        }
         setRecent((r) => {
           const name = result.other.player.name;
           const next = [name, ...r.filter((x) => x.toLowerCase() !== name.toLowerCase())].slice(
@@ -238,19 +258,41 @@ export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Prop
       setError('Choisis un autre joueur que toi pour échanger.');
       return;
     }
+    linkedPicks.current = null;
     setReceive(picks.receive);
     setGive(picks.give);
     setFilter('');
     if (name.toLowerCase() === partner.toLowerCase()) return;
     setTrade(null);
     setPartner(name);
-    onPartner(name);
   };
 
   const proposal = useMemo(
     () => (trade ? proposeTrade(trade, { receive, give }) : null),
     [trade, receive, give],
   );
+
+  // L'échange en cours, pour le lien de la page : réserves par défaut omises, et les cartes du
+  // lien tant que l'échange charge.
+  const link = useMemo<TradeLink | null>(() => {
+    if (!partner) return null;
+    return {
+      partner,
+      keep: {
+        me: sameKeep(keepMe, myTradeKeep(settings)) ? null : keepMe,
+        other: sameKeep(keepOther, DEFAULT_TRADE_KEEP) ? null : keepOther,
+      },
+      picks:
+        linkedPicks.current ??
+        (trade
+          ? {
+              receive: picksToLink(cardsOf(trade.other), receive),
+              give: picksToLink(cardsOf(trade.me), give),
+            }
+          : { receive: [], give: [] }),
+    };
+  }, [partner, keepMe, keepOther, settings, trade, receive, give]);
+  useEffect(() => onChange(link), [link, onChange]);
 
   const query = fold(filter.trim());
   const visible = (c: TradeCard) =>
@@ -382,6 +424,25 @@ export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Prop
         <Proposal
           trade={trade}
           proposal={proposal}
+          partnerLink={
+            // Toutes les cartes de la proposition, celles ajoutées pour l'équilibrer comprises :
+            // l'autre joueur voit exactement l'échange proposé.
+            link &&
+            linkUrl(
+              partnerView(
+                trade.me.player.name,
+                {
+                  ...link,
+                  partner: trade.other.player.name,
+                  picks: {
+                    receive: cardsToLink(proposal.receive),
+                    give: cardsToLink(proposal.give),
+                  },
+                },
+                settings,
+              ),
+            )
+          }
           picks={{ receive, give }}
           onAsk={add(setReceive)}
           onOffer={add(setGive)}
@@ -1018,6 +1079,7 @@ function TradeTile({
 function Proposal({
   trade,
   proposal,
+  partnerLink,
   picks,
   onAsk,
   onOffer,
@@ -1026,6 +1088,8 @@ function Proposal({
 }: {
   trade: TradeResult;
   proposal: TradeProposal;
+  /** Lien qui ouvre cet échange du côté de l'autre joueur. */
+  partnerLink: string | null;
   picks: { receive: TradePicks; give: TradePicks };
   /** Ajoute une carte de l'autre joueur à l'échange. */
   onAsk: (card: TradeCard) => void;
@@ -1040,7 +1104,7 @@ function Proposal({
 }) {
   const other = trade.other.player;
   const empty = proposal.receive.length + proposal.give.length === 0;
-  const message = tradeMessage(other.displayName, proposal);
+  const message = tradeMessage(other.displayName, proposal, partnerLink ?? undefined);
   const issues = tradeIssues(proposal);
   const command = tradeCommand(other.name, proposal);
   const alternatives = tradeAlternatives(trade, proposal).filter(
@@ -1131,9 +1195,14 @@ function Proposal({
                 : `${other.displayName} n'a plus d'échange aujourd'hui : propose-le pour demain.`}
             </p>
           )}
-          <p className="surface px-3 py-2 text-xs whitespace-pre-wrap text-white/80">{message}</p>
+          <p className="surface px-3 py-2 text-xs break-words whitespace-pre-wrap text-white/80">
+            {message}
+          </p>
           <div className="flex flex-wrap gap-2">
             <CopyButton text={message} label="Copier le message" />
+            {partnerLink && (
+              <CopyButton text={partnerLink} label={`Lien pour ${other.displayName}`} />
+            )}
             {proposal.give.length > 0 && (
               <CopyButton text={tradeCardList(proposal.give)} label="Mes cartes" />
             )}

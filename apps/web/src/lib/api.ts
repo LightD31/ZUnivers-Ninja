@@ -1,5 +1,5 @@
 import {
-  TRADE_KEEP_KEYS,
+  tradeKeepQuery,
   type PlanResult,
   type RuleSet,
   type TradeKeep,
@@ -77,9 +77,6 @@ export interface TradeQuery {
   fresh?: boolean;
 }
 
-/** Exemplaires gardés, au format de la route (`golden,constellation`). */
-const keepParam = (keep: TradeKeep) => TRADE_KEEP_KEYS.filter((k) => keep[k]).join(',');
-
 /** Ce que deux joueurs peuvent s'échanger. */
 export async function fetchTrade(query: TradeQuery): Promise<TradeResult> {
   if (STANDALONE) {
@@ -88,8 +85,8 @@ export async function fetchTrade(query: TradeQuery): Promise<TradeResult> {
   }
   const params = new URLSearchParams({
     ruleset: query.ruleSet,
-    keep: keepParam(query.keep.me),
-    otherKeep: keepParam(query.keep.other),
+    keep: tradeKeepQuery(query.keep.me),
+    otherKeep: tradeKeepQuery(query.keep.other),
   });
   if (query.fresh) params.set('fresh', '1');
   const path = [query.me, query.other].map(encodeURIComponent).join('/');
@@ -113,8 +110,8 @@ export async function fetchPartners(query: PartnersQuery): Promise<TradePartners
   }
   const params = new URLSearchParams({
     ruleset: query.ruleSet,
-    keep: keepParam(query.keep.me),
-    otherKeep: keepParam(query.keep.other),
+    keep: tradeKeepQuery(query.keep.me),
+    otherKeep: tradeKeepQuery(query.keep.other),
     with: query.names.join(','),
   });
   if (query.fresh) params.set('fresh', '1');

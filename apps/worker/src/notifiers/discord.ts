@@ -1,7 +1,7 @@
 import {
   CURRENCY_LABEL,
-  DEFAULT_STRATEGY,
   SHINY_LABEL,
+  plannerQuery,
   reserveLabel,
   type Currency,
   type PlanResult,
@@ -93,9 +93,10 @@ export function buildDiscordMessage(
     ...(reserves.length ? [{ name: 'À garder', value: reserves.join('\n'), inline: false }] : []),
   ].map((f) => ({ ...f, value: clip(f.value, FIELD_LIMIT) }));
 
-  // Le lien ouvre le plan avec la même stratégie (paramètre omis pour la stratégie par défaut).
+  // Le lien ouvre exactement ce plan : son mode, sa stratégie et les options du serveur.
   const linkParams = new URLSearchParams({ u: plan.player.name });
-  if (plan.strategy.id !== DEFAULT_STRATEGY) linkParams.set('strategy', plan.strategy.id);
+  if (plan.ruleSet === 'HARDCORE') linkParams.set('mode', 'hardcore');
+  for (const [key, value] of Object.entries(plannerQuery(plan.options))) linkParams.set(key, value);
   const link = options.webUrl ? `${options.webUrl.replace(/\/+$/, '')}/?${linkParams}` : undefined;
   const description = plan.closed
     ? 'Pas de saison Hardcore en cours : rien à jouer en attendant la prochaine.'

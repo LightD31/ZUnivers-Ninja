@@ -3,21 +3,17 @@ import { join, relative } from 'node:path';
 import { serveStatic } from '@hono/node-server/serve-static';
 import {
   DEFAULT_STRATEGY,
-  HORIZON_SEASONS_MAX,
   STRATEGIES,
   STRATEGY_IDS,
-  TRADE_KEEP_KEYS,
-  allowExcept,
-  isOptionalAction,
   isStrategy,
+  parsePlannerQuery,
+  parseTradeKeep,
   ZuApiError,
   ZuNotFoundError,
   ZuSchemaError,
   type PlanResult,
-  type PlannerOptionsInput,
   type RuleSet,
   type StrategyId,
-  type TradeKeep,
 } from '@zuninja/core';
 import { Hono, type Context } from 'hono';
 import { buildDiscordMessage } from './notifiers/discord';
@@ -39,59 +35,6 @@ export interface ServerOptions {
   metrics?: Metrics | null;
   /** Jeton exigé sur /metrics (`Authorization: Bearer …`). */
   metricsToken?: string | undefined;
-}
-
-const clamp = (value: string | undefined, min: number, max: number): number | undefined => {
-  if (value === undefined || value === '') return undefined;
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : undefined;
-};
-
-/** Options du planificateur lues dans la requête, bornées pour éviter les abus. */
-export function parsePlannerQuery(query: Record<string, string | undefined>): PlannerOptionsInput {
-  const options: PlannerOptionsInput = {};
-  if (isStrategy(query.strategy)) options.strategy = query.strategy;
-  const beamWidth = clamp(query.beamWidth, 1, 64);
-  const branching = clamp(query.branching, 1, 16);
-  const keepExtra = clamp(query.keepExtra, 0, 10);
-  if (beamWidth !== undefined) options.beamWidth = beamWidth;
-  if (branching !== undefined) options.branching = branching;
-  if (keepExtra !== undefined) options.keepExtra = keepExtra;
-  if (query.keepForGolden === '0' || query.keepForGolden === '1')
-    options.keepForGolden = query.keepForGolden === '1';
-  if (query.keepForGoldenFusions === '0' || query.keepForGoldenFusions === '1')
-    options.keepForGoldenFusions = query.keepForGoldenFusions === '1';
-  if (query.horizon === '0' || query.horizon === '1') options.horizon = query.horizon === '1';
-  const horizonDiscount = clamp(query.horizonDiscount, 0, 1);
-  const horizonSeasons = clamp(query.horizonSeasons, 1, HORIZON_SEASONS_MAX);
-  if (horizonDiscount !== undefined) options.horizonDiscount = horizonDiscount;
-  if (horizonSeasons !== undefined) options.horizonSeasons = horizonSeasons;
-  // Actions refusées, séparées par des virgules. Présent (même vide), il remplace celles du
-  // serveur : `skip=` les autorise toutes.
-  if (query.skip !== undefined)
-    options.allow = allowExcept(query.skip.split(',').filter(isOptionalAction));
-  const weights: NonNullable<PlannerOptionsInput['weights']> = {};
-  const w = (key: string) => clamp(query[key], 0, 10);
-  const balance = w('wBalance');
-  const loreDust = w('wLoreDust');
-  const loreFragment = w('wLoreFragment');
-  const upgradeDust = w('wUpgradeDust');
-  if (balance !== undefined) weights.balance = balance;
-  if (loreDust !== undefined) weights.loreDust = loreDust;
-  if (loreFragment !== undefined) weights.loreFragment = loreFragment;
-  if (upgradeDust !== undefined) weights.upgradeDust = upgradeDust;
-  if (Object.keys(weights).length > 0) options.weights = weights;
-  return options;
-}
-
-/**
- * Exemplaires gardés par un joueur lors d'un échange (`golden,goldenFusions,constellation`).
- * Absent : tout est gardé ; présent mais vide : rien.
- */
-export function parseTradeKeep(value: string | undefined): Partial<TradeKeep> {
-  if (value === undefined) return {};
-  const keys = new Set(value.split(',').map((k) => k.trim()));
-  return Object.fromEntries(TRADE_KEEP_KEYS.map((k) => [k, keys.has(k)]));
 }
 
 const invalidUser = (user: string) => !user || user.length > 64;

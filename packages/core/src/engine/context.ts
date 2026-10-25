@@ -129,6 +129,37 @@ export type PlannerOptionsInput = Partial<Omit<PlannerOptions, 'weights' | 'allo
   allow?: Partial<PlannerOptions['allow']>;
 };
 
+/** Options qu'une requête de l'API ou un lien vers l'interface peut porter (voir `plannerQuery`). */
+export type QueryOptions = Pick<
+  PlannerOptions,
+  | 'strategy'
+  | 'beamWidth'
+  | 'branching'
+  | 'keepExtra'
+  | 'keepForGolden'
+  | 'keepForGoldenFusions'
+  | 'horizon'
+  | 'horizonDiscount'
+  | 'horizonSeasons'
+  | 'allow'
+  | 'weights'
+>;
+
+/** Les options d'un plan qu'une requête ou un lien peut reproduire. */
+export const queryOptions = (o: PlannerOptions): QueryOptions => ({
+  strategy: o.strategy,
+  beamWidth: o.beamWidth,
+  branching: o.branching,
+  keepExtra: o.keepExtra,
+  keepForGolden: o.keepForGolden,
+  keepForGoldenFusions: o.keepForGoldenFusions,
+  horizon: o.horizon,
+  horizonDiscount: o.horizonDiscount,
+  horizonSeasons: o.horizonSeasons,
+  allow: { ...o.allow },
+  weights: { ...o.weights },
+});
+
 /** Saisons de Vortex examinées au plus par l'anticipation : deux rotations complètes. */
 export const HORIZON_SEASONS_MAX = 8;
 

@@ -445,6 +445,12 @@ describe('proposition d’échange', () => {
     expect(tradeMessage('bob', both)).toBe(
       'Salut bob ! Je te propose un échange : 2× 2225 Carte 2225 contre 2× 2005 Carte 2005. Ça te va ?',
     );
+    // Le lien lui ouvre l'échange de son côté ; rien à envoyer sans carte choisie.
+    expect(tradeMessage('bob', p, 'https://ninja.example/?u=bob')).toBe(
+      "Salut bob ! Je peux te donner 1001 Carte 1001, ça t'intéresse ? Le détail : https://ninja.example/?u=bob",
+    );
+    const none = proposeTrade(trade([tc(1001)], []), { receive: {}, give: {} });
+    expect(tradeMessage('bob', none, 'https://ninja.example/')).toBe('');
     expect(tradeCardList([tc(1001), tc(2001, 1), { ...tc(3001, 2), count: 2 }])).toBe(
       '1001 + 2001+ + 3001**2',
     );

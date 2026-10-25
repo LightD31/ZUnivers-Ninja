@@ -28,13 +28,16 @@ export {
   OPTIONAL_ACTIONS,
   allowExcept,
   isOptionalAction,
+  queryOptions,
   resolveOptions,
   buildContext,
   type Context,
   type OptionalAction,
   type PlannerOptions,
   type PlannerOptionsInput,
+  type QueryOptions,
 } from './engine/context';
+export { parsePlannerQuery, parseTradeKeep, plannerQuery, tradeKeepQuery } from './engine/query';
 export {
   STRATEGIES,
   STRATEGY_IDS,

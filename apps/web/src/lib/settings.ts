@@ -6,10 +6,13 @@ import {
   allowExcept,
   isOptionalAction,
   isStrategy,
+  plannerQuery,
+  queryOptions,
   resolveOptions,
   type Balances,
   type OptionalAction,
   type PlannerOptionsInput,
+  type QueryOptions,
   type RuleSet,
   type StrategyId,
 } from '@zuninja/core';
@@ -106,5 +109,35 @@ export function plannerOptions(s: Settings): PlannerOptionsInput {
     horizonSeasons: s.horizonSeasons,
     allow: allowExcept(s.skip),
     weights: s.weights,
+  };
+}
+
+/** Les options que ces réglages donnent au planificateur, telles qu'un lien les porte. */
+export const linkOptions = (s: Settings): QueryOptions =>
+  queryOptions(resolveOptions(plannerOptions(s)));
+
+/** Mêmes réglages du planificateur (le mode de jeu mis à part) : ils donnent le même plan. */
+export const sameSettings = (a: Settings, b: Settings) =>
+  JSON.stringify(plannerQuery(linkOptions(a))) === JSON.stringify(plannerQuery(linkOptions(b)));
+
+/**
+ * Réglages d'un lien partagé : le préréglage de sa stratégie, puis les options du lien, comme pour
+ * celui qui l'a partagé (voir `plannerQuery`).
+ */
+export function settingsFromQuery(ruleSet: RuleSet, input: PlannerOptionsInput): Settings {
+  const o = resolveOptions(input);
+  return {
+    ruleSet,
+    strategy: o.strategy,
+    beamWidth: o.beamWidth,
+    branching: o.branching,
+    keepExtra: o.keepExtra,
+    keepForGolden: o.keepForGolden,
+    keepForGoldenFusions: o.keepForGoldenFusions,
+    horizon: o.horizon,
+    horizonDiscount: o.horizonDiscount,
+    horizonSeasons: o.horizonSeasons,
+    skip: OPTIONAL_ACTIONS.filter((a) => !o.allow[a]),
+    weights: { ...o.weights },
   };
 }
