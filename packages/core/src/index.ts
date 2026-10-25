@@ -130,6 +130,15 @@ export {
   type TradeWant,
 } from './engine/trade';
 export {
+  cardWorth,
+  explainTrade,
+  type CardWorth,
+  type ExplainedSide,
+  type TradeCost,
+  type TradeExplanation,
+  type WorthPart,
+} from './engine/explain';
+export {
   OWNER_CANDIDATES,
   OWNER_LOOKUPS,
   TRADE_PARTNERS_LIMIT,

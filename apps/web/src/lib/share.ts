@@ -10,6 +10,7 @@ import {
   type TradeCard,
   type TradeKeep,
   type TradePicks,
+  type TradeSide,
 } from '@zuninja/core';
 import { linkOptions, settingsFromQuery, type Settings } from './settings';
 
@@ -56,6 +57,9 @@ export const myTradeKeep = (s: Settings): TradeKeep => ({
 });
 
 export const sameKeep = (a: TradeKeep, b: TradeKeep) => TRADE_KEEP_KEYS.every((k) => a[k] === b[k]);
+
+/** Toutes les cartes qu'un joueur peut céder, gardées et sans usage pour l'autre comprises. */
+export const tradeCards = (side: TradeSide) => [...side.gives, ...side.kept, ...side.extra];
 
 /** Brillance dans un lien : rien pour une normale, `d` pour une dorée, `c` pour une chroma. */
 const SHINY_LETTER: Record<Shiny, string> = { 0: '', 1: 'd', 2: 'c' };
@@ -158,23 +162,94 @@ export function picksFromLink(
 }
 
 /**
- * Le même échange vu par l'autre joueur : sa page, ses réglages à lui (aucun dans le lien), et les
- * cartes et réserves de chacun inversées. Les réserves sont écrites en entier : celles par défaut
- * dépendent des réglages de chacun.
+ * Un échange vu des deux côtés à la fois (la page de l'échange) : deux joueurs, les cartes que
+ * cède chacun, et la réserve de chacun.
  */
-export function partnerView(me: string, trade: TradeLink, settings: Settings): View {
+export interface SharedTradeLink {
+  players: [string, string];
+  gives: [LinkedCard[], LinkedCard[]];
+  /** Réserve de chacun, `null` : celle par défaut (tout est gardé). */
+  keep: [TradeKeep | null, TradeKeep | null];
+}
+
+/** La page de l'échange que décrit un lien (`?trade=alice,bob&a=…&b=…`), `null` sinon. */
+export function readSharedTrade(search: string): SharedTradeLink | null {
+  const params = new URLSearchParams(search);
+  const players = (params.get('trade') ?? '').split(',').map((p) => p.trim());
+  const [first, second] = players;
+  if (players.length !== 2 || !first || !second || first.toLowerCase() === second.toLowerCase())
+    return null;
   return {
-    user: trade.partner,
+    players: [first, second],
+    gives: [parseCards(params.get('a')), parseCards(params.get('b'))],
+    keep: [parseKeep(params.get('ka')), parseKeep(params.get('kb'))],
+  };
+}
+
+/**
+ * Paramètres de la page d'un échange. Les joueurs sont rangés par ordre alphabétique : le lien est
+ * le même, quel que soit celui qui le partage.
+ */
+export function sharedTradeQuery(link: SharedTradeLink): string {
+  const [a, b] = link.players;
+  const order = a.toLowerCase() <= b.toLowerCase() ? [0, 1] : [1, 0];
+  const params = new URLSearchParams({ trade: order.map((i) => link.players[i]).join(',') });
+  order.forEach((i, at) => {
+    const cards = link.gives[i]!;
+    if (cards.length > 0) params.set(at === 0 ? 'a' : 'b', cards.map(cardToken).join(','));
+  });
+  order.forEach((i, at) => {
+    const keep = link.keep[i];
+    if (keep && !sameKeep(keep, DEFAULT_TRADE_KEEP))
+      params.set(at === 0 ? 'ka' : 'kb', tradeKeepQuery(keep));
+  });
+  return params.toString().replace(/%2C/gi, ',');
+}
+
+/** Lien complet vers la page d'un échange, depuis `base` (l'adresse de l'interface). */
+export const sharedTradeUrl = (
+  link: SharedTradeLink,
+  base = `${location.origin}${location.pathname}`,
+) => `${base}?${sharedTradeQuery(link)}`;
+
+/**
+ * La page de l'échange en cours : moi, l'autre joueur, et les cartes de la proposition (`trade.picks`,
+ * toutes celles échangées). Ma réserve par défaut dépend de mes réglages : elle est écrite en entier.
+ */
+export function sharedFromTrade(me: string, trade: TradeLink, settings: Settings): SharedTradeLink {
+  const mine = trade.keep.me ?? myTradeKeep(settings);
+  const theirs = trade.keep.other ?? DEFAULT_TRADE_KEEP;
+  const keep = (k: TradeKeep) => (sameKeep(k, DEFAULT_TRADE_KEEP) ? null : k);
+  return {
+    players: [me, trade.partner],
+    gives: [trade.picks.give, trade.picks.receive],
+    keep: [keep(mine), keep(theirs)],
+  };
+}
+
+/**
+ * L'échange de la page, vu par l'un des deux joueurs (`side`) : sa page, ses réglages à lui (aucun
+ * dans le lien), et les cartes et réserves de chacun. Les réserves sont écrites en entier : celles
+ * par défaut dépendent des réglages de chacun.
+ */
+export function sideView(link: SharedTradeLink, side: 0 | 1): View {
+  const other = side === 0 ? 1 : 0;
+  return {
+    user: link.players[side],
     ruleSet: null,
     settings: null,
     tab: 'trade',
     trade: {
-      partner: me,
+      partner: link.players[other],
       keep: {
-        me: trade.keep.other ?? DEFAULT_TRADE_KEEP,
-        other: trade.keep.me ?? myTradeKeep(settings),
+        me: link.keep[side] ?? DEFAULT_TRADE_KEEP,
+        other: link.keep[other] ?? DEFAULT_TRADE_KEEP,
       },
-      picks: { receive: trade.picks.give, give: trade.picks.receive },
+      picks: { receive: link.gives[other], give: link.gives[side] },
     },
   };
 }
+
+/** Le même échange vu par l'autre joueur, avec ses réglages à lui. */
+export const partnerView = (me: string, trade: TradeLink, settings: Settings): View =>
+  sideView(sharedFromTrade(me, trade, settings), 1);

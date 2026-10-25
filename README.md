@@ -272,6 +272,11 @@ l'API (voir [API](#api)), et seuls ceux qui s'écartent du préréglage de la st
 - **Échange.** `with`, la réserve de chacun (`keep` et `otherKeep`, comme pour l'API) et les cartes
   choisies : `take` pour celles que tu reçois, `give` pour celles que tu donnes, avec leur numéro,
   `d` pour une dorée, `c` pour une chroma et `x` pour le nombre d'exemplaires (`take=2010c,1001cx2`).
+- **Page d'un échange.** `trade` donne les deux joueurs, `a` et `b` les cartes que cède chacun,
+  `ka` et `kb` leur réserve si elle n'est pas celle par défaut
+  (`/?trade=alice,bob&a=2014d&b=2010c,1001cx2`). Les joueurs sont rangés par ordre alphabétique :
+  le lien est le même, quel que soit celui qui le partage (voir
+  [Page d'un échange](#page-dun-échange)).
 - **Discord.** Le lien « Voir le détail » d'une notification porte les options du serveur
   (`KEEP_EXTRA`, `SKIP_ACTIONS`, `HORIZON`…) : il ouvre exactement le plan envoyé.
 
@@ -309,7 +314,27 @@ Le reste de ton surplus, dont l'autre n'a pas l'usage (il en a déjà tout ce qu
 « Tes autres cartes en trop » : à donner quand même si tu veux, jamais ajouté d'office.
 
 « Lien pour … » copie le lien qui ouvre le même échange du côté de l'autre joueur : sa réserve, et
-les cartes de la proposition dans l'autre sens. Le message à lui envoyer se termine par ce lien.
+les cartes de la proposition dans l'autre sens. « Page de l'échange » ouvre la page qui l'explique
+aux deux joueurs à égalité (ci-dessous) : le message à envoyer à l'autre joueur se termine par son
+lien.
+
+### Page d'un échange
+
+La page d'un échange le montre des deux côtés à la fois, sans préférer aucun des joueurs : les
+mêmes cadres, les mêmes couleurs et les mêmes commandes pour chacun. Pour chaque carte :
+
+- **pour celui qui la reçoit**, ce qu'elle lui apporte : elle lui manque, un niveau de
+  constellation, un composant de sa fusion (nommée), une normale à enchanter pour sa dorée, ou rien
+  (il a déjà tout ce qui lui sert), avec ses points de collection ;
+- **pour celui qui la cède**, ce qu'elle lui coûte : rien pour un exemplaire en trop, sinon ce pour
+  quoi il la gardait (doublon de constellation, normale à enchanter, composant de fusion, ou son
+  dernier exemplaire), et les points qu'il perd.
+
+Chaque joueur a son bilan : les points gagnés avec les cartes reçues, ceux perdus avec les cartes
+cédées. Les cartes sont rangées par rareté et brillance, pour vérifier qu'il y en a autant des deux
+côtés. La page dit si le jeu accepte l'échange, sans jamais ajouter de carte pour l'équilibrer, et
+signale les cartes du lien que l'un des joueurs n'a plus. Elle donne la commande `/échange` de
+chacun, s'il lance l'échange, et un lien pour l'ouvrir du côté de l'un ou de l'autre.
 
 Quand l'échange respecte les règles, la commande est prête à copier :
 `/échange joueur:@maxpotte cartes-données:2225*3 cartes-prises:2012 + 2031 + 2032`. Sinon, la

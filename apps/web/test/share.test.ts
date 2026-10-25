@@ -9,6 +9,11 @@ import {
   picksFromLink,
   picksToLink,
   readLink,
+  readSharedTrade,
+  sharedFromTrade,
+  sharedTradeQuery,
+  sideView,
+  type SharedTradeLink,
   type View,
 } from '../src/lib/share';
 
@@ -147,5 +152,59 @@ describe('lien pour l’autre joueur', () => {
     const query = linkQuery(theirs);
     expect(query).not.toContain('strategy');
     expect(readLink(`?${query}`)).toEqual(theirs);
+  });
+});
+
+describe('page d’un échange', () => {
+  const shared: SharedTradeLink = {
+    players: ['bob', 'Alice'],
+    gives: [
+      [{ identifier: 2014, shiny: 1, count: 1 }],
+      [
+        { identifier: 2010, shiny: 2, count: 1 },
+        { identifier: 1001, shiny: 2, count: 2 },
+      ],
+    ],
+    keep: [{ golden: false, goldenFusions: true, constellation: true }, null],
+  };
+
+  it('a le même lien, quel que soit celui qui le partage', () => {
+    const query = sharedTradeQuery(shared);
+    expect(query).toBe('trade=Alice,bob&a=2010c,1001cx2&b=2014d&kb=goldenFusions,constellation');
+    const swapped: SharedTradeLink = {
+      players: ['Alice', 'bob'],
+      gives: [shared.gives[1], shared.gives[0]],
+      keep: [shared.keep[1], shared.keep[0]],
+    };
+    expect(sharedTradeQuery(swapped)).toBe(query);
+    expect(readSharedTrade(`?${query}`)).toEqual(swapped);
+  });
+
+  it('n’existe qu’entre deux joueurs différents', () => {
+    expect(readSharedTrade('?u=alice')).toBeNull();
+    expect(readSharedTrade('?trade=alice')).toBeNull();
+    expect(readSharedTrade('?trade=alice,ALICE')).toBeNull();
+    expect(readSharedTrade('?trade=alice,bob,carol')).toBeNull();
+    expect(readSharedTrade('?trade=alice,bob')).toEqual({
+      players: ['alice', 'bob'],
+      gives: [[], []],
+      keep: [null, null],
+    });
+  });
+
+  it('reprend l’échange en cours, et l’ouvre du côté de chacun', () => {
+    const trade = view.trade!;
+    const fromMe = sharedFromTrade('alice', trade, custom);
+    expect(fromMe).toEqual({
+      players: ['alice', 'bob'],
+      gives: [trade.picks.give, trade.picks.receive],
+      keep: [trade.keep.me, null],
+    });
+    expect(sideView(fromMe, 0)).toMatchObject({
+      user: 'alice',
+      settings: null,
+      trade: { partner: 'bob', picks: trade.picks, keep: { me: trade.keep.me } },
+    });
+    expect(sideView(fromMe, 1)).toEqual(partnerView('alice', trade, custom));
   });
 });

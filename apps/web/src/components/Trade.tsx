@@ -37,6 +37,7 @@ import {
   Minus,
   Plus,
   RefreshCw,
+  Scale,
   Search,
   Sparkles,
   SquareTerminal,
@@ -52,10 +53,13 @@ import {
   cardsToLink,
   linkUrl,
   myTradeKeep,
-  partnerView,
   picksFromLink,
   picksToLink,
   sameKeep,
+  sharedFromTrade,
+  sharedTradeUrl,
+  sideView,
+  tradeCards,
   type TradeLink,
 } from '../lib/share';
 import { load, save } from '../lib/storage';
@@ -161,9 +165,6 @@ interface Props {
   onChange: (trade: TradeLink | null) => void;
 }
 
-/** Toutes les cartes qu'un joueur peut céder, gardées et sans usage pour l'autre comprises. */
-const cardsOf = (side: TradeSide) => [...side.gives, ...side.kept, ...side.extra];
-
 /** Échanges : ce que deux joueurs peuvent se donner, et une proposition équilibrée. */
 export function Trade({ me, ruleSet, settings, initial, onChange }: Props) {
   const [partner, setPartner] = useState(initial?.partner ?? '');
@@ -202,8 +203,8 @@ export function Trade({ me, ruleSet, settings, initial, onChange }: Props) {
         const linked = linkedPicks.current;
         if (linked) {
           linkedPicks.current = null;
-          setReceive(picksFromLink(cardsOf(result.other), linked.receive));
-          setGive(picksFromLink(cardsOf(result.me), linked.give));
+          setReceive(picksFromLink(tradeCards(result.other), linked.receive));
+          setGive(picksFromLink(tradeCards(result.me), linked.give));
         }
         setRecent((r) => {
           const name = result.other.player.name;
@@ -286,13 +287,28 @@ export function Trade({ me, ruleSet, settings, initial, onChange }: Props) {
         linkedPicks.current ??
         (trade
           ? {
-              receive: picksToLink(cardsOf(trade.other), receive),
-              give: picksToLink(cardsOf(trade.me), give),
+              receive: picksToLink(tradeCards(trade.other), receive),
+              give: picksToLink(tradeCards(trade.me), give),
             }
           : { receive: [], give: [] }),
     };
   }, [partner, keepMe, keepOther, settings, trade, receive, give]);
   useEffect(() => onChange(link), [link, onChange]);
+
+  // La proposition à partager : toutes ses cartes, celles ajoutées pour l'équilibrer comprises,
+  // pour que chacun voie exactement l'échange proposé.
+  const shared =
+    link && trade && proposal
+      ? sharedFromTrade(
+          trade.me.player.name,
+          {
+            ...link,
+            partner: trade.other.player.name,
+            picks: { receive: cardsToLink(proposal.receive), give: cardsToLink(proposal.give) },
+          },
+          settings,
+        )
+      : null;
 
   const query = fold(filter.trim());
   const visible = (c: TradeCard) =>
@@ -424,25 +440,7 @@ export function Trade({ me, ruleSet, settings, initial, onChange }: Props) {
         <Proposal
           trade={trade}
           proposal={proposal}
-          partnerLink={
-            // Toutes les cartes de la proposition, celles ajoutées pour l'équilibrer comprises :
-            // l'autre joueur voit exactement l'échange proposé.
-            link &&
-            linkUrl(
-              partnerView(
-                trade.me.player.name,
-                {
-                  ...link,
-                  partner: trade.other.player.name,
-                  picks: {
-                    receive: cardsToLink(proposal.receive),
-                    give: cardsToLink(proposal.give),
-                  },
-                },
-                settings,
-              ),
-            )
-          }
+          links={shared && { page: sharedTradeUrl(shared), partner: linkUrl(sideView(shared, 1)) }}
           picks={{ receive, give }}
           onAsk={add(setReceive)}
           onOffer={add(setGive)}
@@ -1079,7 +1077,7 @@ function TradeTile({
 function Proposal({
   trade,
   proposal,
-  partnerLink,
+  links,
   picks,
   onAsk,
   onOffer,
@@ -1088,8 +1086,11 @@ function Proposal({
 }: {
   trade: TradeResult;
   proposal: TradeProposal;
-  /** Lien qui ouvre cet échange du côté de l'autre joueur. */
-  partnerLink: string | null;
+  /**
+   * Liens de l'échange : sa page, qui l'explique aux deux joueurs à égalité, et l'échange ouvert du
+   * côté de l'autre joueur.
+   */
+  links: { page: string; partner: string } | null;
   picks: { receive: TradePicks; give: TradePicks };
   /** Ajoute une carte de l'autre joueur à l'échange. */
   onAsk: (card: TradeCard) => void;
@@ -1104,7 +1105,7 @@ function Proposal({
 }) {
   const other = trade.other.player;
   const empty = proposal.receive.length + proposal.give.length === 0;
-  const message = tradeMessage(other.displayName, proposal, partnerLink ?? undefined);
+  const message = tradeMessage(other.displayName, proposal, links?.page);
   const issues = tradeIssues(proposal);
   const command = tradeCommand(other.name, proposal);
   const alternatives = tradeAlternatives(trade, proposal).filter(
@@ -1200,8 +1201,20 @@ function Proposal({
           </p>
           <div className="flex flex-wrap gap-2">
             <CopyButton text={message} label="Copier le message" />
-            {partnerLink && (
-              <CopyButton text={partnerLink} label={`Lien pour ${other.displayName}`} />
+            {links && (
+              <>
+                <a
+                  href={links.page}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-ghost px-2 py-1.5 whitespace-nowrap"
+                  title="Ce que chaque carte vaut pour chacun de vous deux, à égalité"
+                >
+                  <Scale className="size-4" />
+                  Page de l'échange
+                </a>
+                <CopyButton text={links.partner} label={`Lien pour ${other.displayName}`} />
+              </>
             )}
             {proposal.give.length > 0 && (
               <CopyButton text={tradeCardList(proposal.give)} label="Mes cartes" />
@@ -1391,7 +1404,7 @@ function CopiesStepper({
   );
 }
 
-function PlayerAvatar({ src, name }: { src: string | null; name: string }) {
+export function PlayerAvatar({ src, name }: { src: string | null; name: string }) {
   const [failed, setFailed] = useState(false);
   if (src && !failed) {
     return (

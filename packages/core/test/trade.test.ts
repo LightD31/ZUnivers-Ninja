@@ -240,7 +240,10 @@ function tc(identifier: number, shiny: Shiny = 0, wanted = false): TradeCard {
     points: 1,
     need: 'missing',
     gains: [1],
+    uses: ['missing'],
     spare: 1,
+    held: [{ kind: 'last', copies: 1, points: 1 }],
+    fusions: { receiver: [], giver: [] },
     available: 1,
     wanted,
     offered: false,
@@ -252,6 +255,7 @@ const worth = (card: TradeCard, ...gains: number[]): TradeCard => ({
   ...card,
   points: gains[0]!,
   gains,
+  uses: gains.map((_, i) => (i === 0 ? 'missing' : 'constellation')),
   spare: gains.length,
   available: gains.length,
 });

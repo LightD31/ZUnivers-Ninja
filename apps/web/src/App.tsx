@@ -19,12 +19,20 @@ import { PlanList } from './components/PlanList';
 import { StrategyPicker } from './components/StrategyPicker';
 import { SearchForm } from './components/SearchForm';
 import { SettingsDrawer } from './components/SettingsDrawer';
+import { SharedTrade } from './components/SharedTrade';
 import { Summary } from './components/Summary';
 import { Trade } from './components/Trade';
 import { fetchPlan, PlanError, STANDALONE } from './lib/api';
 import { fmt, fmt1, formatTime, signed } from './lib/format';
 import { loadSettings, sameSettings, saveSettings, type Settings } from './lib/settings';
-import { linkUrl, readLink, type Tab, type TradeLink } from './lib/share';
+import {
+  linkUrl,
+  readLink,
+  readSharedTrade,
+  sharedTradeUrl,
+  type Tab,
+  type TradeLink,
+} from './lib/share';
 import { load, save } from './lib/storage';
 
 type Status =
@@ -55,6 +63,8 @@ export function App() {
   // Échange du lien, repris une fois par l'onglet Échanges, puis celui en cours.
   const linkedTrade = useRef(initial.current.trade);
   const [trade, setTrade] = useState<TradeLink | null>(initial.current.trade);
+  // Page d'un échange (`?trade=`), vue des deux côtés à la fois.
+  const [shared, setShared] = useState(() => readSharedTrade(location.search));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [recent, setRecent] = useState<string[]>(() => load(RECENT_KEY, []));
   const [tracked, setTracked] = useState<string[]>([]);
@@ -121,6 +131,7 @@ export function App() {
   };
 
   const search = (name: string) => {
+    setShared(null);
     setUser(name);
     setTab('plan');
     setTradeOpened(false);
@@ -131,6 +142,7 @@ export function App() {
 
   const goHome = () => {
     request.current++;
+    setShared(null);
     setUser('');
     setStatus({ kind: 'idle' });
     setTradeOpened(false);
@@ -148,13 +160,15 @@ export function App() {
   const shownTab: Tab = tab === 'trade' && !trades ? 'plan' : tab;
 
   // L'adresse de la page la reproduit exactement : à copier, ou à partager telle quelle.
-  const link = linkUrl({
-    user,
-    ruleSet: settings.ruleSet,
-    settings: user ? settings : null,
-    tab: shownTab,
-    trade: trades ? trade : null,
-  });
+  const link = shared
+    ? sharedTradeUrl(shared)
+    : linkUrl({
+        user,
+        ruleSet: settings.ruleSet,
+        settings: user ? settings : null,
+        tab: shownTab,
+        trade: trades ? trade : null,
+      });
   useEffect(() => {
     if (link !== location.href) history.replaceState(null, '', link);
   }, [link]);
@@ -164,7 +178,9 @@ export function App() {
       <Header onOpenSettings={() => setSettingsOpen(true)} onHome={goHome} />
 
       <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-9">
-        {!user ? (
+        {shared ? (
+          <SharedTrade link={shared} />
+        ) : !user ? (
           <Landing
             onSearch={search}
             suggestions={suggestions}
