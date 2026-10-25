@@ -240,7 +240,10 @@ function tc(identifier: number, shiny: Shiny = 0, wanted = false): TradeCard {
     points: 1,
     need: 'missing',
     gains: [1],
+    uses: ['missing'],
     spare: 1,
+    held: [{ kind: 'last', copies: 1, points: 1 }],
+    fusions: { receiver: [], giver: [] },
     available: 1,
     wanted,
     offered: false,
@@ -252,6 +255,7 @@ const worth = (card: TradeCard, ...gains: number[]): TradeCard => ({
   ...card,
   points: gains[0]!,
   gains,
+  uses: gains.map((_, i) => (i === 0 ? 'missing' : 'constellation')),
   spare: gains.length,
   available: gains.length,
 });
@@ -445,6 +449,12 @@ describe('proposition d’échange', () => {
     expect(tradeMessage('bob', both)).toBe(
       'Salut bob ! Je te propose un échange : 2× 2225 Carte 2225 contre 2× 2005 Carte 2005. Ça te va ?',
     );
+    // Le lien lui ouvre l'échange de son côté ; rien à envoyer sans carte choisie.
+    expect(tradeMessage('bob', p, 'https://ninja.example/?u=bob')).toBe(
+      "Salut bob ! Je peux te donner 1001 Carte 1001, ça t'intéresse ? Le détail : https://ninja.example/?u=bob",
+    );
+    const none = proposeTrade(trade([tc(1001)], []), { receive: {}, give: {} });
+    expect(tradeMessage('bob', none, 'https://ninja.example/')).toBe('');
     expect(tradeCardList([tc(1001), tc(2001, 1), { ...tc(3001, 2), count: 2 }])).toBe(
       '1001 + 2001+ + 3001**2',
     );

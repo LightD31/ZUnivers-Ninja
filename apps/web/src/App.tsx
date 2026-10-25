@@ -1,24 +1,38 @@
+import type { PlanResult } from '@zuninja/core';
 import {
-  DEFAULT_STRATEGY,
-  isStrategy,
-  type PlanResult,
-  type RuleSet,
-  type StrategyId,
-} from '@zuninja/core';
-import { CircleAlert, Clock, Crown, RefreshCw, Sparkles, Swords, Target, Zap } from 'lucide-react';
+  CircleAlert,
+  Clock,
+  Crown,
+  Link2,
+  RefreshCw,
+  Sparkles,
+  Swords,
+  Target,
+  Zap,
+} from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Achievements } from './components/Achievements';
 import { Collection } from './components/Collection';
+import { CopyButton } from './components/CopyButton';
 import { Header, Logo } from './components/Header';
 import { PlanList } from './components/PlanList';
 import { StrategyPicker } from './components/StrategyPicker';
 import { SearchForm } from './components/SearchForm';
 import { SettingsDrawer } from './components/SettingsDrawer';
+import { SharedTrade } from './components/SharedTrade';
 import { Summary } from './components/Summary';
 import { Trade } from './components/Trade';
 import { fetchPlan, PlanError, STANDALONE } from './lib/api';
 import { fmt, fmt1, formatTime, signed } from './lib/format';
-import { loadSettings, saveSettings, withStrategy, type Settings } from './lib/settings';
+import { loadSettings, sameSettings, saveSettings, type Settings } from './lib/settings';
+import {
+  linkUrl,
+  readLink,
+  readSharedTrade,
+  sharedTradeUrl,
+  type Tab,
+  type TradeLink,
+} from './lib/share';
 import { load, save } from './lib/storage';
 
 type Status =
@@ -26,53 +40,31 @@ type Status =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
   | { kind: 'done'; plan: PlanResult };
-type Tab = 'plan' | 'collection' | 'achievements' | 'trade';
 
 const RECENT_KEY = 'zuninja:recent';
 
-function readUrl(): {
-  user: string;
-  ruleSet: RuleSet | null;
-  strategy: StrategyId | null;
-  /** Joueur avec qui échanger (`?with=`) : ouvre l'onglet Échanges. */
-  partner: string;
-} {
-  const params = new URLSearchParams(location.search);
-  const mode = params.get('mode')?.toUpperCase();
-  const strategy = params.get('strategy');
-  return {
-    user: params.get('u')?.trim() ?? '',
-    ruleSet: mode === 'HARDCORE' || mode === 'NORMAL' ? mode : null,
-    strategy: isStrategy(strategy) ? strategy : null,
-    partner: params.get('with')?.trim() ?? '',
-  };
-}
-
-function writeUrl(user: string, s: Settings, partner = '') {
-  const params = new URLSearchParams();
-  if (user) params.set('u', user);
-  if (user && s.ruleSet === 'HARDCORE') params.set('mode', 'hardcore');
-  if (user && s.strategy !== DEFAULT_STRATEGY) params.set('strategy', s.strategy);
-  if (user && partner) params.set('with', partner);
-  const query = params.toString();
-  history.replaceState(null, '', `${location.pathname}${query ? `?${query}` : ''}`);
-}
-
 export function App() {
-  const initial = useRef(readUrl());
+  const initial = useRef(readLink(location.search));
+  // Réglages du visiteur, tels qu'enregistrés : ceux d'un lien partagé ne les remplacent pas.
+  const saved = useRef(loadSettings());
   const [settings, setSettings] = useState<Settings>(() => {
-    // Un lien partagé (?mode=, ?strategy=) l'emporte sur les réglages enregistrés.
-    let s = loadSettings();
-    if (initial.current.ruleSet) s = { ...s, ruleSet: initial.current.ruleSet };
-    if (initial.current.strategy) s = withStrategy(s, initial.current.strategy);
-    return s;
+    const { ruleSet, settings: linked } = initial.current;
+    return linked ?? (ruleSet ? { ...saved.current, ruleSet } : saved.current);
   });
+  // Réglages d'un lien partagé : appliqués à la page, enregistrés seulement si le visiteur y touche.
+  const [fromLink, setFromLink] = useState(initial.current.settings !== null);
   const [user, setUser] = useState(initial.current.user);
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
-  const [tab, setTab] = useState<Tab>(initial.current.partner ? 'trade' : 'plan');
+  const [tab, setTab] = useState<Tab>(initial.current.tab);
   // Onglet Échanges ouvert une fois : gardé monté (pseudo, choix des cartes) d'un onglet à l'autre.
-  const [tradeOpened, setTradeOpened] = useState(!!initial.current.partner);
-  const partner = useRef(initial.current.partner);
+  const [tradeOpened, setTradeOpened] = useState(
+    !!initial.current.trade || initial.current.tab === 'trade',
+  );
+  // Échange du lien, repris une fois par l'onglet Échanges, puis celui en cours.
+  const linkedTrade = useRef(initial.current.trade);
+  const [trade, setTrade] = useState<TradeLink | null>(initial.current.trade);
+  // Page d'un échange (`?trade=`), vue des deux côtés à la fois.
+  const [shared, setShared] = useState(() => readSharedTrade(location.search));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [recent, setRecent] = useState<string[]>(() => load(RECENT_KEY, []));
   const [tracked, setTracked] = useState<string[]>([]);
@@ -81,7 +73,6 @@ export function App() {
   const run = useCallback(async (name: string, s: Settings, fresh = false) => {
     const id = ++request.current;
     setStatus({ kind: 'loading' });
-    writeUrl(name, s, partner.current);
     try {
       const plan = await fetchPlan(name, s, fresh);
       if (id !== request.current) return;
@@ -119,7 +110,10 @@ export function App() {
   // Réglages modifiés : on les garde et on recalcule (avec un léger délai pour les curseurs).
   const firstSettings = useRef(true);
   useEffect(() => {
-    saveSettings(settings);
+    if (!fromLink) {
+      saveSettings(settings);
+      saved.current = settings;
+    }
     if (firstSettings.current) {
       firstSettings.current = false;
       return;
@@ -130,21 +124,30 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
 
+  /** Réglages changés par le visiteur : ce sont les siens, enregistrés. */
+  const change = (s: Settings) => {
+    setFromLink(false);
+    setSettings(s);
+  };
+
   const search = (name: string) => {
+    setShared(null);
     setUser(name);
     setTab('plan');
     setTradeOpened(false);
-    partner.current = '';
+    linkedTrade.current = null;
+    setTrade(null);
     void run(name, settings);
   };
 
   const goHome = () => {
     request.current++;
+    setShared(null);
     setUser('');
     setStatus({ kind: 'idle' });
     setTradeOpened(false);
-    partner.current = '';
-    writeUrl('', settings);
+    linkedTrade.current = null;
+    setTrade(null);
     document.title = 'ZUnivers Ninja';
   };
 
@@ -156,17 +159,33 @@ export function App() {
   const trades = settings.ruleSet !== 'HARDCORE';
   const shownTab: Tab = tab === 'trade' && !trades ? 'plan' : tab;
 
+  // L'adresse de la page la reproduit exactement : à copier, ou à partager telle quelle.
+  const link = shared
+    ? sharedTradeUrl(shared)
+    : linkUrl({
+        user,
+        ruleSet: settings.ruleSet,
+        settings: user ? settings : null,
+        tab: shownTab,
+        trade: trades ? trade : null,
+      });
+  useEffect(() => {
+    if (link !== location.href) history.replaceState(null, '', link);
+  }, [link]);
+
   return (
     <div className="flex min-h-dvh flex-col">
       <Header onOpenSettings={() => setSettingsOpen(true)} onHome={goHome} />
 
       <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-9">
-        {!user ? (
+        {shared ? (
+          <SharedTrade link={shared} />
+        ) : !user ? (
           <Landing
             onSearch={search}
             suggestions={suggestions}
             settings={settings}
-            onSettings={setSettings}
+            onSettings={change}
           />
         ) : (
           <div className="space-y-5">
@@ -178,7 +197,22 @@ export function App() {
                 onSearch={search}
               />
             </div>
-            <StrategyPicker settings={settings} onChange={setSettings} />
+            {fromLink && !sameSettings(settings, saved.current) && (
+              <p className="surface flex flex-wrap items-center gap-x-3 gap-y-2 border-l-2 border-zu-500 px-3 py-2 text-sm">
+                <Link2 className="size-4 shrink-0 text-zu-400" />
+                <span className="min-w-0 flex-1">
+                  Le plan est calculé avec les réglages du lien partagé. Les tiens n'ont pas changé.
+                </span>
+                <button
+                  type="button"
+                  className="btn-ghost h-8 px-2.5"
+                  onClick={() => change({ ...saved.current, ruleSet: settings.ruleSet })}
+                >
+                  Reprendre mes réglages
+                </button>
+              </p>
+            )}
+            <StrategyPicker settings={settings} onChange={change} />
 
             {status.kind === 'loading' && <LoadingState />}
             {status.kind === 'error' && (
@@ -189,6 +223,7 @@ export function App() {
                 <PlayerBanner
                   plan={plan}
                   loading={false}
+                  link={link}
                   onRefresh={() => void run(user, settings, true)}
                 />
                 {plan.stats.timedOut && (
@@ -262,11 +297,8 @@ export function App() {
                   me={user}
                   ruleSet={settings.ruleSet}
                   settings={settings}
-                  initialPartner={partner.current}
-                  onPartner={(name) => {
-                    partner.current = name;
-                    writeUrl(user, settings, name);
-                  }}
+                  initial={linkedTrade.current}
+                  onChange={setTrade}
                 />
               </div>
             )}
@@ -278,7 +310,7 @@ export function App() {
       <SettingsDrawer
         open={settingsOpen}
         settings={settings}
-        onChange={setSettings}
+        onChange={change}
         onClose={() => setSettingsOpen(false)}
       />
     </div>
@@ -387,10 +419,13 @@ function PlayerBanner({
   plan,
   onRefresh,
   loading,
+  link,
 }: {
   plan: PlanResult;
   onRefresh: () => void;
   loading: boolean;
+  /** Lien qui reproduit la page, réglages, onglet et échange compris. */
+  link: string;
 }) {
   const tiles = [
     { label: 'Points gagnés', value: signed(plan.gain.points), accent: plan.gain.points > 0 },
@@ -430,6 +465,7 @@ function PlayerBanner({
         <div className="flex items-center gap-2 text-xs text-white/60">
           <Clock className="size-3.5" />
           {formatTime(plan.generatedAt)}
+          <CopyButton text={link} label="Copier le lien" className="h-9" />
           <button
             type="button"
             className="btn-ghost px-2.5"

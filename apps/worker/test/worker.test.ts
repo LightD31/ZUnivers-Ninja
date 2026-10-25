@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import {
   compareForTrade,
   createPlan,
+  parsePlannerQuery,
+  parseTradeKeep,
   ZuNotFoundError,
   type PlanResult,
   type TradePartners,
@@ -18,7 +20,7 @@ import { Metrics, PlayerTracker } from '../src/metrics';
 import { buildDiscordMessage, sendDiscord } from '../src/notifiers/discord';
 import { PlannerBusyError, PlannerTimeoutError } from '../src/pool';
 import { runTick } from '../src/scheduler';
-import { createApp, parsePlannerQuery, parseTradeKeep, parseTradeNames } from '../src/server';
+import { createApp, parseTradeNames } from '../src/server';
 import { PlayerNotFoundError, TradeUnavailableError, type PlanService } from '../src/service';
 import { StateStore } from '../src/store';
 
@@ -89,7 +91,7 @@ describe('message Discord', () => {
     const embed = (message.payload.embeds as Record<string, unknown>[])[0]!;
     expect(message.attachment).toBeNull();
     expect(embed.description).toBe('```\n/journa\n/im\n```');
-    expect(embed.url).toBe('https://ninja.example/?u=alexpresso');
+    expect(embed.url).toBe('https://ninja.example/?u=alexpresso&strategy=equilibre');
     expect((embed.footer as { text: string }).text).toMatch(/^Stratégie : Équilibré/);
     expect(message.payload.allowed_mentions).toEqual({ parse: [], users: [] });
   });
@@ -131,11 +133,35 @@ describe('message Discord', () => {
     expect(embed.description).toMatch(/Pas de saison Hardcore en cours/);
   });
 
-  it('garde la stratégie dans le lien vers l’interface', () => {
-    const prudent: PlanResult = { ...plan, strategy: { id: 'prudent', label: 'Prudent' } };
-    const message = buildDiscordMessage(prudent, { webUrl: 'https://ninja.example' });
-    const embed = (message.payload.embeds as Record<string, unknown>[])[0]!;
-    expect(embed.url).toBe('https://ninja.example/?u=alexpresso&strategy=prudent');
+  it('ouvre exactement le même plan dans l’interface : mode, stratégie et options', () => {
+    const prudent: PlanResult = {
+      ...plan,
+      strategy: { id: 'prudent', label: 'Prudent' },
+      options: { ...plan.options, strategy: 'prudent' },
+    };
+    const link = (p: PlanResult) =>
+      (
+        buildDiscordMessage(p, { webUrl: 'https://ninja.example' }).payload.embeds as {
+          url: string;
+        }[]
+      )[0]!.url;
+    expect(link(prudent)).toBe('https://ninja.example/?u=alexpresso&strategy=prudent');
+    // Options du serveur (KEEP_EXTRA, SKIP_ACTIONS…) et mode Hardcore : le lien les reprend.
+    const server = createPlan({
+      catalog: fixtureCatalog(),
+      player: fixturePlayer(),
+      options: { beamWidth: 1, keepExtra: 1, allow: { recycle: false } },
+      now: NOW,
+    });
+    const url = new URL(link({ ...server, ruleSet: 'HARDCORE' }));
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      u: 'alexpresso',
+      mode: 'hardcore',
+      strategy: 'equilibre',
+      beamWidth: '1',
+      keepExtra: '1',
+      skip: 'recycle',
+    });
   });
 
   it('joint un fichier quand le plan est trop long', () => {
@@ -343,7 +369,7 @@ describe('API HTTP', () => {
     expect(body.empty).toBe(false);
     expect(body.commandCount).toBe(plan.commands.length);
     expect(body.content).toBe(`Conseils pour <@${plan.player.discordId}>`);
-    expect(body.embeds[0].url).toBe('https://ninja.example/?u=alexpresso');
+    expect(body.embeds[0].url).toBe('https://ninja.example/?u=alexpresso&strategy=equilibre');
     expect(body.player.discordId).toBe(plan.player.discordId);
   });
 

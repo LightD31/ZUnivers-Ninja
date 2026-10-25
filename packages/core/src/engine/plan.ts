@@ -25,9 +25,11 @@ import {
   craftCost,
   enchantCost,
   forgeCurrency,
+  queryOptions,
   resolveOptions,
   type Context,
   type PlannerOptionsInput,
+  type QueryOptions,
 } from './context';
 import { horizonReserves, withHorizon, type HorizonReserve } from './horizon';
 import { nodeSteps, regroup, search, withDuplicateValue, type Step } from './planner';
@@ -151,6 +153,8 @@ export interface PlanResult {
   closed: boolean;
   /** Stratégie utilisée pour calculer le plan. */
   strategy: { id: StrategyId; label: string };
+  /** Options du plan qu'un lien vers l'interface reproduit (voir `plannerQuery`). */
+  options: QueryOptions;
   player: {
     name: string;
     discordId: string | null;
@@ -815,6 +819,7 @@ export function createPlan({
     ruleSet: catalog.ruleSet,
     closed,
     strategy: { id: ctx.options.strategy, label: STRATEGIES[ctx.options.strategy].label },
+    options: queryOptions(ctx.options),
     player: {
       name: player.name,
       discordId: player.discordId,

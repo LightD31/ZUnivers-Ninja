@@ -52,6 +52,8 @@ La v2 est une réécriture complète : TypeScript, aucune base de données, une 
   Vortex (le prochain est annoncé par le jeu, les suivants sont prévus d'après ton historique) et des
   essais d'ascension encore à venir. Une monnaie qui rapportera plus plus tard est gardée, et les conseils
   disent pour quoi (voir [Anticipation](#anticipation-option-horizon)).
+- **Liens partagés** : l'adresse de la page la reproduit exactement (réglages, onglet, échange en
+  cours et cartes choisies), et « Copier le lien » la copie (voir [Liens partagés](#liens-partagés)).
 - **Notifications Discord** : le plan n'est envoyé que s'il a changé depuis le dernier envoi. Un
   webhook JSON générique est aussi disponible pour tes propres intégrations.
 - **Robustesse** :
@@ -121,6 +123,10 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
     `SKIP_ACTIONS` : `skip=` les autorise toutes ;
   - `wBalance`, `wLoreDust`, `wLoreFragment` et `wUpgradeDust` ;
   - `fresh=1` pour ignorer le cache.
+
+  Le champ `options` du plan donne les options avec lesquelles il a été calculé (stratégie,
+  réglages ci-dessus et ceux du serveur).
+
 - `GET /api/trade/:pseudo/:autre` renvoie ce que les deux joueurs peuvent s'échanger
   (voir [Échanges](#échanges)). Paramètres facultatifs : `ruleset`, `fresh=1`, et `keep` /
   `otherKeep`, les exemplaires gardés par chacun (`golden`, `goldenFusions`, `constellation`,
@@ -247,10 +253,38 @@ Les réglages explicites l'emportent toujours sur la stratégie : avec
 `KEEP_EXTRA`, `KEEP_FOR_GOLDEN`, `KEEP_FOR_GOLDEN_FUSIONS`, `HORIZON` (et ses réglages), `SKIP_ACTIONS`, `BEAM_WIDTH`
 et `BRANCHING` s'appliquent aussi par-dessus la stratégie.
 
+### Liens partagés
+
+L'adresse de la page la reproduit exactement : à copier depuis la barre d'adresse ou avec « Copier
+le lien », à côté d'« Actualiser ». Les réglages du planificateur ont les noms des paramètres de
+l'API (voir [API](#api)), et seuls ceux qui s'écartent du préréglage de la stratégie sont écrits :
+
+```
+/?u=alexpresso&strategy=vortex&skip=recycle&keepExtra=1&tab=collection
+```
+
+- **Réglages.** Un lien qui porte `strategy` donne tous les réglages : ceux qu'il ne cite pas valent
+  le préréglage de la stratégie. Ils ne s'appliquent qu'à la page : tes réglages enregistrés ne
+  changent pas, et « Reprendre mes réglages » les remet. Si tu modifies un réglage, ce sont les tiens.
+  Un lien sans `strategy` (les anciens liens `/?u=pseudo`) garde tes réglages.
+- **Onglet.** `tab` (`collection`, `achievements`, `trade` ou `plan`) ; avec `with`, l'onglet
+  Échanges est ouvert d'office.
+- **Échange.** `with`, la réserve de chacun (`keep` et `otherKeep`, comme pour l'API) et les cartes
+  choisies : `take` pour celles que tu reçois, `give` pour celles que tu donnes, avec leur numéro,
+  `d` pour une dorée, `c` pour une chroma et `x` pour le nombre d'exemplaires (`take=2010c,1001cx2`).
+- **Page d'un échange.** `trade` donne les deux joueurs, `a` et `b` les cartes que cède chacun,
+  `ka` et `kb` leur réserve si elle n'est pas celle par défaut
+  (`/?trade=alice,bob&a=2014d&b=2010c,1001cx2`). Les joueurs sont rangés par ordre alphabétique :
+  le lien est le même, quel que soit celui qui le partage (voir
+  [Page d'un échange](#page-dun-échange)).
+- **Discord.** Le lien « Voir le détail » d'une notification porte les options du serveur
+  (`KEEP_EXTRA`, `SKIP_ACTIONS`, `HORIZON`…) : il ouvre exactement le plan envoyé.
+
 ## Échanges
 
 L'onglet « Échanges » compare ta collection avec celle d'un autre joueur (lien partageable :
-`/?u=pseudo&with=autre`). Pour chacun, il liste les cartes qu'il peut donner à l'autre :
+`/?u=pseudo&with=autre`, avec les cartes choisies, voir [Liens partagés](#liens-partagés)). Pour
+chacun, il liste les cartes qu'il peut donner à l'autre :
 
 - seules les cartes échangeables du jeu (`isTradable`) comptent, et seulement celles dont l'autre a
   l'usage : une carte qui lui manque (une carte Constellation seule ne vaut pas possession), ou des
@@ -278,6 +312,29 @@ peux réclamer en échange. Une carte que tu gardes (dernier exemplaire, fusion,
 constellation) reste visible dans « Cartes que tu gardes », pour la céder quand même si tu le veux.
 Le reste de ton surplus, dont l'autre n'a pas l'usage (il en a déjà tout ce qui lui sert), est dans
 « Tes autres cartes en trop » : à donner quand même si tu veux, jamais ajouté d'office.
+
+« Lien pour … » copie le lien qui ouvre le même échange du côté de l'autre joueur : sa réserve, et
+les cartes de la proposition dans l'autre sens. « Page de l'échange » ouvre la page qui l'explique
+aux deux joueurs à égalité (ci-dessous) : le message à envoyer à l'autre joueur se termine par son
+lien.
+
+### Page d'un échange
+
+La page d'un échange le montre des deux côtés à la fois, sans préférer aucun des joueurs : les
+mêmes cadres, les mêmes couleurs et les mêmes commandes pour chacun. Pour chaque carte :
+
+- **pour celui qui la reçoit**, ce qu'elle lui apporte : elle lui manque, un niveau de
+  constellation, un composant de sa fusion (nommée), une normale à enchanter pour sa dorée, ou rien
+  (il a déjà tout ce qui lui sert), avec ses points de collection ;
+- **pour celui qui la cède**, ce qu'elle lui coûte : rien pour un exemplaire en trop, sinon ce pour
+  quoi il la gardait (doublon de constellation, normale à enchanter, composant de fusion, ou son
+  dernier exemplaire), et les points qu'il perd.
+
+Chaque joueur a son bilan : les points gagnés avec les cartes reçues, ceux perdus avec les cartes
+cédées. Les cartes sont rangées par rareté et brillance, pour vérifier qu'il y en a autant des deux
+côtés. La page dit si le jeu accepte l'échange, sans jamais ajouter de carte pour l'équilibrer, et
+signale les cartes du lien que l'un des joueurs n'a plus. Elle donne la commande `/échange` de
+chacun, s'il lance l'échange, et un lien pour l'ouvrir du côté de l'un ou de l'autre.
 
 Quand l'échange respecte les règles, la commande est prête à copier :
 `/échange joueur:@maxpotte cartes-données:2225*3 cartes-prises:2012 + 2031 + 2032`. Sinon, la

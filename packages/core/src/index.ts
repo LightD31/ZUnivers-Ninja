@@ -28,13 +28,16 @@ export {
   OPTIONAL_ACTIONS,
   allowExcept,
   isOptionalAction,
+  queryOptions,
   resolveOptions,
   buildContext,
   type Context,
   type OptionalAction,
   type PlannerOptions,
   type PlannerOptionsInput,
+  type QueryOptions,
 } from './engine/context';
+export { parsePlannerQuery, parseTradeKeep, plannerQuery, tradeKeepQuery } from './engine/query';
 export {
   STRATEGIES,
   STRATEGY_IDS,
@@ -126,6 +129,15 @@ export {
   type TradeSide,
   type TradeWant,
 } from './engine/trade';
+export {
+  cardWorth,
+  explainTrade,
+  type CardWorth,
+  type ExplainedSide,
+  type TradeCost,
+  type TradeExplanation,
+  type WorthPart,
+} from './engine/explain';
 export {
   OWNER_CANDIDATES,
   OWNER_LOOKUPS,
