@@ -3,17 +3,24 @@ import {
   compareForTrade,
   createClient,
   fetchCatalog,
+  fetchItemOwners,
+  fetchMarketListings,
   fetchMarketOffer,
   fetchPlayer,
+  fetchTradePlayer,
+  findTradePartners,
   tradesAvailable,
   ZuNotFoundError,
   type Catalog,
+  type ItemOwner,
+  type MarketListing,
   type MarketOffer,
   type Player,
   type PlanResult,
   type PlannerOptionsInput,
   type RuleSet,
   type TradeKeep,
+  type TradePartners,
   type TradeResult,
   type ZuClient,
 } from '@zuninja/core';
@@ -30,6 +37,19 @@ const PLAN_CACHE_MS = 60_000;
 const PLAYER_CACHE_MS = 60_000;
 /** « Actualiser » ne recharge pas un joueur chargé il y a moins longtemps que ça. */
 const PLAYER_FRESH_MIN_MS = 15_000;
+/**
+ * Collection d'un autre joueur pour un échange : une recherche de partenaires en charge une
+ * trentaine, réutilisées quand on ouvre l'échange avec l'un d'eux ou qu'on relance la recherche.
+ */
+const TRADE_PLAYER_CACHE_MS = 5 * 60_000;
+/** Plus gros possesseurs des cartes et annonces du marché : ils changent lentement. */
+const OWNERS_CACHE_MS = 30 * 60_000;
+const OWNERS_FRESH_MIN_MS = 5 * 60_000;
+/**
+ * Recherches de partenaires en même temps : une centaine d'appels à l'API ZUnivers chacune quand
+ * rien n'est en cache. Au-delà, refus immédiat, comme pour les plans.
+ */
+const PARTNER_SEARCHES_MAX = 2;
 /** Marge laissée au-delà de la limite de recherche avant d'arrêter un thread. */
 const THREAD_TIMEOUT_MARGIN_MS = 30_000;
 
@@ -46,7 +66,7 @@ export class TradeUnavailableError extends Error {
   }
 }
 
-/** Un des deux joueurs d'un échange n'existe pas. */
+/** Un des joueurs d'un échange n'existe pas. */
 export class PlayerNotFoundError extends Error {
   readonly player: string;
 
@@ -76,6 +96,21 @@ export class PlanService {
     ttlMs: PLAYER_CACHE_MS,
     freshMinMs: PLAYER_FRESH_MIN_MS,
   });
+  /** Autres joueurs d'un échange, chargés en deux appels (profil et collection). */
+  private readonly tradePlayers = new ApiCache<Player>({
+    ttlMs: TRADE_PLAYER_CACHE_MS,
+    freshMinMs: PLAYER_FRESH_MIN_MS,
+  });
+  private readonly marketListings = new ApiCache<MarketListing[]>({
+    ttlMs: OWNERS_CACHE_MS,
+    freshMinMs: OWNERS_FRESH_MIN_MS,
+  });
+  private readonly itemOwners = new ApiCache<ItemOwner[]>({
+    ttlMs: OWNERS_CACHE_MS,
+    freshMinMs: OWNERS_FRESH_MIN_MS,
+    maxSize: 500,
+  });
+  private partnerSearches = 0;
   private readonly plans = new Map<string, { value: PlanResult; expires: number }>();
   private readonly flights = new Map<string, Flight>();
   private readonly pool: PlannerPool;
@@ -130,9 +165,35 @@ export class PlanService {
     );
   }
 
+  /** Un joueur d'un échange, ou une `PlayerNotFoundError` qui dit lequel manque. */
+  private found(name: string, player: Promise<Player>): Promise<Player> {
+    return player.catch((error: unknown) => {
+      throw error instanceof ZuNotFoundError ? new PlayerNotFoundError(name) : error;
+    });
+  }
+
+  /** Annonce d'un joueur sur le marché. */
+  private market(name: string, ruleSet: RuleSet, fresh: boolean): Promise<MarketOffer | null> {
+    return this.markets.get(
+      `${ruleSet}|${name.toLowerCase()}`,
+      () => fetchMarketOffer(this.client(ruleSet), name),
+      fresh,
+    );
+  }
+
+  /** L'autre joueur d'un échange : seuls son profil et sa collection servent. */
+  private tradePlayer(name: string, ruleSet: RuleSet, fresh: boolean): Promise<Player> {
+    return this.tradePlayers.get(
+      `${ruleSet}|${name.toLowerCase()}`,
+      () => fetchTradePlayer(this.client(ruleSet), name),
+      fresh,
+    );
+  }
+
   /**
-   * Ce que deux joueurs peuvent s'échanger. Calcul rapide, fait sur place : les données des
-   * joueurs sont celles de leurs plans quand elles viennent d'être chargées.
+   * Ce que deux joueurs peuvent s'échanger. Calcul rapide, fait sur place : les données du joueur
+   * sont celles de son plan quand elles viennent d'être chargées, celles de l'autre celles d'une
+   * recherche de partenaires récente.
    */
   async trade(
     me: string,
@@ -143,21 +204,11 @@ export class PlanService {
   ): Promise<TradeResult> {
     const catalog = await this.catalog(ruleSet);
     if (!tradesAvailable(catalog)) throw new TradeUnavailableError();
-    const player = (name: string) =>
-      this.player(name, ruleSet, fresh).catch((error: unknown) => {
-        throw error instanceof ZuNotFoundError ? new PlayerNotFoundError(name) : error;
-      });
-    const market = (name: string) =>
-      this.markets.get(
-        `${ruleSet}|${name.toLowerCase()}`,
-        () => fetchMarketOffer(this.client(ruleSet), name),
-        fresh,
-      );
     const [mePlayer, otherPlayer, meMarket, otherMarket] = await Promise.all([
-      player(me),
-      player(other),
-      market(me),
-      market(other),
+      this.found(me, this.player(me, ruleSet, fresh)),
+      this.found(other, this.tradePlayer(other, ruleSet, fresh)),
+      this.market(me, ruleSet, fresh),
+      this.market(other, ruleSet, fresh),
     ]);
     return compareForTrade({
       catalog,
@@ -166,6 +217,61 @@ export class PlanService {
       keep,
       market: { me: meMarket, other: otherMarket },
     });
+  }
+
+  /**
+   * Les meilleurs joueurs avec qui échanger : les plus gros possesseurs des cartes que le joueur
+   * cherche, sa corporation, le marché et `names` (ses partenaires récents). Une trentaine de
+   * collections à charger : les appels sont limités et gardés en cache.
+   */
+  async partners(
+    me: string,
+    ruleSet: RuleSet,
+    {
+      names = [],
+      keep = {},
+    }: { names?: string[]; keep?: { me?: Partial<TradeKeep>; other?: Partial<TradeKeep> } } = {},
+    { fresh = false }: { fresh?: boolean } = {},
+  ): Promise<TradePartners> {
+    if (this.partnerSearches >= PARTNER_SEARCHES_MAX) throw new PlannerBusyError();
+    this.partnerSearches++;
+    try {
+      const catalog = await this.catalog(ruleSet);
+      if (!tradesAvailable(catalog)) throw new TradeUnavailableError();
+      const client = this.client(ruleSet);
+      const [mePlayer, meMarket, listings] = await Promise.all([
+        this.found(me, this.player(me, ruleSet, fresh)),
+        this.market(me, ruleSet, fresh),
+        // Le marché ne répond pas : la recherche s'en passe.
+        this.marketListings
+          .get(ruleSet, () => fetchMarketListings(client), fresh)
+          .catch((): MarketListing[] => []),
+      ]);
+      return await findTradePartners({
+        catalog,
+        me: mePlayer,
+        market: meMarket,
+        names,
+        listings,
+        keep,
+        owners: (item) =>
+          this.itemOwners.get(
+            `${ruleSet}|${item.slug}`,
+            () => fetchItemOwners(client, item.slug),
+            fresh,
+          ),
+        load: async (candidate) => {
+          const [player, market] = await Promise.all([
+            this.tradePlayer(candidate.name, ruleSet, fresh),
+            // Sans annonce dans la liste du marché, inutile de la chercher.
+            candidate.listedAt ? this.market(candidate.name, ruleSet, fresh) : null,
+          ]);
+          return { player, market };
+        },
+      });
+    } finally {
+      this.partnerSearches--;
+    }
   }
 
   /**

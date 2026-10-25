@@ -1,5 +1,5 @@
-import type { PlanResult, TradeResult } from '@zuninja/core';
-import { PlanError, type TradeQuery } from './api';
+import type { PlanResult, TradePartners, TradeResult } from '@zuninja/core';
+import { PlanError, type PartnersQuery, type TradeQuery } from './api';
 import { plannerOptions, type Settings } from './settings';
 
 /** Calcul entièrement local : le planificateur tourne dans un Web Worker. */
@@ -38,4 +38,8 @@ export function fetchStandalone(
 
 export function tradeStandalone(query: TradeQuery): Promise<TradeResult> {
   return call({ type: 'trade', ...query, fresh: query.fresh ?? false });
+}
+
+export function partnersStandalone(query: PartnersQuery): Promise<TradePartners> {
+  return call({ type: 'partners', ...query, fresh: query.fresh ?? false });
 }

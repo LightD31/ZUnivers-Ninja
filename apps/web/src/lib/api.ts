@@ -3,6 +3,7 @@ import {
   type PlanResult,
   type RuleSet,
   type TradeKeep,
+  type TradePartners,
   type TradeResult,
 } from '@zuninja/core';
 import type { Settings } from './settings';
@@ -93,4 +94,29 @@ export async function fetchTrade(query: TradeQuery): Promise<TradeResult> {
   if (query.fresh) params.set('fresh', '1');
   const path = [query.me, query.other].map(encodeURIComponent).join('/');
   return getJson<TradeResult>(`./api/trade/${path}?${params}`);
+}
+
+export interface PartnersQuery {
+  me: string;
+  ruleSet: RuleSet;
+  keep: { me: TradeKeep; other: TradeKeep };
+  /** Partenaires à comparer en plus (échanges récents). */
+  names: string[];
+  fresh?: boolean;
+}
+
+/** Les meilleurs joueurs avec qui échanger. */
+export async function fetchPartners(query: PartnersQuery): Promise<TradePartners> {
+  if (STANDALONE) {
+    const { partnersStandalone } = await import('./standalone');
+    return partnersStandalone(query);
+  }
+  const params = new URLSearchParams({
+    ruleset: query.ruleSet,
+    keep: keepParam(query.keep.me),
+    otherKeep: keepParam(query.keep.other),
+    with: query.names.join(','),
+  });
+  if (query.fresh) params.set('fresh', '1');
+  return getJson<TradePartners>(`./api/partners/${encodeURIComponent(query.me)}?${params}`);
 }

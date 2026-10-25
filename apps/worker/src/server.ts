@@ -96,6 +96,17 @@ export function parseTradeKeep(value: string | undefined): Partial<TradeKeep> {
 
 const invalidUser = (user: string) => !user || user.length > 64;
 
+/** Partenaires à comparer en plus, au plus. */
+const TRADE_NAMES_MAX = 10;
+
+/** Partenaires à comparer en plus (`alice,bob`), sans doublon ni pseudo invalide. */
+export function parseTradeNames(value: string | undefined): string[] {
+  const names = new Map<string, string>();
+  for (const name of (value ?? '').split(',').map((n) => n.trim()))
+    if (!invalidUser(name) && !names.has(name.toLowerCase())) names.set(name.toLowerCase(), name);
+  return [...names.values()].slice(0, TRADE_NAMES_MAX);
+}
+
 export function createApp(service: PlanService, store: StateStore | null, options: ServerOptions) {
   const app = new Hono();
   const strategyList = () => ({
@@ -286,10 +297,35 @@ export function createApp(service: PlanService, store: StateStore | null, option
     });
   });
 
-  /**
-   * Ce que deux joueurs peuvent s'échanger. `keep` et `otherKeep` : exemplaires gardés par chacun
-   * (`golden,goldenFusions,constellation`, tous par défaut).
-   */
+  /** Réponse à un échec d'une route d'échange. */
+  function tradeFailure(c: Context, error: unknown, ruleSet: RuleSet, what: string): Response {
+    if (error instanceof PlannerBusyError) {
+      c.header('Retry-After', '10');
+      return c.json(
+        { error: 'Trop de recherches en cours, réessaie dans quelques secondes.' },
+        503,
+      );
+    }
+    if (error instanceof TradeUnavailableError)
+      return c.json({ error: "Pas d'échanges dans ce mode de jeu." }, 400);
+    if (error instanceof PlayerNotFoundError)
+      return c.json(
+        { error: `Joueur « ${error.player} » introuvable sur ZUnivers (${ruleSet}).` },
+        404,
+      );
+    const failure = zuApiFailure(c, error);
+    if (failure) return failure;
+    logger.error(`Erreur inattendue pour ${what}`, error);
+    return c.json({ error: 'Erreur interne.' }, 500);
+  }
+
+  /** Exemplaires gardés par chacun (`golden,goldenFusions,constellation`, tous par défaut). */
+  const tradeKeep = (c: Context) => ({
+    me: parseTradeKeep(c.req.query('keep')),
+    other: parseTradeKeep(c.req.query('otherKeep')),
+  });
+
+  /** Ce que deux joueurs peuvent s'échanger. `keep` et `otherKeep` : exemplaires gardés. */
   app.get('/api/trade/:me/:other', async (c) => {
     const me = c.req.param('me').trim();
     const other = c.req.param('other').trim();
@@ -298,30 +334,36 @@ export function createApp(service: PlanService, store: StateStore | null, option
       return c.json({ error: 'Choisis un autre joueur que toi pour échanger.' }, 400);
     const ruleSet = ruleSetOf(c);
     try {
-      const trade = await service.trade(
-        me,
-        other,
-        ruleSet,
-        {
-          me: parseTradeKeep(c.req.query('keep')),
-          other: parseTradeKeep(c.req.query('otherKeep')),
-        },
-        { fresh: c.req.query('fresh') === '1' },
-      );
+      const trade = await service.trade(me, other, ruleSet, tradeKeep(c), {
+        fresh: c.req.query('fresh') === '1',
+      });
       c.header('Cache-Control', 'no-cache');
       return c.json(trade);
     } catch (error) {
-      if (error instanceof TradeUnavailableError)
-        return c.json({ error: "Pas d'échanges dans ce mode de jeu." }, 400);
-      if (error instanceof PlayerNotFoundError)
-        return c.json(
-          { error: `Joueur « ${error.player} » introuvable sur ZUnivers (${ruleSet}).` },
-          404,
-        );
-      const failure = zuApiFailure(c, error);
-      if (failure) return failure;
-      logger.error(`Erreur inattendue pour l'échange ${me} ↔ ${other}`, error);
-      return c.json({ error: 'Erreur interne.' }, 500);
+      return tradeFailure(c, error, ruleSet, `l'échange ${me} ↔ ${other}`);
+    }
+  });
+
+  /**
+   * Les meilleurs joueurs avec qui échanger, et le meilleur échange avec chacun. `with` :
+   * partenaires à comparer en plus (séparés par des virgules) ; `keep` et `otherKeep` comme pour
+   * /api/trade, `otherKeep` valant pour chacun des autres joueurs.
+   */
+  app.get('/api/partners/:me', async (c) => {
+    const me = c.req.param('me').trim();
+    if (invalidUser(me)) return c.json({ error: 'Pseudo invalide.' }, 400);
+    const ruleSet = ruleSetOf(c);
+    try {
+      const partners = await service.partners(
+        me,
+        ruleSet,
+        { names: parseTradeNames(c.req.query('with')), keep: tradeKeep(c) },
+        { fresh: c.req.query('fresh') === '1' },
+      );
+      c.header('Cache-Control', 'no-cache');
+      return c.json(partners);
+    } catch (error) {
+      return tradeFailure(c, error, ruleSet, `les partenaires de ${me}`);
     }
   });
 
