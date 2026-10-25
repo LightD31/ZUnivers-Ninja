@@ -250,7 +250,13 @@ export interface Player {
   everPremium?: boolean | null;
   /** Bons d'invocation gratuite du profil. */
   freeInvocations?: FreeInvocation[];
-  corporation: { id: string; name: string; bonuses: Record<string, number> } | null;
+  corporation: {
+    id: string;
+    name: string;
+    bonuses: Record<string, number>;
+    /** Pseudos Discord des membres, le joueur compris. */
+    members?: string[];
+  } | null;
   inventory: Record<CardKey, OwnedCard>;
   challenges: Challenge[];
   /** Succès en cours (vide si l'API ne les fournit pas). */
@@ -285,4 +291,21 @@ export interface MarketOffer {
   offers: string[];
   /** Cartes recherchées. */
   wants: string[];
+}
+
+/** Un des plus gros possesseurs d'une carte, d'après sa fiche. */
+export interface ItemOwner {
+  /** Pseudo Discord du joueur. */
+  name: string;
+  shiny: Shiny;
+  /** Exemplaires possédés. */
+  quantity: number;
+}
+
+/** Une annonce de la liste du marché : qui l'a publiée, et quand. */
+export interface MarketListing {
+  /** Pseudo Discord du joueur. */
+  name: string;
+  /** Date de l'annonce (AAAA-MM-JJTHH:MM:SS). */
+  date: string;
 }

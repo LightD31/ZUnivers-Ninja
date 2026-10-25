@@ -8,6 +8,7 @@ import {
   tradeIssues,
   tradeMessage,
   tradeValue,
+  TRADE_PARTNERS_LIMIT,
   type CardKey,
   type RuleSet,
   type TradeCard,
@@ -15,6 +16,8 @@ import {
   type TradeKeep,
   type TradeKeptFor,
   type TradeNeed,
+  type TradePartner,
+  type TradePartners,
   type TradePicks,
   type TradeProposal,
   type TradeResult,
@@ -22,22 +25,27 @@ import {
 } from '@zuninja/core';
 import {
   ArrowLeftRight,
+  Building2,
   Check,
   ChevronRight,
   CircleAlert,
+  Gem,
   Handshake,
   Heart,
+  History,
   LoaderCircle,
   Minus,
   Plus,
   RefreshCw,
   Search,
+  Sparkles,
   SquareTerminal,
+  Store,
   Tag,
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchTrade, PlanError } from '../lib/api';
+import { fetchPartners, fetchTrade, PlanError } from '../lib/api';
 import { RARITY_LABEL, RARITY_TINT, SHINY_NAME } from '../lib/game';
 import type { Settings } from '../lib/settings';
 import { load, save } from '../lib/storage';
@@ -45,6 +53,7 @@ import { CardChip } from './CardChip';
 import { CopyButton } from './CopyButton';
 
 const PARTNERS_KEY = 'zuninja:trade-partners';
+const NO_PICKS: { receive: TradePicks; give: TradePicks } = { receive: {}, give: {} };
 const SHINY_RING = ['ring-white/10', 'ring-gold', 'ring-[#aaa5fa]'];
 const SHINY_SUFFIX = ['', '+', '*'];
 
@@ -159,6 +168,13 @@ export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Prop
   const [filter, setFilter] = useState('');
   const [recent, setRecent] = useState<string[]>(() => load(PARTNERS_KEY, []));
   const request = useRef(0);
+  // Recherche des meilleurs partenaires : repliée quand on ouvre l'échange avec l'un d'eux.
+  const [finder, setFinder] = useState<TradePartners | null>(null);
+  const [finding, setFinding] = useState(false);
+  const [finderError, setFinderError] = useState<string | null>(null);
+  const [finderOpen, setFinderOpen] = useState(true);
+  const search = useRef(0);
+  const suggestions = recent.filter((r) => r.toLowerCase() !== me.toLowerCase());
 
   const compare = useCallback(
     async (other: string, keep: { me: TradeKeep; other: TradeKeep }, fresh = false) => {
@@ -193,15 +209,40 @@ export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Prop
     if (partner) void compare(partner, { me: keepMe, other: keepOther });
   }, [partner, keepMe, keepOther, compare]);
 
-  const choose = (name: string) => {
+  const findPartners = async (fresh = false) => {
+    const id = ++search.current;
+    setFinding(true);
+    setFinderError(null);
+    setFinderOpen(true);
+    try {
+      const result = await fetchPartners({
+        me,
+        ruleSet,
+        keep: { me: keepMe, other: keepOther },
+        names: suggestions,
+        fresh,
+      });
+      if (id === search.current) setFinder(result);
+    } catch (e) {
+      if (id !== search.current) return;
+      setFinder(null);
+      setFinderError(e instanceof PlanError ? e.message : 'Une erreur inattendue est survenue.');
+    } finally {
+      if (id === search.current) setFinding(false);
+    }
+  };
+
+  /** Ouvre l'échange avec un joueur, avec des cartes déjà choisies (le meilleur échange). */
+  const choose = (name: string, picks = NO_PICKS) => {
     if (name.toLowerCase() === me.toLowerCase()) {
       setError('Choisis un autre joueur que toi pour échanger.');
       return;
     }
-    setTrade(null);
-    setReceive({});
-    setGive({});
+    setReceive(picks.receive);
+    setGive(picks.give);
     setFilter('');
+    if (name.toLowerCase() === partner.toLowerCase()) return;
+    setTrade(null);
     setPartner(name);
     onPartner(name);
   };
@@ -233,14 +274,32 @@ export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Prop
           key={partner}
           initial={partner}
           loading={loading}
-          suggestions={recent.filter((r) => r.toLowerCase() !== me.toLowerCase())}
-          onSubmit={choose}
+          finding={finding}
+          suggestions={suggestions}
+          onSubmit={(name) => choose(name)}
+          onFind={() => void findPartners()}
           onRefresh={
             trade && partner
               ? () => void compare(partner, { me: keepMe, other: keepOther }, true)
               : null
           }
         />
+
+        {(finder || finding || finderError) && (
+          <PartnerFinder
+            result={finder}
+            loading={finding}
+            error={finderError}
+            open={finderOpen}
+            current={partner}
+            onToggle={() => setFinderOpen(!finderOpen)}
+            onRefresh={() => void findPartners(true)}
+            onOpen={(p) => {
+              setFinderOpen(false);
+              choose(p.player.name, p.picks);
+            }}
+          />
+        )}
 
         {error && (
           <p
@@ -252,10 +311,12 @@ export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Prop
           </p>
         )}
         {!trade && loading && <TradeSkeleton />}
-        {!trade && !loading && !error && !partner && (
+        {!trade && !loading && !error && !partner && !finder && !finding && (
           <p className="card px-4 py-8 text-center text-sm text-white/65">
             Entre le pseudo d'un autre joueur : tu verras les cartes que chacun peut donner à
-            l'autre sans rien perdre, et une proposition d'échange équilibrée.
+            l'autre sans rien perdre, et une proposition d'échange équilibrée. Ou cherche les
+            meilleurs partenaires : les joueurs qui ont en double les cartes qui te manquent, et à
+            qui les tiennes en trop serviraient.
           </p>
         )}
 
@@ -338,14 +399,19 @@ export function Trade({ me, ruleSet, settings, initialPartner, onPartner }: Prop
 function PartnerForm({
   initial,
   loading,
+  finding,
   suggestions,
   onSubmit,
+  onFind,
   onRefresh,
 }: {
   initial: string;
   loading: boolean;
+  /** Recherche des meilleurs partenaires en cours. */
+  finding: boolean;
   suggestions: string[];
   onSubmit: (name: string) => void;
+  onFind: () => void;
   onRefresh: (() => void) | null;
 }) {
   const [value, setValue] = useState(initial);
@@ -388,6 +454,20 @@ function PartnerForm({
           </button>
         )}
       </form>
+      <button
+        type="button"
+        className="btn-ghost h-9 w-full justify-center sm:w-auto"
+        onClick={onFind}
+        disabled={finding}
+        title={`Compare ta collection avec celles des plus gros possesseurs des cartes que tu cherches, de ta corporation, du marché et de tes échanges récents (${TRADE_PARTNERS_LIMIT} joueurs au plus)`}
+      >
+        {finding ? (
+          <LoaderCircle className="size-4 animate-spin" />
+        ) : (
+          <Sparkles className="size-4 text-zu-400" />
+        )}
+        Trouver les meilleurs partenaires
+      </button>
       {suggestions.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {suggestions.map((s) => (
@@ -412,6 +492,234 @@ function PartnerForm({
         passent en premier.
       </p>
     </section>
+  );
+}
+
+const PARTNERS_SHOWN = 8;
+
+/** Date d'une annonce du marché, avec l'année : certaines datent de plusieurs années. */
+const listingDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+
+/**
+ * Les meilleurs joueurs avec qui échanger, classés selon les points que le meilleur échange avec
+ * chacun te rapporte. Un clic ouvre l'échange, ses cartes déjà choisies.
+ */
+function PartnerFinder({
+  result,
+  loading,
+  error,
+  open,
+  current,
+  onToggle,
+  onRefresh,
+  onOpen,
+}: {
+  result: TradePartners | null;
+  loading: boolean;
+  error: string | null;
+  open: boolean;
+  /** Joueur dont l'échange est ouvert. */
+  current: string;
+  onToggle: () => void;
+  onRefresh: () => void;
+  onOpen: (partner: TradePartner) => void;
+}) {
+  const [all, setAll] = useState(false);
+  const partners = result?.partners ?? [];
+  const shown = all ? partners : partners.slice(0, PARTNERS_SHOWN);
+  const summary = loading
+    ? 'Recherche en cours…'
+    : result
+      ? `${plural(partners.length, 'partenaire')} sur ${plural(result.checked, 'joueur')} comparé${result.checked > 1 ? 's' : ''}`
+      : '';
+  return (
+    <section className="card overflow-hidden" aria-busy={loading}>
+      <header className="flex items-center gap-3 border-b border-white/[0.08] px-4 py-3">
+        <Sparkles className="size-4 shrink-0 text-zu-400" />
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate font-bold tracking-wide uppercase">Meilleurs partenaires</h2>
+          {summary && <p className="text-xs text-white/60">{summary}</p>}
+        </div>
+        {result && !loading && (
+          <button
+            type="button"
+            className="btn-ghost h-9 px-2.5"
+            onClick={onRefresh}
+            title="Relancer la recherche avec les collections à jour"
+            aria-label="Relancer la recherche"
+          >
+            <RefreshCw className="size-4" />
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn-ghost h-9 px-2.5"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-label={open ? 'Replier les partenaires' : 'Afficher les partenaires'}
+        >
+          <ChevronRight className={`size-4 transition ${open ? 'rotate-90' : ''}`} />
+        </button>
+      </header>
+      {open && (
+        <>
+          {error && (
+            <p className="flex items-center gap-2 px-4 py-3 text-sm" role="alert">
+              <CircleAlert className="size-4 shrink-0 text-danger" />
+              {error}
+            </p>
+          )}
+          {loading && (
+            <div className="space-y-3 px-4 py-3">
+              <p className="text-xs text-white/60">
+                Recherche des plus gros possesseurs des cartes que tu cherches, puis comparaison de
+                ta collection avec la leur, celles de ta corporation, du marché et de tes échanges
+                récents ({TRADE_PARTNERS_LIMIT} joueurs au plus) : quelques secondes.
+              </p>
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex animate-pulse items-center gap-3">
+                  <div className="size-9 rounded-full bg-white/[0.07]" />
+                  <div className="h-4 flex-1 rounded bg-white/[0.07]" />
+                </div>
+              ))}
+            </div>
+          )}
+          {result && !loading && (
+            <>
+              {result.me.tradesLeft === 0 && (
+                <p className="flex gap-2 px-4 pt-3 text-xs text-gold">
+                  <CircleAlert className="size-4 shrink-0" />
+                  Tu n'as plus d'échange aujourd'hui : ces échanges seront pour demain.
+                </p>
+              )}
+              {partners.length === 0 ? (
+                <p className="px-4 py-8 text-center text-sm text-white/60">
+                  Aucun des {plural(result.checked, 'joueur')} comparés n'a de quoi échanger avec
+                  toi sans que l'un de vous perde une carte utile.
+                </p>
+              ) : (
+                <ol className="divide-y divide-white/[0.06]">
+                  {shown.map((p, i) => (
+                    <PartnerRow
+                      key={p.player.name}
+                      partner={p}
+                      rank={i + 1}
+                      current={p.player.name.toLowerCase() === current.toLowerCase()}
+                      onOpen={() => onOpen(p)}
+                    />
+                  ))}
+                </ol>
+              )}
+              {partners.length > shown.length && (
+                <div className="border-t border-white/[0.06] px-4 py-2">
+                  <button
+                    type="button"
+                    className="btn-ghost h-8 px-2 text-xs"
+                    onClick={() => setAll(true)}
+                  >
+                    Voir les {partners.length - shown.length} autres
+                  </button>
+                </div>
+              )}
+              <p className="border-t border-white/[0.06] px-4 py-3 text-xs text-white/55">
+                Classés selon les points de collection que le meilleur échange te rapporte : les
+                cartes en trop de chacun dont l'autre a l'usage, de même rareté et brillance des
+                deux côtés, {TRADE_MAX_CARDS} au plus. Ont été comparés les plus gros possesseurs de{' '}
+                {plural(result.searchedCards, 'carte')} que tu cherches, ta corporation, les
+                annonces du marché et tes échanges récents.
+                {result.failed.length > 0 &&
+                  ` Introuvables : ${result.failed.join(', ')} (pseudo changé ?).`}
+              </p>
+            </>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+/** Un partenaire : ce que le meilleur échange avec lui te rapporte, et pourquoi il est proposé. */
+function PartnerRow({
+  partner: p,
+  rank,
+  current,
+  onOpen,
+}: {
+  partner: TradePartner;
+  rank: number;
+  /** Son échange est celui ouvert. */
+  current: boolean;
+  onOpen: () => void;
+}) {
+  const chip = 'chip text-white/70';
+  return (
+    <li
+      className={`flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center ${current ? 'bg-zu-500/10' : ''}`}
+    >
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <span className="w-4 shrink-0 pt-2 text-right font-mono text-xs text-white/45">{rank}</span>
+        <PlayerAvatar src={p.player.avatar} name={p.player.displayName} />
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <p className="flex flex-wrap items-baseline gap-x-2">
+            <span className="truncate font-semibold">{p.player.displayName}</span>
+            <span className="text-xs text-white/60">
+              tu reçois {plural(p.points.receive, 'pt')} · tu donnes {plural(p.points.give, 'pt')}
+            </span>
+          </p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {p.receive.map((c) => (
+              <CardChip key={c.key} card={c} />
+            ))}
+            <span className="text-xs text-white/55">
+              contre {plural(p.copies, 'carte')} en trop
+              {p.useful.receive > p.receive.length &&
+                ` · ${plural(p.useful.receive, 'carte')} utiles en tout`}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5 text-xs">
+            {p.sources.includes('named') && (
+              <span className={chip}>
+                <History className="size-3 text-zu-400" />
+                Échange récent
+              </span>
+            )}
+            {p.holding > 0 && (
+              <span
+                className={chip}
+                title="Parmi les plus gros possesseurs de cartes que tu cherches, avec des doubles"
+              >
+                <Gem className="size-3 text-zu-400" />
+                {plural(p.holding, 'carte')} que tu cherches en double
+              </span>
+            )}
+            {p.sources.includes('corporation') && (
+              <span className={chip}>
+                <Building2 className="size-3 text-zu-400" />
+                Ta corporation
+              </span>
+            )}
+            {p.listedAt && (
+              <span className={chip} title="Annonce sur le marché">
+                <Store className="size-3 text-zu-400" />
+                Marché · {listingDate(p.listedAt)}
+              </span>
+            )}
+            {p.player.tradesLeft === 0 && (
+              <span className="chip text-gold">Plus d'échange aujourd'hui</span>
+            )}
+          </div>
+        </div>
+      </div>
+      <button
+        type="button"
+        className={`${current ? 'btn-ghost' : 'btn-primary'} h-9 shrink-0`}
+        onClick={onOpen}
+      >
+        <ArrowLeftRight className="size-4" />
+        {current ? 'Choisir ces cartes' : "Voir l'échange"}
+      </button>
+    </li>
   );
 }
 

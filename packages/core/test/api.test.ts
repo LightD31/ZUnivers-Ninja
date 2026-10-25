@@ -1,13 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   ApiCache,
+  compareForTrade,
+  CorporationSchema,
   createClient,
+  fetchItemOwners,
+  fetchMarketListings,
   fetchMarketOffer,
+  fetchTradePlayer,
   ZuApiError,
   ZuNotFoundError,
   ZuSchemaError,
 } from '../src';
-import { rawCatalog, rawPlayer } from './helpers';
+import { makePlayer } from './factory';
+import { fixtureCatalog, fixturePlayer, NOW, rawCatalog, rawPlayer } from './helpers';
 
 function fakeFetch(responses: Record<string, { status: number; body?: unknown }>) {
   return vi.fn(async (url: string | URL | Request) => {
@@ -105,6 +111,106 @@ describe('marché', () => {
     const fetch = fakeFetch({ '/public/market/search?discordUserName=grewa': { status: 503 } });
     const client = createClient({ baseUrl: 'https://api.test', fetch, retries: 0 });
     await expect(fetchMarketOffer(client, 'grewa')).resolves.toBeNull();
+  });
+
+  it('liste les annonces, la plus récente d’abord', async () => {
+    const listing = (name: string, date: string) => ({
+      id: name,
+      user: { discordUserName: name, isActive: false },
+      date,
+      entriesSell: [],
+      entriesBuy: [],
+    });
+    const fetch = fakeFetch({
+      '/public/market': {
+        status: 200,
+        body: [
+          listing('ancien', '2022-03-14T12:02:55.475393'),
+          listing('recent', '2026-10-20T10:38:53.459325'),
+        ],
+      },
+    });
+    const client = createClient({ baseUrl: 'https://api.test', fetch });
+    await expect(fetchMarketListings(client)).resolves.toEqual([
+      { name: 'recent', date: '2026-10-20T10:38:53' },
+      { name: 'ancien', date: '2022-03-14T12:02:55' },
+    ]);
+    // Le marché ne répond pas : à l'appelant de s'en passer, sans garder l'absence en cache.
+    const down = createClient({
+      baseUrl: 'https://api.test',
+      fetch: fakeFetch({ '/public/market': { status: 503 } }),
+      retries: 0,
+    });
+    await expect(fetchMarketListings(down)).rejects.toBeInstanceOf(ZuApiError);
+  });
+});
+
+describe('recherche de partenaires', () => {
+  it('lit les plus gros possesseurs d’une carte, par brillance', async () => {
+    const owner = (name: string, quantity: number, shinyLevel: number) => ({
+      user: { discordUserName: name },
+      quantity,
+      shinyLevel,
+      upgradeLevel: 0,
+    });
+    const fetch = fakeFetch({
+      '/public/item/2001-ah': {
+        status: 200,
+        body: {
+          item: { id: 'ah' },
+          userInventories: { '0': [owner('rizflex', 110, 0)], '1': [owner('fafacraft', 5, 1)] },
+          ownedPercent: 86.9,
+        },
+      },
+    });
+    const client = createClient({ baseUrl: 'https://api.test', fetch, retries: 0 });
+    await expect(fetchItemOwners(client, '2001-ah')).resolves.toEqual([
+      { name: 'rizflex', shiny: 0, quantity: 110 },
+      { name: 'fafacraft', shiny: 1, quantity: 5 },
+    ]);
+    await expect(fetchItemOwners(client, 'inconnue')).resolves.toEqual([]);
+    const down = createClient({
+      baseUrl: 'https://api.test',
+      fetch: fakeFetch({ '/public/item/2001-ah': { status: 503 } }),
+      retries: 0,
+    });
+    await expect(fetchItemOwners(down, '2001-ah')).rejects.toBeInstanceOf(ZuApiError);
+  });
+
+  it('compare un joueur chargé en deux appels comme un joueur complet', async () => {
+    const raw = rawPlayer();
+    const fetch = fakeFetch({
+      '/public/user/alexpresso': { status: 200, body: raw.user },
+      '/public/inventory/alexpresso': { status: 200, body: raw.inventory },
+    });
+    const client = createClient({ baseUrl: 'https://api.test', fetch });
+    const light = await fetchTradePlayer(client, 'alexpresso');
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const catalog = fixtureCatalog();
+    const other = makePlayer({ name: 'debutant' });
+    const sides = (me: typeof light) => {
+      const { me: mine, other: theirs } = compareForTrade({ catalog, me, other, now: NOW });
+      return { mine, theirs };
+    };
+    const full = sides(fixturePlayer());
+    expect(full.mine.gives.length).toBeGreaterThan(10);
+    expect(sides(light)).toEqual(full);
+  });
+
+  it('lit les membres de la corporation, sans perdre ses bonus s’ils sont illisibles', () => {
+    const corporation = {
+      id: 'c',
+      name: 'Corpo',
+      corporationBonuses: [{ type: 'LOOT', level: 2 }],
+    };
+    const members = CorporationSchema.parse({
+      ...corporation,
+      userCorporations: [{ user: { discordUserName: 'frenchboi' }, role: 'ADMIN' }],
+    });
+    expect(members.userCorporations.map((m) => m.user.discordUserName)).toEqual(['frenchboi']);
+    const broken = CorporationSchema.parse({ ...corporation, userCorporations: [{ user: null }] });
+    expect(broken).toMatchObject({ corporationBonuses: [{ type: 'LOOT', level: 2 }] });
+    expect(broken.userCorporations).toEqual([]);
   });
 });
 

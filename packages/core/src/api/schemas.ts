@@ -256,6 +256,12 @@ export const CorporationSchema = z.looseObject({
     .array(z.looseObject({ type: z.string(), level: num.default(0) }))
     .nullish()
     .transform((v) => v ?? []),
+  /** Membres, pour chercher avec qui échanger. Illisibles, ils n'empêchent pas de lire les bonus. */
+  userCorporations: z
+    .array(z.looseObject({ user: z.looseObject({ discordUserName: z.string() }) }))
+    .nullish()
+    .catch(null)
+    .transform((v) => v ?? []),
 });
 export type ApiCorporation = z.infer<typeof CorporationSchema>;
 
@@ -304,3 +310,31 @@ export const MarketOfferSchema = z.looseObject({
   entriesBuy: MarketEntriesSchema,
 });
 export type ApiMarketOffer = z.infer<typeof MarketOfferSchema>;
+
+/**
+ * `/public/market` : toutes les annonces du marché. Chacune n'y montre que ses 7 premières cartes
+ * de chaque côté : seuls le joueur et la date servent, l'annonce complète vient de la recherche.
+ */
+export const MarketListSchema = z.array(
+  z.looseObject({
+    user: z.looseObject({ discordUserName: z.string() }),
+    date: z.string().default(''),
+  }),
+);
+export type ApiMarketList = z.infer<typeof MarketListSchema>;
+
+/**
+ * `/public/item/{slug}` : fiche d'une carte. Seuls ses plus gros possesseurs servent : les 50
+ * premiers de chaque brillance (`0`, `1`, `2`), du plus grand nombre d'exemplaires au plus petit.
+ */
+export const ItemOwnersSchema = z.looseObject({
+  userInventories: z
+    .record(
+      z.string(),
+      z.array(
+        z.looseObject({ user: z.looseObject({ discordUserName: z.string() }), quantity: num }),
+      ),
+    )
+    .default({}),
+});
+export type ApiItemOwners = z.infer<typeof ItemOwnersSchema>;

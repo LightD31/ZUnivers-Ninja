@@ -40,6 +40,8 @@ La v2 est une réécriture complète : TypeScript, aucune base de données, une 
   - les fusions à compléter et les cartes manquantes les plus rentables ;
   - les échanges : avec le pseudo d'un autre joueur, les cartes que chacun peut donner à l'autre
     sans rien perdre, et une proposition équilibrée prête à copier (voir [Échanges](#échanges)) ;
+    ou les meilleurs partenaires, trouvés parmi les plus gros possesseurs des cartes qui te
+    manquent (voir [Meilleurs partenaires](#meilleurs-partenaires)) ;
   - le choix de la stratégie sous la recherche, et des réglages avancés du planificateur.
 - **Stratégies** selon ta façon de jouer : Équilibré, Prudent, Épargne, Vortex ou Collectionneur
   (voir [Stratégies](#stratégies)). Sous la recherche, choisis aussi le nombre de doublons gardés
@@ -123,6 +125,11 @@ Toutes les variables sont facultatives, et documentées dans [`.env.example`](.e
   (voir [Échanges](#échanges)). Paramètres facultatifs : `ruleset`, `fresh=1`, et `keep` /
   `otherKeep`, les exemplaires gardés par chacun (`golden`, `goldenFusions`, `constellation`,
   séparés par des virgules ; absent, tout est gardé ; présent mais vide, rien).
+- `GET /api/partners/:pseudo` renvoie les meilleurs joueurs avec qui échanger, et le meilleur
+  échange avec chacun (voir [Meilleurs partenaires](#meilleurs-partenaires)). Paramètres
+  facultatifs : `ruleset`, `fresh=1`, `keep` / `otherKeep` comme ci-dessus (`otherKeep` vaut pour
+  chacun des autres joueurs), et `with`, 10 pseudos au plus à comparer en plus, séparés par des
+  virgules.
 - `GET /api/strategies` liste les stratégies disponibles (`strategies` : `id`, `label`,
   `description`) et celle par défaut du serveur (`strategy`). Un bot peut s'en servir pour proposer
   les mêmes choix que l'interface. `GET /api/config` les renvoie aussi.
@@ -276,6 +283,32 @@ Quand l'échange respecte les règles, la commande est prête à copier :
 `/échange joueur:@maxpotte cartes-données:2225*3 cartes-prises:2012 + 2031 + 2032`. Sinon, la
 proposition dit ce que le jeu refuserait. Le message à envoyer à l'autre joueur et les listes de
 cartes sont aussi prêts à copier. Les échanges n'existent pas en Hardcore.
+
+### Meilleurs partenaires
+
+Le bouton « Trouver les meilleurs partenaires » cherche avec qui échanger, sans pseudo à entrer :
+
+1. **Les cartes que tu cherches.** Ce sont les cartes échangeables qui te manquent ou dont il te
+   faut encore des exemplaires, selon ta réserve. Seules comptent celles d'une rareté et d'une
+   brillance où tu as du surplus à donner en face : le jeu n'échange rien d'autre.
+2. **Leurs plus gros possesseurs.** La fiche de chaque carte (`/public/item/{carte}`) donne les 50
+   joueurs qui en ont le plus, par brillance. Les fiches des 20 cartes qui te rapporteraient le plus
+   sont lues, et les joueurs qui ont des doubles du plus de ces cartes passent en premier. Un joueur
+   qui n'en a qu'un exemplaire garde le sien : il ne compte pas.
+3. **Les joueurs comparés**, 30 au plus : tes échanges récents, les 15 plus gros possesseurs, les
+   membres de ta corporation, puis les annonces du [marché](https://zunivers.zerator.com/marche),
+   la plus récente d'abord (la date de l'annonce est affichée : certaines ont plusieurs années).
+   Pour chacun, seuls son profil et sa collection sont chargés, 4 joueurs à la fois.
+4. **Le meilleur échange** avec chacun : les cartes en trop de chacun dont l'autre a l'usage,
+   autant de cartes de chaque rareté et brillance des deux côtés, 6 au plus. Il est choisi pour te
+   rapporter le plus de points de collection, puis pour échanger le plus de cartes utiles, puis
+   pour rapporter le plus à l'autre. Les exemplaires d'une carte comptent dans l'ordre où ils
+   servent : la carte elle-même, puis ses fusions, sa constellation ou une dorée à enchanter.
+
+Les joueurs sont classés selon ce meilleur échange. « Voir l'échange » ouvre la comparaison avec
+ses cartes déjà choisies : la commande `/échange` est prête, et tout reste modifiable. Les
+collections sont gardées 5 minutes et les fiches des cartes 30 minutes : ouvrir un partenaire ne
+recharge rien, et le bouton ↻ de la recherche recharge les collections.
 
 ## Comment fonctionne le planificateur
 

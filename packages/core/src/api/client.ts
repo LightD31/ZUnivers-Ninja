@@ -9,8 +9,10 @@ import {
   FusionSchema,
   InventoryLogsSchema,
   InventorySchema,
+  ItemOwnersSchema,
   ItemSchema,
   LootSchema,
+  MarketListSchema,
   MarketOfferSchema,
   RecycleConfigSchema,
   SettingsSchema,
@@ -181,6 +183,10 @@ export function createClient(options: ClientOptions = {}) {
     /** Annonce du joueur sur le marché, `null` s'il n'en a pas. */
     marketOffer: (name: string) =>
       getOptional(`/public/market/search?discordUserName=${enc(name)}`, MarketOfferSchema),
+    /** Toutes les annonces du marché, cartes tronquées. */
+    market: () => get('/public/market', MarketListSchema),
+    /** Plus gros possesseurs d'une carte (fiche de la carte, par son `slug`). */
+    itemOwners: (slug: string) => getOptional(`/public/item/${enc(slug)}`, ItemOwnersSchema),
   };
 }
 

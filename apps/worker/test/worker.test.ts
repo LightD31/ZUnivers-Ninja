@@ -6,6 +6,7 @@ import {
   createPlan,
   ZuNotFoundError,
   type PlanResult,
+  type TradePartners,
   type TradeResult,
 } from '@zuninja/core';
 import { describe, expect, it, vi } from 'vitest';
@@ -17,7 +18,7 @@ import { Metrics, PlayerTracker } from '../src/metrics';
 import { buildDiscordMessage, sendDiscord } from '../src/notifiers/discord';
 import { PlannerBusyError, PlannerTimeoutError } from '../src/pool';
 import { runTick } from '../src/scheduler';
-import { createApp, parsePlannerQuery, parseTradeKeep } from '../src/server';
+import { createApp, parsePlannerQuery, parseTradeKeep, parseTradeNames } from '../src/server';
 import { PlayerNotFoundError, TradeUnavailableError, type PlanService } from '../src/service';
 import { StateStore } from '../src/store';
 
@@ -475,6 +476,63 @@ describe('échanges', () => {
     const closed = await hardcore.request('/api/trade/alice/bob?ruleset=hardcore');
     expect(closed.status).toBe(400);
     expect((await closed.json()).error).toMatch(/Pas d'échanges/);
+  });
+
+  it('lit les partenaires à comparer en plus, sans doublon ni pseudo invalide', () => {
+    expect(parseTradeNames(undefined)).toEqual([]);
+    expect(parseTradeNames(` bob, Bob,,carol ,${'x'.repeat(65)}`)).toEqual(['bob', 'carol']);
+    const many = Array.from({ length: 12 }, (_, i) => `p${i}`).join(',');
+    expect(parseTradeNames(many)).toHaveLength(10);
+  });
+
+  it('cherche les meilleurs partenaires, avec les réglages de chacun', async () => {
+    const partners = {
+      version: 1,
+      partners: [],
+      checked: 0,
+      failed: [],
+    } as unknown as TradePartners;
+    const service = { partners: vi.fn(async () => partners) } as unknown as PlanService;
+    const app = createApp(service, null, options);
+    const res = await app.request('/api/partners/alexpresso?with=bob,carol&keep=golden&fresh=1');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(partners);
+    expect(service.partners).toHaveBeenCalledWith(
+      'alexpresso',
+      'NORMAL',
+      {
+        names: ['bob', 'carol'],
+        keep: { me: { golden: true, goldenFusions: false, constellation: false }, other: {} },
+      },
+      { fresh: true },
+    );
+    expect((await app.request(`/api/partners/${'x'.repeat(65)}`)).status).toBe(400);
+    expect(service.partners).toHaveBeenCalledTimes(1);
+  });
+
+  it('dit si le joueur qui cherche est introuvable, et refuse le Hardcore', async () => {
+    const failing = (error: Error) =>
+      createApp(
+        {
+          partners: vi.fn(async () => {
+            throw error;
+          }),
+        } as unknown as PlanService,
+        null,
+        options,
+      );
+    const missing = await failing(new PlayerNotFoundError('fantome')).request(
+      '/api/partners/fantome',
+    );
+    expect(missing.status).toBe(404);
+    expect((await missing.json()).error).toMatch(/« fantome » introuvable/);
+    const closed = await failing(new TradeUnavailableError()).request(
+      '/api/partners/alice?ruleset=hardcore',
+    );
+    expect(closed.status).toBe(400);
+    const busy = await failing(new PlannerBusyError()).request('/api/partners/alice');
+    expect(busy.status).toBe(503);
+    expect(busy.headers.get('retry-after')).toBe('10');
   });
 });
 

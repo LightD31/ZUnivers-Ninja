@@ -383,6 +383,7 @@ export function normalizePlayer(raw: RawPlayer, ruleSet = 'NORMAL'): Player {
             bonuses: Object.fromEntries(
               raw.corporation.corporationBonuses.map((b) => [b.type, b.level]),
             ),
+            members: raw.corporation.userCorporations.map((m) => m.user.discordUserName),
           }
         : null,
     inventory: normalizeInventory(raw.inventory),

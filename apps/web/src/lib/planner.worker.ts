@@ -5,12 +5,18 @@ import {
   createClient,
   createPlan,
   fetchCatalog,
+  fetchItemOwners,
+  fetchMarketListings,
   fetchMarketOffer,
   fetchPlayer,
+  fetchTradePlayer,
+  findTradePartners,
   tradesAvailable,
   ZuNotFoundError,
   ZuSchemaError,
   type Catalog,
+  type ItemOwner,
+  type MarketListing,
   type MarketOffer,
   type Player,
   type PlannerOptionsInput,
@@ -30,6 +36,18 @@ const catalogs = new ApiCache<Catalog>({ ttlMs: 15 * 60_000, freshMinMs: 5 * 60_
 const players = new ApiCache<Player>({ ttlMs: 60_000, freshMinMs: 15_000, maxSize: 20 });
 /** Annonces du marché, pour les échanges. */
 const markets = new ApiCache<MarketOffer | null>({ ttlMs: 60_000, freshMinMs: 15_000 });
+/**
+ * Autres joueurs d'un échange, chargés en deux appels (profil et collection) : une recherche de
+ * partenaires en charge une trentaine, réutilisées quand on ouvre l'échange avec l'un d'eux.
+ */
+const tradePlayers = new ApiCache<Player>({ ttlMs: 5 * 60_000, freshMinMs: 15_000 });
+/** Plus gros possesseurs des cartes et liste du marché : ils changent lentement. */
+const owners = new ApiCache<ItemOwner[]>({
+  ttlMs: 30 * 60_000,
+  freshMinMs: 5 * 60_000,
+  maxSize: 500,
+});
+const listings = new ApiCache<MarketListing[]>({ ttlMs: 30 * 60_000, freshMinMs: 5 * 60_000 });
 
 type Request = { id: number; ruleSet: RuleSet; fresh: boolean } & (
   | { type: 'plan'; user: string; options: PlannerOptionsInput }
@@ -37,6 +55,12 @@ type Request = { id: number; ruleSet: RuleSet; fresh: boolean } & (
       type: 'trade';
       me: string;
       other: string;
+      keep: { me: TradeKeep; other: TradeKeep };
+    }
+  | {
+      type: 'partners';
+      me: string;
+      names: string[];
       keep: { me: TradeKeep; other: TradeKeep };
     }
 );
@@ -53,19 +77,33 @@ class RequestError extends Error {
 const catalog = (ruleSet: RuleSet, fresh: boolean) =>
   catalogs.get(ruleSet, () => fetchCatalog(createClient({ ruleSet })), fresh);
 
-function player(name: string, ruleSet: RuleSet, fresh: boolean) {
-  return players
-    .get(
+/** Un joueur introuvable : une erreur qui dit lequel. */
+function found(name: string, ruleSet: RuleSet, loaded: Promise<Player>) {
+  return loaded.catch((error: unknown) => {
+    throw error instanceof ZuNotFoundError
+      ? new RequestError(`Joueur « ${name} » introuvable sur ZUnivers (${ruleSet}).`, 404)
+      : error;
+  });
+}
+
+const player = (name: string, ruleSet: RuleSet, fresh: boolean) =>
+  found(
+    name,
+    ruleSet,
+    players.get(
       `${ruleSet}|${name.toLowerCase()}`,
       () => fetchPlayer(createClient({ ruleSet }), name),
       fresh,
-    )
-    .catch((error: unknown) => {
-      throw error instanceof ZuNotFoundError
-        ? new RequestError(`Joueur « ${name} » introuvable sur ZUnivers (${ruleSet}).`, 404)
-        : error;
-    });
-}
+    ),
+  );
+
+/** L'autre joueur d'un échange : seuls son profil et sa collection servent. */
+const tradePlayer = (name: string, ruleSet: RuleSet, fresh: boolean) =>
+  tradePlayers.get(
+    `${ruleSet}|${name.toLowerCase()}`,
+    () => fetchTradePlayer(createClient({ ruleSet }), name),
+    fresh,
+  );
 
 const market = (name: string, ruleSet: RuleSet, fresh: boolean) =>
   markets.get(
@@ -85,9 +123,38 @@ async function handle(request: Request) {
   }
   const c = await catalog(ruleSet, fresh);
   if (!tradesAvailable(c)) throw new RequestError("Pas d'échanges dans ce mode de jeu.", 400);
+  if (request.type === 'partners') {
+    const client = createClient({ ruleSet });
+    const [me, meMarket, marketListings] = await Promise.all([
+      player(request.me, ruleSet, fresh),
+      market(request.me, ruleSet, fresh),
+      // Le marché ne répond pas : la recherche s'en passe.
+      listings
+        .get(ruleSet, () => fetchMarketListings(client), fresh)
+        .catch((): MarketListing[] => []),
+    ]);
+    return findTradePartners({
+      catalog: c,
+      me,
+      market: meMarket,
+      names: request.names,
+      listings: marketListings,
+      keep: request.keep,
+      owners: (item) =>
+        owners.get(`${ruleSet}|${item.slug}`, () => fetchItemOwners(client, item.slug), fresh),
+      load: async (candidate) => {
+        const [other, otherMarket] = await Promise.all([
+          tradePlayer(candidate.name, ruleSet, fresh),
+          // Sans annonce dans la liste du marché, inutile de la chercher.
+          candidate.listedAt ? market(candidate.name, ruleSet, fresh) : null,
+        ]);
+        return { player: other, market: otherMarket };
+      },
+    });
+  }
   const [me, other, meMarket, otherMarket] = await Promise.all([
     player(request.me, ruleSet, fresh),
-    player(request.other, ruleSet, fresh),
+    found(request.other, ruleSet, tradePlayer(request.other, ruleSet, fresh)),
     market(request.me, ruleSet, fresh),
     market(request.other, ruleSet, fresh),
   ]);

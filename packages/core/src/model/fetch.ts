@@ -2,7 +2,7 @@ import type { ZuClient } from '../api/client';
 import type { ApiAchievementEntry } from '../api/schemas';
 import { PREMIUM_BOOSTER } from '../rules/constants';
 import { normalizeCatalog, normalizePlayer, type RawCatalog, type RawPlayer } from './normalize';
-import type { Catalog, MarketOffer, Player } from './types';
+import type { Catalog, ItemOwner, MarketListing, MarketOffer, Player } from './types';
 
 /** Données communes à tous les joueurs (cartes, fusions, évènements, Vortex…). */
 export async function fetchRawCatalog(client: ZuClient): Promise<RawCatalog> {
@@ -84,6 +84,52 @@ export async function fetchCatalog(client: ZuClient): Promise<Catalog> {
 
 export async function fetchPlayer(client: ZuClient, name: string): Promise<Player> {
   return normalizePlayer(await fetchRawPlayer(client, name), client.ruleSet);
+}
+
+/**
+ * Joueur réduit à ce qu'un échange regarde : son profil et sa collection, en deux appels au lieu
+ * d'une quinzaine. Défis, récompenses, Vortex, succès et corporation restent vides : ce joueur
+ * sert à comparer des collections, pas à calculer un plan.
+ */
+export async function fetchTradePlayer(client: ZuClient, name: string): Promise<Player> {
+  const [user, inventory] = await Promise.all([client.user(name), client.inventory(name)]);
+  return normalizePlayer(
+    {
+      user,
+      inventory,
+      challenges: [],
+      loot: {},
+      tower: { towerStats: [] },
+      evolution: null,
+      corporation: null,
+    },
+    client.ruleSet,
+  );
+}
+
+/**
+ * Annonces du marché, la plus récente d'abord. Échoue si le marché ne répond pas : l'appelant s'en
+ * passe, sans garder cette absence en cache.
+ */
+export async function fetchMarketListings(client: ZuClient): Promise<MarketListing[]> {
+  const listings = await client.market();
+  return listings
+    .map((l) => ({ name: l.user.discordUserName, date: l.date.slice(0, 19) }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/**
+ * Plus gros possesseurs d'une carte, 50 par brillance : aucun si la carte n'a pas de fiche. Échoue
+ * si l'API ne répond pas, pour ne pas garder cette absence en cache.
+ */
+export async function fetchItemOwners(client: ZuClient, slug: string): Promise<ItemOwner[]> {
+  const page = await client.itemOwners(slug);
+  if (!page) return [];
+  return Object.entries(page.userInventories).flatMap(([level, owners]) => {
+    const shiny = Number(level);
+    if (shiny !== 0 && shiny !== 1 && shiny !== 2) return [];
+    return owners.map((o) => ({ name: o.user.discordUserName, shiny, quantity: o.quantity }));
+  });
 }
 
 /**

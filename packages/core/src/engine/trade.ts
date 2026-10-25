@@ -2,6 +2,7 @@ import { CONSTELLATION_POINTS_FACTOR, FEATURE } from '../rules/constants';
 import { reserveFor, reserveTotal, type Reserve } from '../rules/reserve';
 import {
   cardKey,
+  SHINIES,
   type CardKey,
   type Catalog,
   type Item,
@@ -180,7 +181,8 @@ function reserveContext(catalog: Catalog, player: Player, keep: TradeKeep, now: 
     keepForGoldenFusions: keep.goldenFusions,
     allow: { constellation: keep.constellation },
   });
-  return buildContext(catalog, player, now, options);
+  // Les succès ne changent pas la réserve : inutile de les résoudre, le plus long du contexte.
+  return buildContext(catalog, { ...player, achievements: [] }, now, options);
 }
 
 /**
@@ -246,6 +248,50 @@ function givable(
     kept: kept.sort(compareCards),
     extra: extra.sort(compareCards),
   };
+}
+
+/** Carte échangeable dont un joueur a l'usage : elle lui manque, ou il lui en faut encore. */
+export interface TradeWant {
+  itemId: string;
+  shiny: Shiny;
+  need: Exclude<TradeNeed, 'none'>;
+  /** Points de collection de chaque exemplaire utile, comme `TradeCard.gains`. */
+  gains: number[];
+}
+
+/**
+ * Ce qu'un joueur cherche à obtenir par l'échange, selon sa réserve : les cartes échangeables dont
+ * il a l'usage, et les catégories (`rareté:brillance`) où il a du surplus à donner en face. Le jeu
+ * n'échange que des cartes de même catégorie : une carte voulue hors de ces catégories ne peut pas
+ * être obtenue sans rien perdre.
+ */
+export function tradeNeeds(
+  catalog: Catalog,
+  player: Player,
+  keep: Partial<TradeKeep> = {},
+  now = new Date(),
+): { wants: TradeWant[]; spare: Set<string> } {
+  const ctx = reserveContext(catalog, player, { ...DEFAULT_TRADE_KEEP, ...keep }, now);
+  const state = initialState(ctx);
+  const wants: TradeWant[] = [];
+  for (const item of ctx.itemList) {
+    if (!item.tradable) continue;
+    for (const shiny of SHINIES) {
+      if (!item.shinyAvailable[shiny]) continue;
+      const copies = getCard(state, item.id, shiny).copies;
+      const use = receiverGains(item, shiny, copies, reserveFor(ctx, state, item.id, shiny));
+      if (use) wants.push({ itemId: item.id, shiny, ...use });
+    }
+  }
+  const spare = new Set<string>();
+  for (const owned of Object.values(player.inventory)) {
+    const item = ctx.items[owned.itemId];
+    if (!item?.tradable) continue;
+    const reserve = reserveFor(ctx, state, item.id, owned.shiny);
+    if (getCard(state, item.id, owned.shiny).copies > reserveTotal(reserve))
+      spare.add(`${item.rarity}:${owned.shiny}`);
+  }
+  return { wants, spare };
 }
 
 export interface CompareTradeInput {
